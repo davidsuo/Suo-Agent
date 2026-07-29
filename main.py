@@ -187,7 +187,34 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
 
     return answer
 
+def init_database():
+    """如果 sample.db 不存在，自动创建并插入示例数据"""
+    import sqlite3
+    db_path = "sample.db"
+    if not os.path.exists(db_path):
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS employees (
+                id INTEGER PRIMARY KEY,
+                name TEXT,
+                position TEXT,
+                salary INTEGER
+            )
+        ''')
+        sample_data = [
+            (1, "张三", "工程师", 60000),
+            (2, "李四", "产品经理", 75000),
+            (3, "王五", "设计师", 55000),
+            (4, "赵六", "数据分析师", 68000),
+        ]
+        cursor.executemany("INSERT OR REPLACE INTO employees VALUES (?,?,?,?)", sample_data)
+        conn.commit()
+        conn.close()
+        print("数据库 sample.db 已自动创建并插入示例数据。")
+
 
 if __name__ == "__main__":
     import uvicorn
+    init_database()  # 在启动服务器前执行
     uvicorn.run(app, host="0.0.0.0", port=8000)
