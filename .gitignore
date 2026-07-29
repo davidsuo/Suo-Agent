@@ -15,3 +15,5 @@ Thumbs.db
 # 如果有临时测试文件或数据库
 sample.db
 pending.json
+
+main_backup.py
