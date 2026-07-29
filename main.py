@@ -6,9 +6,12 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from openai import OpenAI
-
 from memory import memory
-import rag
+#import rag
+try:
+    import rag
+except ImportError:
+    rag = None
 from tools import TOOLS_METADATA, AVAILABLE_TOOLS
 from guardrails import input_guard, tool_call_guard, output_guard
 from pending_tools import pending
@@ -105,7 +108,11 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
 
     # 2. 获取历史与知识库上下文
     history = memory.get(session_id)
-    context = rag.search_similar(query, k=3)
+    #context = rag.search_similar(query, k=3)
+    if rag is not None:
+        context = rag.search_similar(query, k=3)
+    else:
+        context = "暂无相关文档（知识库未加载）"
     system_content = SYSTEM_PROMPT.format(context=context if context else "暂无相关文档")
 
     # 3. 构建初始消息
