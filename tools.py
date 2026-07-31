@@ -130,11 +130,22 @@ def speech_to_text(audio_file_path: str) -> str:
     token = get_baidu_access_token()
     if not token:
         return "语音识别未配置或凭证无效"
+
+    # 检查文件大小（百度要求原始音频不超过 60 秒，约 1.9MB）
+    MAX_SIZE_BYTES = 1_900_000  # 1.9MB
+    try:
+        file_size = os.path.getsize(audio_file_path)
+        if file_size > MAX_SIZE_BYTES:
+            return "语音识别失败: 音频文件过大，请录制不超过 60 秒的短语音。"
+    except Exception as e:
+        return f"音频文件读取失败: {e}"
+
     try:
         with open(audio_file_path, "rb") as f:
             audio_base64 = base64.b64encode(f.read()).decode("utf-8")
     except Exception as e:
         return f"音频文件读取失败: {e}"
+
     url = "https://vop.baidu.com/server_api"
     payload = {
         "format": "wav",
@@ -143,7 +154,7 @@ def speech_to_text(audio_file_path: str) -> str:
         "cuid": "ai-agent",
         "token": token,
         "speech": audio_base64,
-        "len": len(audio_base64) * 3 // 4,
+        "len": file_size,          # 使用实际文件大小
         "lan": "zh"
     }
     try:
