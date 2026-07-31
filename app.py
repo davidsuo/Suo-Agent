@@ -1,11 +1,13 @@
 import gradio as gr
 import os
 import sqlite3
-from main import chat_core   # 只导入聊天核心，不依赖 init_database
+from main import chat_core
+from tools import speech_to_text   # 从 tools 导入百度语音转写函数
 
 SESSION_ID = "render_user"
 
 def init_database():
+    """自动创建 sample.db 如果不存在"""
     db_path = "sample.db"
     if not os.path.exists(db_path):
         conn = sqlite3.connect(db_path)
@@ -31,31 +33,60 @@ def init_database():
     else:
         print("✅ 数据库 sample.db 已存在，无需初始化。")
 
-async def respond(message, history):
-    answer = await chat_core(SESSION_ID, message, None)
-    return answer
+async def handle_user_input(text, audio, history):
+    user_text = text or ""
 
+    # 如果有音频，先转成文字
+    if audio is not None:
+        transcribed = speech_to_text(audio)
+        if not transcribed.startswith("语音识别失败"):
+            user_text = transcribed
+        else:
+            # 转录失败，返回错误信息
+            history = history or []
+            history.append({"role": "user", "content": "🎤 音频输入"})
+            history.append({"role": "assistant", "content": transcribed})
+            return history, "", None
+
+    if not user_text.strip():
+        return history, "", None
+
+    # 显示用户消息（带语音标记）
+    display_msg = user_text
+    if audio is not None:
+        display_msg += " 🎤"
+    history = history or []
+    history.append({"role": "user", "content": display_msg})
+
+    # 调用智能体核心
+    answer = await chat_core(SESSION_ID, user_text, None)
+    history.append({"role": "assistant", "content": answer})
+    return history, "", None
+
+# 构建界面
 with gr.Blocks(title="AI 智能体") as demo:
-    gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具）")
-    gr.Markdown("直接在下方输入文字，我会调用所有工具和知识库回答你。")
+    gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具 + 语音）")
+    gr.Markdown("打字或上传音频文件，我会调用所有能力回答你。")
 
     chatbot = gr.Chatbot(label="对话", height=500)
-    text_input = gr.Textbox(label="输入你的问题", placeholder="在这里打字...")
-    send_btn = gr.Button("发送")
+    with gr.Row():
+        text_input = gr.Textbox(label="输入文字（可选）", placeholder="在这里打字...", scale=2)
+        audio_input = gr.Audio(label="🎤 上传音频", type="filepath", scale=1)
 
-    async def on_send(text, history):
-        if not text.strip():
-            return history, ""
-        history = history or []
-        history.append({"role": "user", "content": text})
-        bot_response = await respond(text, history)
-        history.append({"role": "assistant", "content": bot_response})
-        return history, ""
-
-    send_btn.click(on_send, [text_input, chatbot], [chatbot, text_input])
-    text_input.submit(on_send, [text_input, chatbot], [chatbot, text_input])
+    # 音频上传后自动触发处理（change 事件）
+    audio_input.change(
+        handle_user_input,
+        [text_input, audio_input, chatbot],
+        [chatbot, text_input, audio_input]
+    )
+    # 文本框回车触发
+    text_input.submit(
+        handle_user_input,
+        [text_input, audio_input, chatbot],
+        [chatbot, text_input, audio_input]
+    )
 
 if __name__ == "__main__":
-    init_database()   # 先初始化数据库
+    init_database()   # 启动前检查数据库
     port = int(os.environ.get("PORT", 7860))
     demo.launch(server_name="0.0.0.0", server_port=port)
