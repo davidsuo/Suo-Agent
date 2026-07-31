@@ -224,7 +224,7 @@ TOOLS_METADATA = [
             "description": "获取当前的日期和时间",
             "parameters": {"type": "object", "properties": {}, "required": []}
         }
-    },
+    }
     {
         "type": "function",
         "function": {
@@ -238,7 +238,7 @@ TOOLS_METADATA = [
                 "required": ["expression"]
             }
         }
-    },
+    }
     {
         "type": "function",
         "function": {
@@ -252,7 +252,7 @@ TOOLS_METADATA = [
                 "required": ["sql"]
             }
         }
-    },
+    }
     {
         "type": "function",
         "function": {
@@ -268,7 +268,7 @@ TOOLS_METADATA = [
                 "required": ["to_email", "subject", "body"]
             }
         }
-    },
+    }
     {
         "type": "function",
         "function": {
@@ -283,7 +283,7 @@ TOOLS_METADATA = [
                 "required": ["query"]
             }
         }
-    },
+    }
     {
         "type": "function",
         "function": {
