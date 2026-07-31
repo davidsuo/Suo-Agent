@@ -297,7 +297,7 @@ TOOLS_METADATA = [
                 "required": ["code"]
             }
         }
-    },
+    }
     {
         "type": "function",
         "function": {
