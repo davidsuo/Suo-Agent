@@ -188,9 +188,10 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
 
     return answer
 
+import sqlite3, os
+
 def init_database():
     """如果 sample.db 不存在，自动创建并插入示例数据"""
-    import sqlite3
     db_path = "sample.db"
     if not os.path.exists(db_path):
         conn = sqlite3.connect(db_path)
@@ -216,6 +217,6 @@ def init_database():
 
 
 if __name__ == "__main__":
+    init_database()   # 确保数据库存在
     import uvicorn
-    init_database()  # 在启动服务器前执行
     uvicorn.run(app, host="0.0.0.0", port=8000)
