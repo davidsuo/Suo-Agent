@@ -1,17 +1,19 @@
-# tools.py
 import datetime
 import sqlite3
 import smtplib
 import os
-import requests
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 import sys
 from io import StringIO
 import traceback
+import requests
+import base64
+import json
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from ddgs import DDGS
 
 
-# ---------- 原有工具 ----------
+# ---------- 基础工具 ----------
 def get_current_time():
     now = datetime.datetime.now()
     return now.strftime("%Y-%m-%d %H:%M:%S")
@@ -67,10 +69,7 @@ def send_email(to_email: str, subject: str, body: str):
     except Exception as e:
         return f"邮件发送失败: {e}"
 
-# ---------- 新增工具：网页搜索 ----------
-
-from ddgs import DDGS
-
+# ---------- DDGS 网页搜索 ----------
 def web_search(query: str, max_results: int = 5):
     try:
         with DDGS() as ddgs:
@@ -86,40 +85,18 @@ def web_search(query: str, max_results: int = 5):
             return "\n".join(formatted)
     except Exception as e:
         return f"搜索失败: {e}"
-        
 
-# ---------- 新增工具：代码解释器（安全沙箱） ----------
+# ---------- 安全 Python 执行器 ----------
 def execute_python(code: str):
-    """
-    安全执行一段 Python 代码，仅允许有限的内建函数。
-    返回标准输出内容或错误信息。
-    """
-    # 只允许使用安全的内建函数，禁止导入、文件操作等
     safe_builtins = {
-        "print": print,
-        "range": range,
-        "len": len,
-        "int": int,
-        "float": float,
-        "str": str,
-        "list": list,
-        "dict": dict,
-        "abs": abs,
-        "min": min,
-        "max": max,
-        "sum": sum,
-        "round": round,
-        "sorted": sorted,
-        "enumerate": enumerate,
-        "zip": zip,
-        "type": type,
-        "isinstance": isinstance,
+        "print": print, "range": range, "len": len, "int": int, "float": float,
+        "str": str, "list": list, "dict": dict, "abs": abs, "min": min,
+        "max": max, "sum": sum, "round": round, "sorted": sorted,
+        "enumerate": enumerate, "zip": zip, "type": type, "isinstance": isinstance,
     }
-    # 重定向标准输出以捕获 print 内容
     old_stdout = sys.stdout
     sys.stdout = captured = StringIO()
     try:
-        # 严格限制执行环境
         exec(code, {"__builtins__": safe_builtins}, {})
         output = captured.getvalue()
         if not output.strip():
@@ -130,16 +107,8 @@ def execute_python(code: str):
     finally:
         sys.stdout = old_stdout
 
-
-
-# ---------- 新增工具：百度语音转写工具 ----------
-
-import requests
-import base64
-import json
-
+# ---------- 百度语音转写 ----------
 def get_baidu_access_token() -> str:
-    """使用 API Key 和 Secret Key 获取 access_token"""
     api_key = os.getenv("BAIDU_ASR_API_KEY")
     secret_key = os.getenv("BAIDU_ASR_SECRET_KEY")
     if not api_key or not secret_key:
@@ -158,29 +127,24 @@ def get_baidu_access_token() -> str:
         return ""
 
 def speech_to_text(audio_file_path: str) -> str:
-    """使用百度语音识别将音频文件转为文本"""
     token = get_baidu_access_token()
     if not token:
         return "语音识别未配置或凭证无效"
-
-    # 读取音频文件并进行 base64 编码
     try:
         with open(audio_file_path, "rb") as f:
             audio_base64 = base64.b64encode(f.read()).decode("utf-8")
     except Exception as e:
         return f"音频文件读取失败: {e}"
-
-    # 调用百度语音识别 REST API
     url = "https://vop.baidu.com/server_api"
     payload = {
-        "format": "wav",           # 根据实际音频格式调整，如 pcm、wav、mp3
-        "rate": 16000,             # 采样率，通常 16000 或 8000
+        "format": "wav",
+        "rate": 16000,
         "channel": 1,
         "cuid": "ai-agent",
         "token": token,
         "speech": audio_base64,
-        "len": len(audio_base64) * 3 // 4,  # 原始音频大小（字节）
-        "lan": "zh"                # 中文普通话
+        "len": len(audio_base64) * 3 // 4,
+        "lan": "zh"
     }
     try:
         resp = requests.post(url, json=payload, timeout=15)
@@ -192,27 +156,8 @@ def speech_to_text(audio_file_path: str) -> str:
     except Exception as e:
         return f"语音识别请求错误: {e}"
 
-
-
-
 # ---------- 工具元数据 ----------
 TOOLS_METADATA = [
-    {
-    "type": "function",
-    "function": {
-        "name": "speech_to_text",
-        "description": "将用户上传的音频文件转写为文本，支持中文普通话。",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "audio_file_path": {
-                    "type": "string",
-                    "description": "音频文件的本地路径"
-                }
-            },
-            "required": ["audio_file_path"]
-        }
-    }
     {
         "type": "function",
         "function": {
@@ -250,7 +195,7 @@ TOOLS_METADATA = [
         }
     },
     {
-                "type": "function",
+        "type": "function",
         "function": {
             "name": "send_email",
             "description": "发送邮件（需要用户确认）",
@@ -263,14 +208,13 @@ TOOLS_METADATA = [
                 },
                 "required": ["to_email", "subject", "body"]
             }
-        },
-        "dangerous": True   # ← 加在这里，与 function 并列
+        }
     },
     {
         "type": "function",
         "function": {
             "name": "web_search",
-            "description": "搜索互联网获取实时信息，如新闻、百科、动态数据等",
+            "description": "搜索互联网获取实时信息",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -285,7 +229,7 @@ TOOLS_METADATA = [
         "type": "function",
         "function": {
             "name": "execute_python",
-            "description": "安全执行 Python 代码并返回输出，可用于数据计算、图表生成等",
+            "description": "安全执行 Python 代码并返回输出",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -294,16 +238,32 @@ TOOLS_METADATA = [
                 "required": ["code"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "speech_to_text",
+            "description": "将用户上传的音频文件转写为文本，支持中文普通话。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "audio_file_path": {
+                        "type": "string",
+                        "description": "音频文件的本地路径"
+                    }
+                },
+                "required": ["audio_file_path"]
+            }
+        }
     }
 ]
 
-# 工具名称到函数的映射
 AVAILABLE_TOOLS = {
-    "speech_to_text": speech_to_text,
     "get_current_time": get_current_time,
     "calculator": calculator,
     "query_database": query_database,
     "send_email": send_email,
     "web_search": web_search,
-    "execute_python": execute_python
+    "execute_python": execute_python,
+    "speech_to_text": speech_to_text
 }
