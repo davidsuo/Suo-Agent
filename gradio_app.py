@@ -25,7 +25,15 @@ async def handle_user_input(text, audio, history):
     user_text = text or ""
     transcribed = ""
     if audio is not None:
-        transcribed = transcribe_audio(audio)
+    from tools import speech_to_text
+    transcribed = speech_to_text(audio)
+    if not transcribed.startswith("语音识别失败"):
+        user_text = transcribed
+    else:
+        # 直接将错误信息返回给用户
+        history.append({"role": "user", "content": "🎤 音频输入"})
+        history.append({"role": "assistant", "content": transcribed})
+        return history, "", None
 
     if transcribed.startswith("[") and transcribed.endswith("]") and "失败" in transcribed or "错误" in transcribed:
         history.append({"role": "user", "content": "🎤 音频输入"})
