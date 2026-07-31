@@ -1,6 +1,8 @@
 import gradio as gr
 import os
 from main import chat_core
+from main import init_database   # 如果 init_database 在 main.py 中定义
+
 
 # 固定会话 ID（可后续改为多会话）
 SESSION_ID = "render_user"
