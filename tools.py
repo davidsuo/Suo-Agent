@@ -184,6 +184,36 @@ def speech_to_text(audio_file_path: str) -> str:
             return f"语音识别失败: {data.get('err_msg', '未知错误')}"
     except Exception as e:
         return f"语音识别请求错误: {e}"
+        
+# ---------- 文件分析工具 ----------
+def analyze_file(file_path: str) -> str:
+    """
+    分析 CSV 或 Excel 文件，返回基本信息和前5行数据。
+    """
+    try:
+        import pandas as pd
+        if file_path.endswith('.csv'):
+            df = pd.read_csv(file_path)
+        elif file_path.endswith('.xlsx') or file_path.endswith('.xls'):
+            df = pd.read_excel(file_path)
+        else:
+            return "不支持的文件格式，请上传 CSV 或 Excel 文件。"
+
+        # 获取基本统计信息
+        info = f"文件分析结果：\n"
+        info += f"- 行数: {len(df)}\n"
+        info += f"- 列数: {len(df.columns)}\n"
+        info += f"- 列名: {', '.join(df.columns.tolist())}\n"
+        info += f"- 数据类型:\n{df.dtypes.to_string()}\n\n"
+        info += "前5行数据:\n"
+        info += df.head(5).to_string(index=False)
+        # 可选：描述性统计
+        if any(df.select_dtypes(include='number').columns):
+            info += "\n\n数值列统计:\n"
+            info += df.describe().to_string()
+        return info
+    except Exception as e:
+        return f"文件分析失败: {e}"
 
 # ---------- 工具元数据 ----------
 TOOLS_METADATA = [
@@ -285,6 +315,23 @@ TOOLS_METADATA = [
             }
         }
     }
+    {
+        "type": "function",
+        "function": {
+            "name": "analyze_file",
+            "description": "分析用户上传的 CSV 或 Excel 文件，返回行数、列名、前几行数据和统计信息。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "上传文件的本地路径"
+                    }
+                },
+                "required": ["file_path"]
+            }
+        }
+    }
 ]
 
 AVAILABLE_TOOLS = {
@@ -295,4 +342,5 @@ AVAILABLE_TOOLS = {
     "web_search": web_search,
     "execute_python": execute_python,
     "speech_to_text": speech_to_text
+    "analyze_file": analyze_file,
 }

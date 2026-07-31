@@ -65,22 +65,71 @@ async def handle_user_input(text, audio, history):
 
 # 构建界面
 with gr.Blocks(title="AI 智能体") as demo:
-    gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具 + 语音）")
-    gr.Markdown("打字或上传音频文件，我会调用所有能力回答你。")
+    gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具 + 语音 + 文件分析）")
+    gr.Markdown("上传 CSV/Excel 文件、打字或上传音频，我会调用所有能力回答你。")
 
     chatbot = gr.Chatbot(label="对话", height=500)
+
+    # 文件上传组件
+    file_input = gr.File(label="📁 上传 CSV 或 Excel 文件", file_types=[".csv", ".xlsx", ".xls"])
+
     with gr.Row():
         text_input = gr.Textbox(label="输入文字（可选）", placeholder="在这里打字...", scale=2)
-        audio_input = gr.Audio(label="🎤 上传音频（建议录制清晰短语音）", type="filepath", scale=1)
+        audio_input = gr.Audio(label="🎤 上传音频", type="filepath", scale=1)
 
-    # 音频上传后自动触发处理（change 事件）
-    audio_input.change(
+    # 处理文件上传事件
+    async def handle_file_upload(file, history):
+        if file is None:
+            return history
+        # 调用 analyze_file 工具
+        from tools import analyze_file
+        analysis_result = analyze_file(file.name)
+        # 将分析结果作为系统消息插入对话，但不更新用户消息（或可设计为用户消息“分析文件”）
+        history = history or []
+        history.append({"role": "user", "content": "（文件上传）请分析该文件"})
+        history.append({"role": "assistant", "content": analysis_result})
+        return history, ""
+
+    file_input.upload(
+        handle_file_upload,
+        [file_input, chatbot],
+        [chatbot, text_input]   # 不返回文件框本身，避免重复
+    )
+
+    # 原有的文本和音频处理保持不变（注意需要适配多输入）
+    async def handle_user_input(text, audio, history):
+        user_text = text or ""
+        if audio is not None:
+            from tools import speech_to_text
+            transcribed = speech_to_text(audio)
+            if not transcribed.startswith("语音识别失败"):
+                user_text = transcribed
+            else:
+                history = history or []
+                history.append({"role": "user", "content": "🎤 音频输入"})
+                history.append({"role": "assistant", "content": transcribed})
+                return history, "", None
+
+        if not user_text.strip():
+            return history, "", None
+
+        display_msg = user_text
+        if audio is not None:
+            display_msg += " 🎤"
+        history = history or []
+        history.append({"role": "user", "content": display_msg})
+
+        answer = await chat_core(SESSION_ID, user_text, None)
+        history.append({"role": "assistant", "content": answer})
+        return history, "", None
+
+    # 绑定事件
+    text_input.submit(
         handle_user_input,
         [text_input, audio_input, chatbot],
         [chatbot, text_input, audio_input]
     )
-    # 文本框回车触发
-    text_input.submit(
+    audio_input.change(
         handle_user_input,
         [text_input, audio_input, chatbot],
         [chatbot, text_input, audio_input]
