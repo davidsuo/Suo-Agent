@@ -68,54 +68,24 @@ def send_email(to_email: str, subject: str, body: str):
 
 # ---------- 新增工具：网页搜索 ----------
 
+from ddgs import DDGS
+
 def web_search(query: str, max_results: int = 5):
-    """
-    使用 SearXNG 公共实例搜索，失败时回退到模拟结果。
-    """
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-    searx_instances = [
-        "https://searx.be/search",
-        "https://search.sapti.me/search",
-        "https://searx.tiekoetter.com/search",
-        "https://search.bus-hit.me/search"
-    ]
-
-    for instance in searx_instances:
-        try:
-            params = {
-                "q": query,
-                "format": "json",
-                "pageno": 1,
-                "language": "zh-CN",
-            }
-            resp = requests.get(instance, params=params, headers=headers, timeout=10)
-            if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("application/json"):
-                data = resp.json()
-                results = data.get("results", [])[:max_results]
-                if results:
-                    formatted = []
-                    for r in results:
-                        title = r.get("title", "")
-                        url = r.get("url", "")
-                        snippet = r.get("content") or r.get("snippet") or r.get("description") or ""
-                        formatted.append(f"标题: {title}\n链接: {url}\n摘要: {snippet}\n")
-                    return "\n".join(formatted)
-        except Exception:
-            continue
-
-    # 所有实例失败，使用模拟结果
-    mock_results = [
-        {"title": "OpenAI 发布 GPT-5 预览版", "url": "https://example.com/gpt5", "content": "OpenAI 今日发布 GPT-5 预览版，性能大幅提升。"},
-        {"title": "DeepSeek 开源最新多模态模型", "url": "https://example.com/deepseek", "content": "DeepSeek 团队宣布开源新一代多模态模型。"},
-        {"title": "苹果发布 M4 芯片 MacBook", "url": "https://example.com/m4", "content": "苹果推出搭载 M4 芯片的 MacBook，续航达20小时。"}
-    ]
-    formatted = []
-    for r in mock_results[:max_results]:
-        formatted.append(f"标题: {r['title']}\n链接: {r['url']}\n摘要: {r['content']}\n")
-    return "(实时搜索暂时不可用，以下为模拟结果)\n" + "\n".join(formatted)
-
+    try:
+        with DDGS() as ddgs:
+            results = list(ddgs.text(query, max_results=max_results))
+            if not results:
+                return "未找到相关搜索结果。"
+            formatted = []
+            for r in results:
+                title = r.get("title", "")
+                href = r.get("href", "")
+                body = r.get("body", "")
+                formatted.append(f"标题: {title}\n链接: {href}\n摘要: {body}\n")
+            return "\n".join(formatted)
+    except Exception as e:
+        return f"搜索失败: {e}"
+        
 
 # ---------- 新增工具：代码解释器（安全沙箱） ----------
 def execute_python(code: str):
