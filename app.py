@@ -71,7 +71,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     chatbot = gr.Chatbot(label="对话", height=500)
     with gr.Row():
         text_input = gr.Textbox(label="输入文字（可选）", placeholder="在这里打字...", scale=2)
-        audio_input = gr.Audio(label="🎤 上传音频（请录制不超过60秒的短语音）", type="filepath", scale=1)
+        audio_input = gr.Audio(label="🎤 上传音频（建议录制清晰短语音）", type="filepath", scale=1)
 
     # 音频上传后自动触发处理（change 事件）
     audio_input.change(

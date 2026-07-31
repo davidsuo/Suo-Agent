@@ -126,25 +126,43 @@ def get_baidu_access_token() -> str:
     except Exception:
         return ""
 
+from pydub import AudioSegment
+
 def speech_to_text(audio_file_path: str) -> str:
     token = get_baidu_access_token()
     if not token:
         return "语音识别未配置或凭证无效"
 
-    # 检查文件大小（百度要求原始音频不超过 60 秒，约 1.9MB）
-    MAX_SIZE_BYTES = 1_900_000  # 1.9MB
+    # 使用 pydub 转换为 16kHz, 单声道, 16bit WAV
     try:
-        file_size = os.path.getsize(audio_file_path)
+        audio = AudioSegment.from_file(audio_file_path)
+        audio = audio.set_frame_rate(16000).set_channels(1).set_sample_width(2)
+        # 保存到临时文件
+        converted_path = audio_file_path + "_conv.wav"
+        audio.export(converted_path, format="wav")
+        processed_path = converted_path
+    except Exception as e:
+        return f"音频预处理失败: {e}"
+
+    # 检查文件大小（百度要求单次识别不超过 60 秒，约 1.9MB）
+    MAX_SIZE_BYTES = 1_900_000
+    try:
+        file_size = os.path.getsize(processed_path)
         if file_size > MAX_SIZE_BYTES:
+            os.remove(processed_path) if os.path.exists(processed_path) else None
             return "语音识别失败: 音频文件过大，请录制不超过 60 秒的短语音。"
     except Exception as e:
-        return f"音频文件读取失败: {e}"
+        return f"音频文件大小检查失败: {e}"
 
     try:
-        with open(audio_file_path, "rb") as f:
+        with open(processed_path, "rb") as f:
             audio_base64 = base64.b64encode(f.read()).decode("utf-8")
     except Exception as e:
         return f"音频文件读取失败: {e}"
+    finally:
+        # 清理临时文件
+        if os.path.exists(processed_path):
+            os.remove(processed_path)
 
     url = "https://vop.baidu.com/server_api"
     payload = {
@@ -154,7 +172,7 @@ def speech_to_text(audio_file_path: str) -> str:
         "cuid": "ai-agent",
         "token": token,
         "speech": audio_base64,
-        "len": file_size,          # 使用实际文件大小
+        "len": file_size,      # 原始字节数
         "lan": "zh"
     }
     try:
