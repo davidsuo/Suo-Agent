@@ -73,8 +73,9 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     chatbot = gr.Chatbot(label="对话", height=500)
 
-    # 文件上传组件
+    # ... 其他组件 ...
     file_input = gr.File(label="📁 上传 CSV 或 Excel 文件", file_types=[".csv", ".xlsx", ".xls"])
+    # ...
 
     with gr.Row():
         text_input = gr.Textbox(label="输入文字（可选）", placeholder="在这里打字...", scale=2)
@@ -82,20 +83,20 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     async def handle_file_upload(file, history):
         if file is None:
-            return history, "", gr.update(value=None)
+            return history, ""
         analysis_result = tools.analyze_file(file.name)
         tools.last_uploaded_file = file.name
         history = history or []
         history.append({"role": "user", "content": "（文件上传）请分析该文件"})
         history.append({"role": "assistant", "content": analysis_result})
         memory.append(SESSION_ID, "（文件上传）请分析该文件", analysis_result)
-        return history, "", gr.update(value=None)
+        file_input.update(value=None)   # ← 关键
+        return history, ""
 
-    # 绑定
     file_input.upload(
         handle_file_upload,
         [file_input, chatbot],
-        [chatbot, text_input, file_input]
+        [chatbot, text_input]
     )
 
 
