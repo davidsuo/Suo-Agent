@@ -55,7 +55,6 @@ def query_database(sql: str):
         return f"数据库查询错误: {e}"
 
 def send_email(to_email: str, subject: str, body: str):
-    """发送邮件，需配置 SMTP 环境变量"""
     sender = os.getenv("EMAIL_SENDER")
     password = os.getenv("EMAIL_PASSWORD")
     smtp_server = os.getenv("SMTP_SERVER", "smtp.qq.com")
@@ -68,7 +67,8 @@ def send_email(to_email: str, subject: str, body: str):
         msg['To'] = to_email
         msg['Subject'] = subject
         msg.attach(MIMEText(body, 'plain', 'utf-8'))
-        server = smtplib.SMTP(smtp_server, smtp_port)
+        # 设置超时，防止永久阻塞
+        server = smtplib.SMTP(smtp_server, smtp_port, timeout=10)
         server.starttls()
         server.login(sender, password)
         server.send_message(msg)

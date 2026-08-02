@@ -95,13 +95,14 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
 
     # 1. 检查是否为二次确认的确认回复
     if session_id in pending and "确认" in query.strip():
-        print(f"[DEBUG] 确认分支触发, session_id={session_id}")
+        print(f"[确认] 执行工具: {pending[session_id]['tool_name']}")
         tool_info = pending.pop(session_id)
         tool_name = tool_info["tool_name"]
         arguments = tool_info["arguments"]
         if tool_name in AVAILABLE_TOOLS:
             try:
                 result = AVAILABLE_TOOLS[tool_name](**arguments)
+                print(f"[确认] 工具返回: {result[:50]}...")
             except Exception as e:
                 result = f"工具执行错误: {e}"
         else:
