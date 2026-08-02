@@ -254,25 +254,38 @@ def analyze_file(file_path: str = None) -> str:
 
 # ---------- 图像生成 (Stable Diffusion via Replicate) ----------
 def generate_image(prompt: str, negative_prompt: str = "") -> str:
-    """使用 Stable Diffusion 生成图片，返回图片 URL"""
-    api_token = os.getenv("REPLICATE_API_TOKEN")
-    if not api_token:
-        return "图像生成未配置（缺少 REPLICATE_API_TOKEN）"
+    """使用 Hugging Face 免费推理 API 生成图片，返回图片 URL"""
+    token = os.getenv("HF_TOKEN")
+    if not token:
+        return "图像生成未配置（缺少 HF_TOKEN）"
+
+    API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-1"
+    headers = {"Authorization": f"Bearer {token}"}
+    payload = {
+        "inputs": prompt,
+        "parameters": {
+            "negative_prompt": negative_prompt or "",
+            "width": 512,
+            "height": 512,
+            "num_inference_steps": 30,
+        }
+    }
+
     try:
-        output = replicate.run(
-            "stability-ai/stable-diffusion:27b93a2413e7f36cd83da926f3656280b2931564ff050bf9575f08f04623e0fe",
-            input={
-                "prompt": prompt,
-                "negative_prompt": negative_prompt or "",
-                "num_outputs": 1,
-                "width": 512,
-                "height": 512,
-            }
-        )
-        if output and len(output) > 0:
-            return f"图片已生成：{output[0]}"
+        resp = requests.post(API_URL, headers=headers, json=payload, timeout=60)
+        if resp.status_code == 200:
+            # 返回的是图片二进制数据，我们需要上传到临时图片托管或直接返回 base64
+            # 简单方案：将图片保存到 Render 的临时文件，返回 URL
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+                f.write(resp.content)
+                temp_path = f.name
+            # 由于 Render 无法直接提供临时文件访问，我们改为返回 base64 图像
+            import base64
+            img_base64 = base64.b64encode(resp.content).decode("utf-8")
+            return f"图片已生成（base64）：![生成图片](data:image/png;base64,{img_base64})"
         else:
-            return "图像生成失败：未返回图片"
+            return f"图像生成失败: {resp.status_code} {resp.text[:200]}"
     except Exception as e:
         return f"图像生成错误: {e}"
 
