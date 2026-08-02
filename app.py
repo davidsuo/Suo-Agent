@@ -1,9 +1,10 @@
 import gradio as gr
 import os
 import sqlite3
-from main import chat_core
+from main import chat_core, init_database
 from tools import speech_to_text   # 从 tools 导入百度语音转写函数
 from memory import memory   # 确保与 main.py 使用的同一个实例
+import tools
 
 
 SESSION_ID = "render_user"
@@ -83,8 +84,9 @@ with gr.Blocks(title="AI 智能体") as demo:
     async def handle_file_upload(file, history):
         if file is None:
             return history
-        from tools import analyze_file
-        analysis_result = analyze_file(file.name)
+        analysis_result = tools.analyze_file(file.name)
+        # 设置最近上传的文件路径
+        tools.last_uploaded_file = file.name
         history = history or []
         history.append({"role": "user", "content": "（文件上传）请分析该文件"})
         history.append({"role": "assistant", "content": analysis_result})

@@ -15,6 +15,9 @@ import tempfile
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from ddgs import DDGS
+# 存储最近上传的文件路径（供 analyze_file 自动使用）
+last_uploaded_file = None
+
 
 # ---------- 基础工具 ----------
 def get_current_time():
@@ -197,15 +200,13 @@ def speech_to_text(audio_file_path: str) -> str:
         return f"语音识别请求错误: {e}"
 
 # ---------- 文件分析 (CSV/Excel) ----------
-def analyze_file(file_path: str) -> str:
-    try:
-        import pandas as pd
-        if file_path.endswith('.csv'):
-            df = pd.read_csv(file_path)
-        elif file_path.endswith('.xlsx') or file_path.endswith('.xls'):
-            df = pd.read_excel(file_path)
+def analyze_file(file_path: str = None) -> str:
+    # 如果未传入路径，则使用最近上传的文件
+    if not file_path:
+        if last_uploaded_file:
+            file_path = last_uploaded_file
         else:
-            return "不支持的文件格式，请上传 CSV 或 Excel 文件。"
+            return "错误：没有已上传的文件，请先上传文件。"
 
         info = "文件分析结果：\n"
         info += f"- 行数: {len(df)}\n"
@@ -328,16 +329,16 @@ TOOLS_METADATA = [
         "type": "function",
         "function": {
             "name": "analyze_file",
-            "description": "分析用户上传的 CSV 或 Excel 文件，返回行数、列名、前几行数据和统计信息。",
+            "description": "分析用户上传的 CSV 或 Excel 文件。若未提供文件路径，则自动分析最近上传的文件。",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "file_path": {
                         "type": "string",
-                        "description": "上传文件的本地路径"
+                        "description": "上传文件的本地路径（可选，不填则使用最近上传的文件）"
                     }
-                },
-                "required": ["file_path"]
+                }
+                # 注意：移除了 "required": ["file_path"]
             }
         }
     }
