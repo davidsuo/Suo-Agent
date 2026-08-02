@@ -55,27 +55,31 @@ def query_database(sql: str):
         return f"数据库查询错误: {e}"
 
 def send_email(to_email: str, subject: str, body: str):
-    sender = os.getenv("EMAIL_SENDER")
-    password = os.getenv("EMAIL_PASSWORD")
-    smtp_server = os.getenv("SMTP_SERVER", "smtp.qq.com")
-    smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    if not sender or not password:
-        return "错误：邮件服务未配置。"
+    api_key = os.getenv("BREVO_API_KEY")
+    from_email = os.getenv("EMAIL_FROM")
+    if not api_key or not from_email:
+        return "错误：邮件服务未配置（Brevo API Key 或发件人邮箱缺失）。"
+
+    url = "https://api.brevo.com/v3/smtp/email"
+    headers = {
+        "accept": "application/json",
+        "api-key": api_key,
+        "content-type": "application/json"
+    }
+    payload = {
+        "sender": {"email": from_email},
+        "to": [{"email": to_email}],
+        "subject": subject,
+        "textContent": body
+    }
     try:
-        msg = MIMEMultipart()
-        msg['From'] = sender
-        msg['To'] = to_email
-        msg['Subject'] = subject
-        msg.attach(MIMEText(body, 'plain', 'utf-8'))
-        # 设置超时，防止永久阻塞
-        server = smtplib.SMTP(smtp_server, smtp_port, timeout=10)
-        server.starttls()
-        server.login(sender, password)
-        server.send_message(msg)
-        server.quit()
-        return f"邮件已成功发送给 {to_email}"
+        resp = requests.post(url, json=payload, headers=headers, timeout=10)
+        if resp.status_code == 201:
+            return f"邮件已成功发送给 {to_email}"
+        else:
+            return f"邮件发送失败: {resp.status_code} {resp.text[:200]}"
     except Exception as e:
-        return f"邮件发送失败: {e}"
+        return f"邮件发送错误: {e}"
 
 # ---------- 网页搜索 (DDGS) ----------
 def web_search(query: str, max_results: int = 5):
