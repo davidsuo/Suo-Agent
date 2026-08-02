@@ -254,10 +254,8 @@ def analyze_file(file_path: str = None) -> str:
 
 # ---------- 图像生成 (Stable Diffusion via Replicate) ----------
 def generate_image(prompt: str, negative_prompt: str = "") -> str:
-    """使用 Hugging Face 免费推理 API 生成图片，返回图片 URL"""
-    token = os.getenv("HF_TOKEN")
-    if not token:
-        return "图像生成未配置（缺少 HF_TOKEN）"
+    # 临时降级，避免超时
+    return "图像生成服务暂时不可用，请稍后重试或使用其他平台。"
 
     API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-1"
     headers = {"Authorization": f"Bearer {token}"}

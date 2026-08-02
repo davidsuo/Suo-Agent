@@ -99,12 +99,6 @@ with gr.Blocks(title="AI 智能体") as demo:
         [chatbot, text_input, file_input]
     )
 
-    file_input.upload(
-        handle_file_upload,
-        [file_input, chatbot],
-        [chatbot, text_input]
-    )
-
 
     # 原有的文本和音频处理保持不变（注意需要适配多输入）
     async def handle_user_input(text, audio, history):
