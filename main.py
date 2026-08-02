@@ -35,6 +35,7 @@ SYSTEM_PROMPT = """
 - web_search: 搜索互联网获取最新信息
 - execute_python: 执行Python代码进行计算或数据处理
 - analyze_file: 分析CSV/Excel文件
+- generate_image: 根据文字描述生成图片，返回图片链接
 
 当用户询问实时信息（如新闻、股价、天气）时，请调用 web_search。
 当用户要求计算或数据分析时，可调用 execute_python 执行代码。

@@ -11,6 +11,7 @@ import json
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from ddgs import DDGS
+import replicate
 
 # 最近上传的文件路径（用于 analyze_file 自动使用）
 last_uploaded_file = None
@@ -244,6 +245,33 @@ def analyze_file(file_path: str = None) -> str:
         return info
     except Exception as e:
         return f"文件分析失败: {e}"
+        
+        
+# ---------- Replicate生成图像 ----------
+def generate_image(prompt: str, negative_prompt: str = "") -> str:
+    """使用 Stable Diffusion 生成图片，返回图片 URL"""
+    api_token = os.getenv("REPLICATE_API_TOKEN")
+    if not api_token:
+        return "图像生成未配置（缺少 REPLICATE_API_TOKEN）"
+    try:
+        output = replicate.run(
+            "stability-ai/stable-diffusion:27b93a2413e7f36cd83da926f3656280b2931564ff050bf9575f08f04623e0fe",
+            input={
+                "prompt": prompt,
+                "negative_prompt": negative_prompt or "",
+                "num_outputs": 1,
+                "width": 512,
+                "height": 512,
+            }
+        )
+        # output 是列表，第一个元素是图片 URL
+        if output and len(output) > 0:
+            return f"图片已生成：{output[0]}"
+        else:
+            return "图像生成失败：未返回图片"
+    except Exception as e:
+        return f"图像生成错误: {e}"
+
 
 # ---------- 工具元数据 ----------
 TOOLS_METADATA = [
@@ -359,6 +387,27 @@ TOOLS_METADATA = [
             }
         }
     }
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_image",
+            "description": "使用 Stable Diffusion 根据文字描述生成一张图片，返回图片的 URL。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "description": "英文或中文的图片描述，例如 'a cat sitting on a cloud'"
+                    },
+                    "negative_prompt": {
+                        "type": "string",
+                        "description": "可选的负面提示，描述不希望出现在图片中的内容"
+                    }
+                },
+                "required": ["prompt"]
+            }
+        }
+    }
 ]
 
 # 工具名称到函数的映射
@@ -370,5 +419,6 @@ AVAILABLE_TOOLS = {
     "web_search": web_search,
     "execute_python": execute_python,
     "speech_to_text": speech_to_text,
-    "analyze_file": analyze_file
+    "analyze_file": analyze_file，
+    "generate_image": generate_image
 }
