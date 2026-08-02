@@ -83,24 +83,21 @@ with gr.Blocks(title="AI 智能体") as demo:
     # 处理文件上传事件
     async def handle_file_upload(file, history):
         if file is None:
-            return history
+            return history, "", None   # 增加一个 None 用于清空文件
         analysis_result = tools.analyze_file(file.name)
-        # 记录最近文件路径
         tools.last_uploaded_file = file.name
         history = history or []
         history.append({"role": "user", "content": "（文件上传）请分析该文件"})
         history.append({"role": "assistant", "content": analysis_result})
-    
-        # 关键：将分析结果写入记忆，供后续对话使用
         memory.append(SESSION_ID, "（文件上传）请分析该文件", analysis_result)
-    
-        return history, ""
+        return history, "", None   # 第三个返回值清空文件组件
 
+    # 事件绑定：输出增加 file_input
     file_input.upload(
         handle_file_upload,
         [file_input, chatbot],
-        [chatbot, text_input]   # 不返回文件框本身，避免重复
-    )
+        [chatbot, text_input, file_input]   # 添加 file_input
+)
 
     # 原有的文本和音频处理保持不变（注意需要适配多输入）
     async def handle_user_input(text, audio, history):
