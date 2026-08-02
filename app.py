@@ -80,23 +80,23 @@ with gr.Blocks(title="AI 智能体") as demo:
         text_input = gr.Textbox(label="输入文字（可选）", placeholder="在这里打字...", scale=2)
         audio_input = gr.Audio(label="🎤 上传音频", type="filepath", scale=1)
 
-    # 处理文件上传事件
     async def handle_file_upload(file, history):
         if file is None:
-            return history, "", None   # 增加一个 None 用于清空文件
+            return history, "", gr.update(value=None)
         analysis_result = tools.analyze_file(file.name)
         tools.last_uploaded_file = file.name
         history = history or []
         history.append({"role": "user", "content": "（文件上传）请分析该文件"})
         history.append({"role": "assistant", "content": analysis_result})
         memory.append(SESSION_ID, "（文件上传）请分析该文件", analysis_result)
-        return history, "", None   # 第三个返回值清空文件组件
+        return history, "", gr.update(value=None)
 
-    # 事件绑定：输出增加 file_input
+    # 绑定
     file_input.upload(
         handle_file_upload,
         [file_input, chatbot],
-        [chatbot, text_input, file_input]   # 添加 file_input
+        [chatbot, text_input, file_input]
+    )
 )
 
     # 原有的文本和音频处理保持不变（注意需要适配多输入）
