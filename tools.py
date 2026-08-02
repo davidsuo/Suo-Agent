@@ -419,6 +419,6 @@ AVAILABLE_TOOLS = {
     "web_search": web_search,
     "execute_python": execute_python,
     "speech_to_text": speech_to_text,
-    "analyze_file": analyze_file，
+    "analyze_file": analyze_file,
     "generate_image": generate_image
 }
