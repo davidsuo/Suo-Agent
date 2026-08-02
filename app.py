@@ -85,7 +85,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         if file is None:
             return history
         analysis_result = tools.analyze_file(file.name)
-        # 设置最近上传的文件路径
+        # 记录最近文件路径
         tools.last_uploaded_file = file.name
         history = history or []
         history.append({"role": "user", "content": "（文件上传）请分析该文件"})

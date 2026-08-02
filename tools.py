@@ -1,4 +1,3 @@
-# tools.py
 import datetime
 import sqlite3
 import smtplib
@@ -9,15 +8,12 @@ import traceback
 import requests
 import base64
 import json
-import soundfile as sf
-from scipy import signal
-import tempfile
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from ddgs import DDGS
-# 存储最近上传的文件路径（供 analyze_file 自动使用）
-last_uploaded_file = None
 
+# 最近上传的文件路径（用于 analyze_file 自动使用）
+last_uploaded_file = None
 
 # ---------- 基础工具 ----------
 def get_current_time():
@@ -75,7 +71,7 @@ def send_email(to_email: str, subject: str, body: str):
     except Exception as e:
         return f"邮件发送失败: {e}"
 
-# ---------- DDGS 网页搜索 ----------
+# ---------- 网页搜索 ----------
 def web_search(query: str, max_results: int = 5):
     try:
         with DDGS() as ddgs:
@@ -92,7 +88,7 @@ def web_search(query: str, max_results: int = 5):
     except Exception as e:
         return f"搜索失败: {e}"
 
-# ---------- 安全 Python 执行器 ----------
+# ---------- Python 安全执行器 ----------
 def execute_python(code: str):
     safe_builtins = {
         "print": print, "range": range, "len": len, "int": int, "float": float,
@@ -137,27 +133,23 @@ def speech_to_text(audio_file_path: str) -> str:
     if not token:
         return "语音识别未配置或凭证无效"
 
-    # 使用 soundfile 读取音频，自动重采样到 16kHz 单声道 16bit PCM
     try:
+        import soundfile as sf
+        from scipy import signal
+        import tempfile
         data, original_rate = sf.read(audio_file_path)
         if len(data.shape) > 1:
-            data = data[:, 0]   # 多声道转单声道
+            data = data[:, 0]
         if original_rate != 16000:
             num_samples = int(len(data) * 16000 / original_rate)
             data = signal.resample(data, num_samples)
-    except Exception as e:
-        return f"音频处理失败: {e}"
-
-    # 写入临时 WAV 文件
-    try:
         tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
         sf.write(tmp.name, data, 16000, subtype='PCM_16')
         tmp.close()
         processed_path = tmp.name
     except Exception as e:
-        return f"创建临时文件失败: {e}"
+        return f"音频预处理失败: {e}"
 
-    # 检查文件大小（百度要求 ≤ 60 秒，约 1.9MB）
     MAX_SIZE_BYTES = 1_900_000
     try:
         file_size = os.path.getsize(processed_path)
@@ -167,7 +159,6 @@ def speech_to_text(audio_file_path: str) -> str:
     except Exception as e:
         return f"文件大小检查失败: {e}"
 
-    # base64 编码
     try:
         with open(processed_path, "rb") as f:
             audio_base64 = base64.b64encode(f.read()).decode("utf-8")
@@ -177,7 +168,6 @@ def speech_to_text(audio_file_path: str) -> str:
         if os.path.exists(processed_path):
             os.remove(processed_path)
 
-    # 调用百度 API
     url = "https://vop.baidu.com/server_api"
     payload = {
         "format": "wav",
@@ -199,16 +189,24 @@ def speech_to_text(audio_file_path: str) -> str:
     except Exception as e:
         return f"语音识别请求错误: {e}"
 
-# ---------- 文件分析 (CSV/Excel) ----------
+# ---------- 文件分析（自动使用最近文件） ----------
 def analyze_file(file_path: str = None) -> str:
-    # 如果未传入路径，则使用最近上传的文件
+    global last_uploaded_file
     if not file_path:
         if last_uploaded_file:
             file_path = last_uploaded_file
         else:
-            return "错误：没有已上传的文件，请先上传文件。"
+            return "错误：没有已上传的文件，请先上传一个 CSV 或 Excel 文件。"
+    try:
+        import pandas as pd
+        if file_path.endswith('.csv'):
+            df = pd.read_csv(file_path)
+        elif file_path.endswith(('.xlsx', '.xls')):
+            df = pd.read_excel(file_path)
+        else:
+            return "不支持的文件格式，请上传 CSV 或 Excel 文件。"
 
-        info = "文件分析结果：\n"
+        info = f"文件分析结果：\n"
         info += f"- 行数: {len(df)}\n"
         info += f"- 列数: {len(df.columns)}\n"
         info += f"- 列名: {', '.join(df.columns.tolist())}\n"
@@ -216,11 +214,10 @@ def analyze_file(file_path: str = None) -> str:
         info += "前5行数据:\n"
         info += df.head(5).to_string(index=False)
 
-        # 数值列统计
-        num_cols = df.select_dtypes(include='number').columns
-        if len(num_cols) > 0:
+        num_cols = df.select_dtypes(include='number')
+        if not num_cols.empty:
             info += "\n\n数值列统计:\n"
-            info += df[num_cols].describe().to_string()
+            info += num_cols.describe().to_string()
         return info
     except Exception as e:
         return f"文件分析失败: {e}"
@@ -312,14 +309,11 @@ TOOLS_METADATA = [
         "type": "function",
         "function": {
             "name": "speech_to_text",
-            "description": "将用户上传的音频文件转写为文本，支持中文普通话。",
+            "description": "将用户上传的音频文件转写为文本，支持中文普通话",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "audio_file_path": {
-                        "type": "string",
-                        "description": "音频文件的本地路径"
-                    }
+                    "audio_file_path": {"type": "string", "description": "音频文件的本地路径"}
                 },
                 "required": ["audio_file_path"]
             }
@@ -329,7 +323,7 @@ TOOLS_METADATA = [
         "type": "function",
         "function": {
             "name": "analyze_file",
-            "description": "分析用户上传的 CSV 或 Excel 文件。若未提供文件路径，则自动分析最近上传的文件。",
+            "description": "分析用户上传的 CSV 或 Excel 文件，返回摘要信息。若未提供文件路径，则自动分析最近上传的文件。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -338,12 +332,13 @@ TOOLS_METADATA = [
                         "description": "上传文件的本地路径（可选，不填则使用最近上传的文件）"
                     }
                 }
-                # 注意：移除了 "required": ["file_path"]
+                # 注意：不再要求 file_path 必填
             }
         }
     }
 ]
 
+# 工具名称到函数的映射
 AVAILABLE_TOOLS = {
     "get_current_time": get_current_time,
     "calculator": calculator,
