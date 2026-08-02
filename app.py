@@ -84,12 +84,26 @@ with gr.Blocks(title="AI 智能体") as demo:
     async def handle_file_upload(file, history):
         if file is None:
             return history, "", gr.update(value=None)
-        analysis_result = tools.analyze_file(file.name)
-        tools.last_uploaded_file = file.name
-        history = history or []
-        history.append({"role": "user", "content": "（文件上传）请分析该文件"})
-        history.append({"role": "assistant", "content": analysis_result})
-        memory.append(SESSION_ID, "（文件上传）请分析该文件", analysis_result)
+
+        try:
+            # 尝试分析文件
+            analysis_result = tools.analyze_file(file.name)
+            # 记录最近文件路径
+            tools.last_uploaded_file = file.name
+            # 构建用户消息
+            history = history or []
+            history.append({"role": "user", "content": "（文件上传）请分析该文件"})
+            history.append({"role": "assistant", "content": analysis_result})
+            # 写入记忆
+            memory.append(SESSION_ID, "（文件上传）请分析该文件", analysis_result)
+        except Exception as e:
+            # 如果分析失败，返回错误信息
+            history = history or []
+            history.append({"role": "user", "content": "（文件上传）"})
+            history.append({"role": "assistant", "content": f"文件分析失败：{str(e)}"})
+            # 即使失败也尝试清空文件组件
+            return history, "", gr.update(value=None)
+
         return history, "", gr.update(value=None)
 
     # 在界面构建部分
