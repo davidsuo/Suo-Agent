@@ -1,3 +1,4 @@
+# tools.py
 import datetime
 import sqlite3
 import smtplib
@@ -8,20 +9,22 @@ import traceback
 import requests
 import base64
 import json
+import replicate
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from ddgs import DDGS
-import replicate
 
 # 最近上传的文件路径（用于 analyze_file 自动使用）
 last_uploaded_file = None
 
 # ---------- 基础工具 ----------
 def get_current_time():
+    """返回当前日期和时间"""
     now = datetime.datetime.now()
     return now.strftime("%Y-%m-%d %H:%M:%S")
 
 def calculator(expression: str):
+    """安全计算数学表达式"""
     try:
         allowed_chars = set("0123456789+-*/().% ^")
         if not all(c in allowed_chars for c in expression.replace(" ", "")):
@@ -32,6 +35,7 @@ def calculator(expression: str):
         return f"计算出错: {e}"
 
 def query_database(sql: str):
+    """查询 SQLite 数据库，仅允许 SELECT"""
     db_path = "sample.db"
     if not sql.strip().upper().startswith("SELECT"):
         return "错误：仅允许执行 SELECT 查询"
@@ -51,6 +55,7 @@ def query_database(sql: str):
         return f"数据库查询错误: {e}"
 
 def send_email(to_email: str, subject: str, body: str):
+    """发送邮件，需配置 SMTP 环境变量"""
     sender = os.getenv("EMAIL_SENDER")
     password = os.getenv("EMAIL_PASSWORD")
     smtp_server = os.getenv("SMTP_SERVER", "smtp.qq.com")
@@ -72,8 +77,9 @@ def send_email(to_email: str, subject: str, body: str):
     except Exception as e:
         return f"邮件发送失败: {e}"
 
-# ---------- 网页搜索 ----------
+# ---------- 网页搜索 (DDGS) ----------
 def web_search(query: str, max_results: int = 5):
+    """使用 DDGS 搜索互联网"""
     try:
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=max_results))
@@ -89,8 +95,9 @@ def web_search(query: str, max_results: int = 5):
     except Exception as e:
         return f"搜索失败: {e}"
 
-# ---------- Python 安全执行器 ----------
+# ---------- 安全 Python 执行器 ----------
 def execute_python(code: str):
+    """在受限沙箱中执行 Python 代码，返回输出"""
     safe_builtins = {
         "print": print, "range": range, "len": len, "int": int, "float": float,
         "str": str, "list": list, "dict": dict, "abs": abs, "min": min,
@@ -112,6 +119,7 @@ def execute_python(code: str):
 
 # ---------- 百度语音转写 ----------
 def get_baidu_access_token() -> str:
+    """获取百度 access_token"""
     api_key = os.getenv("BAIDU_ASR_API_KEY")
     secret_key = os.getenv("BAIDU_ASR_SECRET_KEY")
     if not api_key or not secret_key:
@@ -130,6 +138,7 @@ def get_baidu_access_token() -> str:
         return ""
 
 def speech_to_text(audio_file_path: str) -> str:
+    """使用百度短语音识别，自动处理音频格式"""
     token = get_baidu_access_token()
     if not token:
         return "语音识别未配置或凭证无效"
@@ -206,7 +215,7 @@ def analyze_file(file_path: str = None) -> str:
         elif file_path.endswith(('.xlsx', '.xls')):
             df = pd.read_excel(file_path)
         else:
-            return "不支持的文件格式"
+            return "不支持的文件格式，请上传 CSV 或 Excel 文件。"
 
         rows = len(df)
         info = f"文件分析结果：\n- 行数: {rows}\n- 列数: {len(df.columns)}\n"
@@ -218,7 +227,6 @@ def analyze_file(file_path: str = None) -> str:
             info += f"数据类型:\n{df.dtypes.to_string()}\n\n"
             info += "前3行数据:\n"
             info += df.head(3).to_string(index=False)
-            # 如果存在 price 列，快速求出最高价及对应品种
             if 'price' in df.columns:
                 max_price = df['price'].max()
                 max_row = df[df['price'] == max_price]
@@ -229,7 +237,6 @@ def analyze_file(file_path: str = None) -> str:
                     info += f"\n\n🏆 最高价格: {max_price}"
             return info
 
-        # 小文件完整分析
         info += f"数据类型:\n{df.dtypes.to_string()}\n\n"
         info += "前5行数据:\n"
         info += df.head(5).to_string(index=False)
@@ -237,7 +244,6 @@ def analyze_file(file_path: str = None) -> str:
         if not num_cols.empty:
             info += "\n\n数值列统计:\n"
             info += num_cols.describe().to_string()
-            # 如果存在 price 和 coffee_name，直接给出最贵品种
             if 'price' in df.columns and 'coffee_name' in df.columns:
                 max_price = df['price'].max()
                 top_coffee = df[df['price'] == max_price]['coffee_name'].unique()
@@ -245,9 +251,8 @@ def analyze_file(file_path: str = None) -> str:
         return info
     except Exception as e:
         return f"文件分析失败: {e}"
-        
-        
-# ---------- Replicate生成图像 ----------
+
+# ---------- 图像生成 (Stable Diffusion via Replicate) ----------
 def generate_image(prompt: str, negative_prompt: str = "") -> str:
     """使用 Stable Diffusion 生成图片，返回图片 URL"""
     api_token = os.getenv("REPLICATE_API_TOKEN")
@@ -264,14 +269,12 @@ def generate_image(prompt: str, negative_prompt: str = "") -> str:
                 "height": 512,
             }
         )
-        # output 是列表，第一个元素是图片 URL
         if output and len(output) > 0:
             return f"图片已生成：{output[0]}"
         else:
             return "图像生成失败：未返回图片"
     except Exception as e:
         return f"图像生成错误: {e}"
-
 
 # ---------- 工具元数据 ----------
 TOOLS_METADATA = [
@@ -386,7 +389,7 @@ TOOLS_METADATA = [
                 # 注意：不再要求 file_path 必填
             }
         }
-    }
+    },
     {
         "type": "function",
         "function": {
