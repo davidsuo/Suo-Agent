@@ -26,6 +26,7 @@ client = OpenAI(
 
 SYSTEM_PROMPT = """
 你是一个全能的AI助手，可以使用记忆、知识库和多种工具来回答用户问题。
+【重要规则】如果对话历史或参考文档中已经包含用户所需的信息，请直接基于这些信息回答，严禁重复调用工具！仅在信息不足时才调用工具。
 可用工具：
 - get_current_time: 获取当前时间
 - calculator: 数学计算
@@ -33,10 +34,10 @@ SYSTEM_PROMPT = """
 - send_email: 发送邮件
 - web_search: 搜索互联网获取最新信息
 - execute_python: 执行Python代码进行计算或数据处理
+- analyze_file: 分析CSV/Excel文件
 
 当用户询问实时信息（如新闻、股价、天气）时，请调用 web_search。
 当用户要求计算或数据分析时，可调用 execute_python 执行代码。
-如果 web_search 返回的结果包含“(实时搜索暂时不可用)”，请在回答中首先说明搜索服务暂时受限，然后根据提供的模拟信息给出参考。
 所有工具调用结果会返回给你，你据此生成最终回答。
 【参考文档】：
 {context}
@@ -133,7 +134,7 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
     messages.append(user_message)
 
     # 4. 工具调用循环
-    for _ in range(5):
+    for _ in range(8):
         response = client.chat.completions.create(
             model="deepseek-chat",
             messages=messages,

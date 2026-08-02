@@ -196,7 +196,8 @@ def analyze_file(file_path: str = None) -> str:
         if last_uploaded_file:
             file_path = last_uploaded_file
         else:
-            return "错误：没有已上传的文件，请先上传一个 CSV 或 Excel 文件。"
+            return "错误：没有已上传的文件，请先上传文件。"
+
     try:
         import pandas as pd
         if file_path.endswith('.csv'):
@@ -204,20 +205,42 @@ def analyze_file(file_path: str = None) -> str:
         elif file_path.endswith(('.xlsx', '.xls')):
             df = pd.read_excel(file_path)
         else:
-            return "不支持的文件格式，请上传 CSV 或 Excel 文件。"
+            return "不支持的文件格式"
 
-        info = f"文件分析结果：\n"
-        info += f"- 行数: {len(df)}\n"
-        info += f"- 列数: {len(df.columns)}\n"
+        rows = len(df)
+        info = f"文件分析结果：\n- 行数: {rows}\n- 列数: {len(df.columns)}\n"
         info += f"- 列名: {', '.join(df.columns.tolist())}\n"
-        info += f"- 数据类型:\n{df.dtypes.to_string()}\n\n"
+
+        # 大文件（>500行）仅展示前3行和关键统计
+        if rows > 500:
+            info += "\n⚠️ 文件较大，仅展示前3行和关键信息。\n"
+            info += f"数据类型:\n{df.dtypes.to_string()}\n\n"
+            info += "前3行数据:\n"
+            info += df.head(3).to_string(index=False)
+            # 如果存在 price 列，快速求出最高价及对应品种
+            if 'price' in df.columns:
+                max_price = df['price'].max()
+                max_row = df[df['price'] == max_price]
+                if 'coffee_name' in df.columns:
+                    top_names = max_row['coffee_name'].unique()
+                    info += f"\n\n🏆 最贵咖啡价格: {max_price}，品种: {', '.join(top_names)}"
+                else:
+                    info += f"\n\n🏆 最高价格: {max_price}"
+            return info
+
+        # 小文件完整分析
+        info += f"数据类型:\n{df.dtypes.to_string()}\n\n"
         info += "前5行数据:\n"
         info += df.head(5).to_string(index=False)
-
         num_cols = df.select_dtypes(include='number')
         if not num_cols.empty:
             info += "\n\n数值列统计:\n"
             info += num_cols.describe().to_string()
+            # 如果存在 price 和 coffee_name，直接给出最贵品种
+            if 'price' in df.columns and 'coffee_name' in df.columns:
+                max_price = df['price'].max()
+                top_coffee = df[df['price'] == max_price]['coffee_name'].unique()
+                info += f"\n\n🏆 最贵咖啡: {', '.join(top_coffee)}，价格: {max_price}"
         return info
     except Exception as e:
         return f"文件分析失败: {e}"
