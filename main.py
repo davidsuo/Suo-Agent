@@ -25,11 +25,37 @@ from tools import (
     speech_to_text,
     analyze_file,
 )
+
+from redis_agents import SearchWorkerRedis, CodeWorkerRedis, DataWorkerRedis
+
+search_worker = SearchWorkerRedis(search_worker_tools, REDIS_URL, REDIS_TOKEN)
+code_worker = CodeWorkerRedis(code_worker_tools, REDIS_URL, REDIS_TOKEN)
+data_worker = DataWorkerRedis(data_worker_tools, REDIS_URL, REDIS_TOKEN)
+
 from guardrails import input_guard, tool_call_guard, output_guard
 from pending_tools import pending
-#from agents import SearchWorker, CodeWorker, DataWorker
-from redis_agents import SearchWorkerRedis, CodeWorkerRedis, DataWorkerRedis
 import asyncio
+
+# 定义各 Worker 的工具字典
+search_worker_tools = {
+    "web_search": web_search,
+    "speech_to_text": speech_to_text,
+    "get_current_time": get_current_time,
+    "calculator": calculator,
+}
+code_worker_tools = {
+    "execute_python": execute_python,
+}
+data_worker_tools = {
+    "query_database": query_database,
+    "analyze_file": analyze_file,
+}
+
+# 读取 Redis 环境变量
+REDIS_URL = os.getenv("REDIS_URL")
+REDIS_TOKEN = os.getenv("REDIS_TOKEN")
+
+
 
 app = FastAPI()
 
@@ -97,10 +123,6 @@ async def chat(request: ChatRequest):
     return {"answer": answer}
 
 # ========== 专业 Worker 初始化 ==========
-search_worker = SearchWorkerRedis(search_worker_tools, REDIS_URL, REDIS_TOKEN)
-code_worker = CodeWorkerRedis(code_worker_tools, REDIS_URL, REDIS_TOKEN)
-data_worker = DataWorkerRedis(data_worker_tools, REDIS_URL, REDIS_TOKEN)
-
 search_worker_tools = {
     "web_search": web_search,
     "speech_to_text": speech_to_text,
