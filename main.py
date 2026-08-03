@@ -149,18 +149,24 @@ async def generate_plan(user_query, history, client):
 你是一个任务规划器。根据用户的需求，生成一个 JSON 格式的执行计划。
 计划是一个步骤列表，每个步骤包含：
 - id: 步骤唯一编号（从1开始）
-- tool: 要调用的工具名称（可选：web_search, query_database, execute_python, get_current_time, calculator, analyze_file）
-- arguments: 工具参数（字典）
+- tool: 要调用的工具名称（可用工具：web_search, query_database, execute_python, get_current_time, calculator, analyze_file, send_email）
+- arguments: 工具参数字典
 - depends_on: 依赖的步骤id列表（如果没有则为空列表）
 - description: 步骤的中文描述
 
+【重要规则】
+- 对于“找出最大值/最小值/平均值”等数据统计需求，请使用 query_database 工具编写 SQL 聚合语句（如 SELECT MAX(salary) 等），不要使用 execute_python 处理数据依赖。
+- 如果步骤需要用到前一步的结果，请在 arguments 中使用占位符 {{{{step_X_result}}}}，其中 X 是依赖的步骤id。
+- send_email 工具需要二次确认，如果计划中需要发邮件，将其作为最后一个步骤，参数中的 body 可以使用占位符引用前面步骤的结果。
+- 只返回 JSON 数组，不要有其他内容。
+
 用户需求：{user_query}
 
-请只返回 JSON 数组，不要有其他内容。
-示例：
+示例（查询员工并搜索相关新闻后发邮件）：
 [
-  {{"id": 1, "tool": "query_database", "arguments": {{"sql": "SELECT * FROM employees"}}, "depends_on": [], "description": "查询所有员工"}},
-  {{"id": 2, "tool": "execute_python", "arguments": {{"code": "print('计算')"}}, "depends_on": [1], "description": "计算工资总和"}}
+  {{{{ "id": 1, "tool": "query_database", "arguments": {{{{ "sql": "SELECT name, salary, position FROM employees ORDER BY salary DESC LIMIT 1" }}}}, "depends_on": [], "description": "查询工资最高的员工" }}}},
+  {{{{ "id": 2, "tool": "web_search", "arguments": {{{{ "query": "{{{{step_1_result}}}} 最新新闻" }}}}, "depends_on": [1], "description": "搜索该员工相关新闻" }}}},
+  {{{{ "id": 3, "tool": "send_email", "arguments": {{{{ "to_email": "kn000sq@163.com", "subject": "工资分析报告", "body": "最高工资员工：{{{{step_1_result}}}}\\n相关新闻：{{{{step_2_result}}}}" }}}}, "depends_on": [1, 2], "description": "发送邮件" }}}}
 ]
 """
     messages = history + [{"role": "user", "content": prompt}]
@@ -170,7 +176,6 @@ async def generate_plan(user_query, history, client):
         temperature=0,
     )
     plan_text = resp.choices[0].message.content
-    # 提取 JSON 数组
     json_match = re.search(r'\[.*\]', plan_text, re.DOTALL)
     if json_match:
         return json.loads(json_match.group())
@@ -243,16 +248,25 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
     if plan and len(plan) > 1:
         print(f"[规划引擎] 生成计划，共 {len(plan)} 步: {plan}")
         results = {}
+        email_args = None   # 用于暂存待发送的邮件参数
+
         for step in plan:
             step_id = step["id"]
             tool_name = step["tool"]
             arguments = step["arguments"]
+
             # 处理依赖：用之前步骤的结果替换占位符
             for dep_id in step.get("depends_on", []):
                 if dep_id in results:
                     for key, val in arguments.items():
                         if isinstance(val, str) and f"{{step_{dep_id}_result}}" in val:
                             arguments[key] = val.replace(f"{{step_{dep_id}_result}}", str(results[dep_id]))
+
+            # 遇到邮件工具，暂存参数，等所有步骤执行完后再处理
+            if tool_name == "send_email":
+                email_args = arguments
+                continue   # 跳过执行，待后续确认
+
             # 分派任务给 Worker
             if tool_name in TOOL_ROUTER:
                 task = {"tool": tool_name, "arguments": arguments}
@@ -261,11 +275,36 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                 print(f"[规划引擎] 步骤{step_id}完成: {str(results[step_id])[:80]}")
             else:
                 results[step_id] = f"工具 {tool_name} 未配置"
-        # 整合结果
-        answer = "任务执行结果：\n" + "\n".join([f"- {step['description']}: {results[step['id']]}" for step in plan])
-        answer = output_guard(answer)
-        memory.append(session_id, query, answer)
-        return answer
+
+        # 如果有邮件待发，先替换占位符，再生成确认提示
+        if email_args:
+            # 将前面步骤的结果填入邮件 body、subject 等
+            for key in email_args:
+                if isinstance(email_args[key], str):
+                    for step_id, result_text in results.items():
+                        email_args[key] = email_args[key].replace(f"{{step_{step_id}_result}}", str(result_text))
+            # 暂存到 pending，复用已有的二次确认机制
+            pending[session_id] = {
+                "tool_name": "send_email",
+                "arguments": email_args
+            }
+            confirm_msg = (
+                f"⚠️ 危险操作确认\n"
+                f"工具：send_email\n"
+                f"收件人：{email_args.get('to_email', email_args.get('to', ''))}\n"
+                f"主题：{email_args.get('subject', '')}\n"
+                f"内容：{email_args.get('body', email_args.get('text', ''))}\n\n"
+                f"请回复 **“确认”** 以执行，或回复其他内容取消。"
+            )
+            return confirm_msg
+        else:
+            # 整合所有步骤的结果，生成最终回答
+            answer = "任务执行结果：\n" + "\n".join(
+                [f"- {step['description']}: {results[step['id']]}" for step in plan if step['tool'] != 'send_email']
+            )
+            answer = output_guard(answer)
+            memory.append(session_id, query, answer)
+            return answer
     # 否则回退到原有工具调用循环（保持不变）
 
     # 4. 工具调用循环（多智能体调度版）
@@ -290,6 +329,8 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                             "tool_name": func_name,
                             "arguments": arguments
                         }
+                    if tool_name == "send_email":
+                        # 需要二次确认，直接返回确认提示，并终止规划执行
                         confirm_msg = (
                             f"⚠️ 危险操作确认\n"
                             f"工具：{func_name}\n"
@@ -297,6 +338,13 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                             f"请回复 **“确认”** 以执行，或回复其他内容取消。"
                         )
                         return confirm_msg
+                    elif tool_name in TOOL_ROUTER:
+                        task = {"tool": tool_name, "arguments": arguments}
+                        res = await TOOL_ROUTER[tool_name].send_task(task)
+                        results[step_id] = res.get("result", res.get("error"))
+                        print(f"[规划引擎] 步骤{step_id}完成: {str(results[step_id])[:80]}")
+                    else:
+                        results[step_id] = f"工具 {tool_name} 未配置"
                     try:
                         result = AVAILABLE_TOOLS[func_name](**arguments)
                     except Exception as e:
