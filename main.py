@@ -97,6 +97,10 @@ async def chat(request: ChatRequest):
     return {"answer": answer}
 
 # ========== 专业 Worker 初始化 ==========
+search_worker = SearchWorkerRedis(search_worker_tools, REDIS_URL, REDIS_TOKEN)
+code_worker = CodeWorkerRedis(code_worker_tools, REDIS_URL, REDIS_TOKEN)
+data_worker = DataWorkerRedis(data_worker_tools, REDIS_URL, REDIS_TOKEN)
+
 search_worker_tools = {
     "web_search": web_search,
     "speech_to_text": speech_to_text,
@@ -111,9 +115,6 @@ data_worker_tools = {
     "analyze_file": analyze_file,
 }
 
-search_worker = SearchWorker("SearchWorker", search_worker_tools)
-code_worker = CodeWorker("CodeWorker", code_worker_tools)
-data_worker = DataWorker("DataWorker", data_worker_tools)
 
 # 工具名 → Worker 映射（send_email 不在此列，由 Conductor 直接执行）
 TOOL_ROUTER = {}
