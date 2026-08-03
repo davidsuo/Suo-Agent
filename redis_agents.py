@@ -12,7 +12,15 @@ class RedisAgent:
         self.name = name
         self.queue_key = f"agent:{name}:queue"
         self.result_key_prefix = f"agent:{name}:result:"
-        self.redis = redis.from_url(redis_url)
+        self.redis = redis.from_url(
+            redis_url,
+            decode_responses=True,
+            ssl_cert_reqs=None,          # 忽略证书验证（Upstash 在免费层建议）
+            socket_keepalive=True,       # 保持连接
+            socket_connect_timeout=10,   # 连接超时
+            retry_on_timeout=True,       # 超时重试
+            health_check_interval=30     # 每30秒检查连接健康
+        )
         self.is_running = False
         self.task_count = 0
         self.error_count = 0
