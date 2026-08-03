@@ -31,7 +31,6 @@ from agents import SearchWorker, CodeWorker, DataWorker
 from guardrails import input_guard, tool_call_guard, output_guard
 from pending_tools import pending
 import asyncio
-from agents import WorkerAgent
 
 
 
@@ -78,7 +77,6 @@ worker_tools = {
     "speech_to_text": speech_to_text
     # send_email 仍由 Conductor 直接处理或单独 Worker
 }
-worker = WorkerAgent("Worker", worker_tools)
 
 # 搜索与语音 Worker
 search_worker_tools = {
@@ -179,6 +177,7 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
     if not data_worker.is_running:
         asyncio.create_task(data_worker.run_loop())
         data_worker.is_running = True
+        
     # 启动后打印 Worker 信息
     print(f"Workers ready: Search={search_worker.is_running}, Code={code_worker.is_running}, Data={data_worker.is_running}")
     print("=== All Workers started ===", flush=True)
