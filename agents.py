@@ -54,3 +54,16 @@ class WorkerAgent(Agent):
             return {"result": result}
         except Exception as e:
             return {"error": str(e), "traceback": traceback.format_exc()}
+            
+# ---------- 专业智能体子类（实际仍继承 WorkerAgent，只是职责明确） ----------
+class SearchWorker(WorkerAgent):
+    """负责网页搜索和语音转文字"""
+    pass
+
+class CodeWorker(WorkerAgent):
+    """负责 Python 代码执行"""
+    pass
+
+class DataWorker(WorkerAgent):
+    """负责数据库查询和文件分析"""
+    pass

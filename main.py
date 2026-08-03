@@ -26,6 +26,7 @@ from tools import (
     analyze_file,
     # send_email 保留在 Conductor 中直接调用
 )
+from agents import SearchWorker, CodeWorker, DataWorker
 
 from guardrails import input_guard, tool_call_guard, output_guard
 from pending_tools import pending
@@ -78,6 +79,39 @@ worker_tools = {
     # send_email 仍由 Conductor 直接处理或单独 Worker
 }
 worker = WorkerAgent("Worker", worker_tools)
+
+# 搜索与语音 Worker
+search_worker_tools = {
+    "web_search": web_search,
+    "speech_to_text": speech_to_text,
+    # 时间与计算器也放在这里，因为它们无状态且轻量
+    "get_current_time": get_current_time,
+    "calculator": calculator,
+}
+
+# 代码执行 Worker
+code_worker_tools = {
+    "execute_python": execute_python,
+}
+
+# 数据处理 Worker
+data_worker_tools = {
+    "query_database": query_database,
+    "analyze_file": analyze_file,
+}
+
+search_worker = SearchWorker("SearchWorker", search_worker_tools)
+code_worker = CodeWorker("CodeWorker", code_worker_tools)
+data_worker = DataWorker("DataWorker", data_worker_tools)
+
+# 路由表：工具名 -> 对应的 Worker 实例
+TOOL_ROUTER = {}
+for name in search_worker.tools:
+    TOOL_ROUTER[name] = search_worker
+for name in code_worker.tools:
+    TOOL_ROUTER[name] = code_worker
+for name in data_worker.tools:
+    TOOL_ROUTER[name] = data_worker
     
 
 class ChatRequest(BaseModel):
@@ -114,6 +148,8 @@ def home():
     </html>
     """
 
+
+
 @app.post("/chat")
 async def chat(request: ChatRequest):
     answer = await chat_core(request.session_id, request.query)
@@ -132,6 +168,17 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
     is_safe, err_msg = input_guard(query)
     if not is_safe:
         return err_msg
+        
+    # ===== 惰性启动所有 Worker =====
+    if not search_worker.is_running:
+        asyncio.create_task(search_worker.run_loop())
+        search_worker.is_running = True
+    if not code_worker.is_running:
+        asyncio.create_task(code_worker.run_loop())
+        code_worker.is_running = True
+    if not data_worker.is_running:
+        asyncio.create_task(data_worker.run_loop())
+        data_worker.is_running = True
 
     # 1. 检查是否为二次确认的确认回复
     if session_id in pending and "确认" in query.strip():
@@ -209,7 +256,8 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                     except Exception as e:
                         result = f"工具执行错误: {e}"
                 # 其他工具通过 Worker 异步分派
-                elif func_name in worker.tools:
+                elif func_name in TOOL_ROUTER:
+                    target_worker = TOOL_ROUTER[func_name]
                     task = {"tool": func_name, "arguments": arguments}
                     res = await worker.send_task(task)
                     if "error" in res:
