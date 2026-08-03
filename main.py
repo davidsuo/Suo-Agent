@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from openai import OpenAI
 
 from memory import memory
+import re
 
 try:
     import rag
@@ -141,6 +142,39 @@ for name in code_worker.tools:
     TOOL_ROUTER[name] = code_worker
 for name in data_worker.tools:
     TOOL_ROUTER[name] = data_worker
+    
+async def generate_plan(user_query, history, client):
+    """让 DeepSeek 生成任务计划（JSON）"""
+    prompt = f"""
+你是一个任务规划器。根据用户的需求，生成一个 JSON 格式的执行计划。
+计划是一个步骤列表，每个步骤包含：
+- id: 步骤唯一编号（从1开始）
+- tool: 要调用的工具名称（可选：web_search, query_database, execute_python, get_current_time, calculator, analyze_file）
+- arguments: 工具参数（字典）
+- depends_on: 依赖的步骤id列表（如果没有则为空列表）
+- description: 步骤的中文描述
+
+用户需求：{user_query}
+
+请只返回 JSON 数组，不要有其他内容。
+示例：
+[
+  {{"id": 1, "tool": "query_database", "arguments": {{"sql": "SELECT * FROM employees"}}, "depends_on": [], "description": "查询所有员工"}},
+  {{"id": 2, "tool": "execute_python", "arguments": {{"code": "print('计算')"}}, "depends_on": [1], "description": "计算工资总和"}}
+]
+"""
+    messages = history + [{"role": "user", "content": prompt}]
+    resp = client.chat.completions.create(
+        model="deepseek-chat",
+        messages=messages,
+        temperature=0,
+    )
+    plan_text = resp.choices[0].message.content
+    # 提取 JSON 数组
+    json_match = re.search(r'\[.*\]', plan_text, re.DOTALL)
+    if json_match:
+        return json.loads(json_match.group())
+    return None
 
 # ========== 核心聊天逻辑 ==========
 async def chat_core(session_id: str, query: str, image_base64: str = None):
@@ -203,6 +237,36 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
     else:
         user_message = {"role": "user", "content": query}
     messages.append(user_message)
+
+    # 尝试生成任务计划（如果步骤>1则使用规划模式）
+    plan = await generate_plan(query, messages[:5], client)
+    if plan and len(plan) > 1:
+        print(f"[规划引擎] 生成计划，共 {len(plan)} 步: {plan}")
+        results = {}
+        for step in plan:
+            step_id = step["id"]
+            tool_name = step["tool"]
+            arguments = step["arguments"]
+            # 处理依赖：用之前步骤的结果替换占位符
+            for dep_id in step.get("depends_on", []):
+                if dep_id in results:
+                    for key, val in arguments.items():
+                        if isinstance(val, str) and f"{{step_{dep_id}_result}}" in val:
+                            arguments[key] = val.replace(f"{{step_{dep_id}_result}}", str(results[dep_id]))
+            # 分派任务给 Worker
+            if tool_name in TOOL_ROUTER:
+                task = {"tool": tool_name, "arguments": arguments}
+                res = await TOOL_ROUTER[tool_name].send_task(task)
+                results[step_id] = res.get("result", res.get("error"))
+                print(f"[规划引擎] 步骤{step_id}完成: {str(results[step_id])[:80]}")
+            else:
+                results[step_id] = f"工具 {tool_name} 未配置"
+        # 整合结果
+        answer = "任务执行结果：\n" + "\n".join([f"- {step['description']}: {results[step['id']]}" for step in plan])
+        answer = output_guard(answer)
+        memory.append(session_id, query, answer)
+        return answer
+    # 否则回退到原有工具调用循环（保持不变）
 
     # 4. 工具调用循环（多智能体调度版）
     for _ in range(8):
