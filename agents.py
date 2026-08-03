@@ -3,6 +3,8 @@ import asyncio
 import uuid
 import traceback
 from typing import Any, Dict, Callable
+from functools import partial
+
 
 class Agent:
     def __init__(self, name: str):
@@ -35,11 +37,6 @@ class Agent:
             future.set_result(result)
 
 class WorkerAgent(Agent):
-    """通用执行智能体，可调用多种工具"""
-    def __init__(self, name: str, tools: Dict[str, Callable]):
-        super().__init__(name)
-        self.tools = tools
-
     async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         tool_name = task.get("tool")
         arguments = task.get("arguments", {})
@@ -47,9 +44,9 @@ class WorkerAgent(Agent):
             return {"error": f"工具 {tool_name} 不存在"}
         try:
             func = self.tools[tool_name]
-            # 同步函数在线程池中执行，避免阻塞事件循环
             loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, func, **arguments)
+            result = await loop.run_in_executor(None, partial(func, **arguments))
             return {"result": result}
         except Exception as e:
             return {"error": str(e), "traceback": traceback.format_exc()}
+            
