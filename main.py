@@ -30,7 +30,7 @@ from guardrails import input_guard, tool_call_guard, output_guard
 from pending_tools import pending
 import asyncio
 
-from redis_agents import SearchWorkerRedis, CodeWorkerRedis, DataWorkerRedis
+from agents import SearchWorker, CodeWorker, DataWorker
 
 # 定义各 Worker 的工具字典
 search_worker_tools = {
@@ -47,12 +47,10 @@ data_worker_tools = {
     "analyze_file": analyze_file,
 }
 
-# 读取 Redis 环境变量
-REDIS_URL = os.getenv("REDIS_URL")
-
-search_worker = SearchWorkerRedis(search_worker_tools, REDIS_URL)
-code_worker = CodeWorkerRedis(code_worker_tools, REDIS_URL)
-data_worker = DataWorkerRedis(data_worker_tools, REDIS_URL)
+# 读取 Worker 环境变量
+search_worker = SearchWorker("SearchWorker", search_worker_tools)
+code_worker = CodeWorker("CodeWorker", code_worker_tools)
+data_worker = DataWorker("DataWorker", data_worker_tools)
 
 app = FastAPI()
 
