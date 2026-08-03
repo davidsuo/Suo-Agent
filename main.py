@@ -27,7 +27,8 @@ from tools import (
 )
 from guardrails import input_guard, tool_call_guard, output_guard
 from pending_tools import pending
-from agents import SearchWorker, CodeWorker, DataWorker
+#from agents import SearchWorker, CodeWorker, DataWorker
+from redis_agents import SearchWorkerRedis, CodeWorkerRedis, DataWorkerRedis
 import asyncio
 
 app = FastAPI()
@@ -163,8 +164,11 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
 
     # 2. 获取历史与知识库上下文
     history = memory.get(session_id)
-    context = rag.search_similar(query, k=3)
-    system_content = SYSTEM_PROMPT.format(context=context if context else "暂无相关文档")
+    if rag is not None:
+        context = rag.search_similar(query, k=3)
+    else:
+        context = "暂无相关文档（知识库未加载）"
+    system_content = SYSTEM_PROMPT.format(context=context)
 
     # 3. 构建初始消息
     messages = [{"role": "system", "content": system_content}]
