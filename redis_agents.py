@@ -8,11 +8,11 @@ from typing import Any, Dict, Callable
 import redis.asyncio as redis
 
 class RedisAgent:
-    def __init__(self, name: str, redis_url: str, redis_token: str):
+    def __init__(self, name: str, redis_url: str):
         self.name = name
         self.queue_key = f"agent:{name}:queue"
         self.result_key_prefix = f"agent:{name}:result:"
-        self.redis = redis.from_url(redis_url, password=redis_token)
+        self.redis = redis.from_url(redis_url)
         self.is_running = False
         self.task_count = 0
         self.error_count = 0
@@ -63,8 +63,8 @@ class RedisAgent:
             print(f"[{self.name}] 任务完成 (成功: {self.task_count}, 失败: {self.error_count})")
 
 class SearchWorkerRedis(RedisAgent):
-    def __init__(self, tools: Dict[str, Callable], redis_url: str, redis_token: str):
-        super().__init__("SearchWorker", redis_url, redis_token)
+    def __init__(self, tools: Dict[str, Callable], redis_url: str):
+        super().__init__("SearchWorker", redis_url)
         self.tools = tools
 
     async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
@@ -78,8 +78,8 @@ class SearchWorkerRedis(RedisAgent):
         return {"result": result}
 
 class CodeWorkerRedis(RedisAgent):
-    def __init__(self, tools: Dict[str, Callable], redis_url: str, redis_token: str):
-        super().__init__("CodeWorker", redis_url, redis_token)
+    def __init__(self, tools: Dict[str, Callable], redis_url: str):
+        super().__init__("CodeWorker", redis_url)
         self.tools = tools
 
     async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
@@ -93,8 +93,8 @@ class CodeWorkerRedis(RedisAgent):
         return {"result": result}
 
 class DataWorkerRedis(RedisAgent):
-    def __init__(self, tools: Dict[str, Callable], redis_url: str, redis_token: str):
-        super().__init__("DataWorker", redis_url, redis_token)
+    def __init__(self, tools: Dict[str, Callable], redis_url: str):
+        super().__init__("DataWorker", redis_url)
         self.tools = tools
 
     async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:

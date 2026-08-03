@@ -49,11 +49,10 @@ data_worker_tools = {
 
 # 读取 Redis 环境变量
 REDIS_URL = os.getenv("REDIS_URL")
-REDIS_TOKEN = os.getenv("REDIS_TOKEN")
 
-search_worker = SearchWorkerRedis(search_worker_tools, REDIS_URL, REDIS_TOKEN)
-code_worker = CodeWorkerRedis(code_worker_tools, REDIS_URL, REDIS_TOKEN)
-data_worker = DataWorkerRedis(data_worker_tools, REDIS_URL, REDIS_TOKEN)
+search_worker = SearchWorkerRedis(search_worker_tools, REDIS_URL)
+code_worker = CodeWorkerRedis(code_worker_tools, REDIS_URL)
+data_worker = DataWorkerRedis(data_worker_tools, REDIS_URL)
 
 app = FastAPI()
 
