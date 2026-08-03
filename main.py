@@ -9,6 +9,7 @@ from openai import OpenAI
 
 from memory import memory
 import re
+from pending_tools import pending, save_pending
 
 try:
     import rag
@@ -207,6 +208,7 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
     if session_id in pending and "确认" in query.strip():
         print(f"[确认] 执行待处理工具 for session {session_id}")
         tool_info = pending.pop(session_id)
+        save_pending(pending)   # 持久化更新
         tool_name = tool_info["tool_name"]
         arguments = tool_info["arguments"]
         if tool_name in AVAILABLE_TOOLS:
@@ -247,65 +249,64 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
     plan = await generate_plan(query, messages[:5], client)
     if plan and len(plan) > 1:
         print(f"[规划引擎] 生成计划，共 {len(plan)} 步: {plan}")
-        results = {}
-        email_args = None   # 用于暂存待发送的邮件参数
+            # 规划执行循环
+    results = {}
+    email_args = None
+    for step in plan:
+        step_id = step["id"]
+        tool_name = step["tool"]
+        arguments = step["arguments"]
 
-        for step in plan:
-            step_id = step["id"]
-            tool_name = step["tool"]
-            arguments = step["arguments"]
+        # 先处理参数中的占位符替换（{step_X_result}）
+        for dep_id in step.get("depends_on", []):
+            if dep_id in results:
+                replacement = str(results[dep_id])
+                for key, val in arguments.items():
+                    if isinstance(val, str):
+                        arguments[key] = val.replace(f"{{step_{dep_id}_result}}", replacement)
 
-            # 处理依赖：用之前步骤的结果替换占位符
-            for dep_id in step.get("depends_on", []):
-                if dep_id in results:
-                    for key, val in arguments.items():
-                        if isinstance(val, str) and f"{{step_{dep_id}_result}}" in val:
-                            arguments[key] = val.replace(f"{{step_{dep_id}_result}}", str(results[dep_id]))
-
-            # 遇到邮件工具，暂存参数，等所有步骤执行完后再处理
-            if tool_name == "send_email":
-                email_args = arguments
-                continue   # 跳过执行，待后续确认
-
-            # 分派任务给 Worker
-            if tool_name in TOOL_ROUTER:
-                task = {"tool": tool_name, "arguments": arguments}
-                res = await TOOL_ROUTER[tool_name].send_task(task)
-                results[step_id] = res.get("result", res.get("error"))
-                print(f"[规划引擎] 步骤{step_id}完成: {str(results[step_id])[:80]}")
-            else:
-                results[step_id] = f"工具 {tool_name} 未配置"
-
-        # 如果有邮件待发，先替换占位符，再生成确认提示
-        if email_args:
-            # 将前面步骤的结果填入邮件 body、subject 等
-            for key in email_args:
-                if isinstance(email_args[key], str):
-                    for step_id, result_text in results.items():
-                        email_args[key] = email_args[key].replace(f"{{step_{step_id}_result}}", str(result_text))
-            # 暂存到 pending，复用已有的二次确认机制
-            pending[session_id] = {
-                "tool_name": "send_email",
-                "arguments": email_args
-            }
-            confirm_msg = (
-                f"⚠️ 危险操作确认\n"
-                f"工具：send_email\n"
-                f"收件人：{email_args.get('to_email', email_args.get('to', ''))}\n"
-                f"主题：{email_args.get('subject', '')}\n"
-                f"内容：{email_args.get('body', email_args.get('text', ''))}\n\n"
-                f"请回复 **“确认”** 以执行，或回复其他内容取消。"
-            )
-            return confirm_msg
+        if tool_name == "send_email":
+            # 记录邮件参数，暂不执行
+            email_args = arguments
+            continue
+        elif tool_name in TOOL_ROUTER:
+            task = {"tool": tool_name, "arguments": arguments}
+            res = await TOOL_ROUTER[tool_name].send_task(task)
+            results[step_id] = res.get("result", res.get("error"))
+            print(f"[规划引擎] 步骤{step_id}完成: {str(results[step_id])[:80]}")
         else:
-            # 整合所有步骤的结果，生成最终回答
-            answer = "任务执行结果：\n" + "\n".join(
-                [f"- {step['description']}: {results[step['id']]}" for step in plan if step['tool'] != 'send_email']
-            )
-            answer = output_guard(answer)
-            memory.append(session_id, query, answer)
-            return answer
-    # 否则回退到原有工具调用循环（保持不变）
+            results[step_id] = f"工具 {tool_name} 未配置"
+
+    # 如果存在邮件步骤，生成确认提示并持久化
+    if email_args:
+        # 再次替换邮件 body 中的占位符（因为可能依赖前面的步骤）
+        body = email_args.get("body", "")
+        for step_id, result_text in results.items():
+            body = body.replace(f"{{step_{step_id}_result}}", str(result_text))
+        email_args["body"] = body
+
+        # 保存到持久化 pending
+        pending[session_id] = {
+            "tool_name": "send_email",
+            "arguments": email_args
+        }
+        save_pending(pending)
+
+        confirm_msg = (
+            f"⚠️ 危险操作确认\n"
+            f"工具：send_email\n"
+            f"收件人：{email_args.get('to_email')}\n"
+            f"主题：{email_args.get('subject')}\n"
+            f"内容：{email_args.get('body')}\n\n"
+            f"请回复 **“确认”** 以执行，或回复其他内容取消。"
+        )
+        return confirm_msg
+    else:
+        # 无邮件步骤，整合结果
+        answer = "任务执行结果：\n" + "\n".join([f"- {step['description']}: {results[step['id']]}" for step in plan if step['tool'] != 'send_email'])
+        answer = output_guard(answer)
+        memory.append(session_id, query, answer)
+        return answer
 
     # 4. 工具调用循环（多智能体调度版）
     for _ in range(8):
