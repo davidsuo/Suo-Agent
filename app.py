@@ -1,7 +1,7 @@
 import gradio as gr
 import os
 import sqlite3
-from main import chat_core, init_database
+from main import chat_core
 from tools import speech_to_text   # 从 tools 导入百度语音转写函数
 from memory import memory   # 确保与 main.py 使用的同一个实例
 import tools
