@@ -26,15 +26,11 @@ from tools import (
     analyze_file,
 )
 
-from redis_agents import SearchWorkerRedis, CodeWorkerRedis, DataWorkerRedis
-
-search_worker = SearchWorkerRedis(search_worker_tools, REDIS_URL, REDIS_TOKEN)
-code_worker = CodeWorkerRedis(code_worker_tools, REDIS_URL, REDIS_TOKEN)
-data_worker = DataWorkerRedis(data_worker_tools, REDIS_URL, REDIS_TOKEN)
-
 from guardrails import input_guard, tool_call_guard, output_guard
 from pending_tools import pending
 import asyncio
+
+from redis_agents import SearchWorkerRedis, CodeWorkerRedis, DataWorkerRedis
 
 # 定义各 Worker 的工具字典
 search_worker_tools = {
@@ -55,7 +51,9 @@ data_worker_tools = {
 REDIS_URL = os.getenv("REDIS_URL")
 REDIS_TOKEN = os.getenv("REDIS_TOKEN")
 
-
+search_worker = SearchWorkerRedis(search_worker_tools, REDIS_URL, REDIS_TOKEN)
+code_worker = CodeWorkerRedis(code_worker_tools, REDIS_URL, REDIS_TOKEN)
+data_worker = DataWorkerRedis(data_worker_tools, REDIS_URL, REDIS_TOKEN)
 
 app = FastAPI()
 
@@ -94,7 +92,7 @@ def home():
     <html>
     <head><title>AI Agent with Tools</title></head>
     <body>
-        <h2>AI 智能体（记忆 + 知识库 + 工具 + 语音 + 文档分析）</h2>
+        <h2>AI 智能体（记忆 + 知识库 + 工具 + 语音 + 分析文件）</h2>
         <label>会话ID: <input type="text" id="session_id" value="default"></label>
         <br><br>
         <input type="text" id="query" placeholder="试试问：现在几点？或计算(123+456)*7" size="50">
