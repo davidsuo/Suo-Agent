@@ -10,6 +10,9 @@ class Agent:
         self.name = name
         self.queue = asyncio.Queue()
         self.is_running = False
+        self.task_count = 0      # 完成任务数
+        self.error_count = 0     # 失败任务数
+
 
     async def send_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """发送任务到该智能体，并等待结果返回"""
@@ -31,9 +34,13 @@ class Agent:
             task, future = await self.queue.get()
             try:
                 result = await self.handle_task(task)
+                self.task_count += 1
             except Exception as e:
+                self.error_count += 1
                 result = {"error": str(e), "traceback": traceback.format_exc()}
+                print(f"[{self.name}] 任务执行失败: {e}")
             future.set_result(result)
+            print(f"[{self.name}] 任务完成 (成功: {self.task_count}, 失败: {self.error_count})")
 
 class WorkerAgent(Agent):
     """通用执行智能体，可调用多种工具"""
