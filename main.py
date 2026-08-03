@@ -16,6 +16,10 @@ except ImportError:
 from tools import TOOLS_METADATA, AVAILABLE_TOOLS
 from guardrails import input_guard, tool_call_guard, output_guard
 from pending_tools import pending
+import asyncio
+from agents import WorkerAgent
+
+
 
 app = FastAPI()
 
@@ -23,6 +27,11 @@ client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
     base_url="https://api.deepseek.com"
 )
+
+@app.on_event("startup")
+async def startup_event():
+    # 启动 Worker 的后台循环，使其持续监听任务队列
+    asyncio.create_task(worker.run_loop())
 
 SYSTEM_PROMPT = """
 你是一个全能的AI助手，可以使用记忆、知识库和多种工具来回答用户问题。
@@ -43,6 +52,19 @@ SYSTEM_PROMPT = """
 【参考文档】：
 {context}
 """
+
+# 初始化通用执行智能体 (Worker)，挂载所有工具（除邮件外））
+worker_tools = {
+    "query_database": query_database,
+    "analyze_file": analyze_file,
+    "execute_python": execute_python,
+    "web_search": web_search,
+    "get_current_time": get_current_time,
+    "calculator": calculator,
+    # send_email 仍由 Conductor 直接处理或单独 Worker
+}
+worker = WorkerAgent("Worker", worker_tools)
+    
 
 class ChatRequest(BaseModel):
     session_id: str = "default"
@@ -135,8 +157,8 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
         user_message = {"role": "user", "content": query}
     messages.append(user_message)
 
-    # 4. 工具调用循环
-    for _ in range(8):
+    # 4. 工具调用循环（多智能体调度版）
+    for _ in range(8):   # 增加循环次数，适应异步分派
         response = client.chat.completions.create(
             model="deepseek-chat",
             messages=messages,
@@ -144,15 +166,14 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
             tool_choice="auto"
         )
         msg = response.choices[0].message
-        print(f"[DEBUG] 模型返回: role={msg.role}, content={msg.content}, tool_calls={msg.tool_calls}")
         if msg.tool_calls:
             messages.append(msg)
             for tool_call in msg.tool_calls:
                 func_name = tool_call.function.name
                 arguments = json.loads(tool_call.function.arguments)
 
-                if func_name in AVAILABLE_TOOLS:
-                    # 危险工具二次确认
+                # 处理危险工具（邮件），保持原有二次确认逻辑
+                if func_name == "send_email":
                     if tool_call_guard(func_name):
                         pending[session_id] = {
                             "tool_name": func_name,
@@ -165,11 +186,18 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                             f"请回复 **“确认”** 以执行，或回复其他内容取消。"
                         )
                         return confirm_msg
-
                     try:
                         result = AVAILABLE_TOOLS[func_name](**arguments)
                     except Exception as e:
                         result = f"工具执行错误: {e}"
+                # 其他工具通过 Worker 异步分派
+                elif func_name in worker.tools:
+                    task = {"tool": func_name, "arguments": arguments}
+                    res = await worker.send_task(task)
+                    if "error" in res:
+                        result = f"工具执行错误: {res['error']}"
+                    else:
+                        result = res["result"]
                 else:
                     result = f"未找到工具 {func_name}"
 
