@@ -41,6 +41,7 @@ class Agent:
                 print(f"[{self.name}] 任务执行失败: {e}")
             future.set_result(result)
             print(f"[{self.name}] 任务完成 (成功: {self.task_count}, 失败: {self.error_count})")
+            print(f"[{self.name}] Worker 启动，等待任务...", flush=True)
 
 class WorkerAgent(Agent):
     """通用执行智能体，可调用多种工具"""

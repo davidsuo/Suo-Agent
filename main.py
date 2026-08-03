@@ -181,6 +181,7 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
         data_worker.is_running = True
     # 启动后打印 Worker 信息
     print(f"Workers ready: Search={search_worker.is_running}, Code={code_worker.is_running}, Data={data_worker.is_running}")
+    print("=== All Workers started ===", flush=True)
 
     # 1. 检查是否为二次确认的确认回复
     if session_id in pending and "确认" in query.strip():
