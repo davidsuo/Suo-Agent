@@ -2,15 +2,14 @@
 import asyncio
 import uuid
 import traceback
-from typing import Any, Dict, Callable
 from functools import partial
-
+from typing import Any, Dict, Callable
 
 class Agent:
     def __init__(self, name: str):
         self.name = name
         self.queue = asyncio.Queue()
-        self.is_running = False   # 惰性启动标志
+        self.is_running = False
 
     async def send_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """发送任务到该智能体，并等待结果返回"""
@@ -37,6 +36,11 @@ class Agent:
             future.set_result(result)
 
 class WorkerAgent(Agent):
+    """通用执行智能体，可调用多种工具"""
+    def __init__(self, name: str, tools: Dict[str, Callable]):
+        super().__init__(name)
+        self.tools = tools
+
     async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         tool_name = task.get("tool")
         arguments = task.get("arguments", {})
@@ -45,8 +49,8 @@ class WorkerAgent(Agent):
         try:
             func = self.tools[tool_name]
             loop = asyncio.get_event_loop()
+            # 使用 partial 传递关键字参数，在线程池中执行同步函数
             result = await loop.run_in_executor(None, partial(func, **arguments))
             return {"result": result}
         except Exception as e:
             return {"error": str(e), "traceback": traceback.format_exc()}
-            
