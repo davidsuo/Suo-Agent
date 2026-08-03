@@ -62,7 +62,7 @@ def home():
     <html>
     <head><title>AI Agent with Tools</title></head>
     <body>
-        <h2>AI 智能体（记忆 + 知识库 + 工具）</h2>
+        <h2>AI 智能体（记忆 + 知识库 + 工具 + 语音 + 文档分析）</h2>
         <label>会话ID: <input type="text" id="session_id" value="default"></label>
         <br><br>
         <input type="text" id="query" placeholder="试试问：现在几点？或计算(123+456)*7" size="50">
