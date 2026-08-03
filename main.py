@@ -109,6 +109,10 @@ async def chat(request: ChatRequest):
 async def chat_core(session_id: str, query: str, image_base64: str = None):
     print(f"[DEBUG] 收到请求: session_id={session_id}, query={query[:50]}...")
     print(f"[DEBUG] 当前 pending keys: {list(pending.keys())}")
+    
+    # 惰性启动 Worker 后台循环（仅首次调用时启动）
+    if not worker.is_running:
+        asyncio.create_task(worker.run_loop())
 
     # 0. 输入护栏
     is_safe, err_msg = input_guard(query)
