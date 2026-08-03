@@ -13,7 +13,20 @@ try:
     import rag
 except ImportError:
     rag = None
-from tools import TOOLS_METADATA, AVAILABLE_TOOLS
+
+from tools import (
+    TOOLS_METADATA,
+    AVAILABLE_TOOLS,
+    get_current_time,
+    calculator,
+    query_database,
+    web_search,
+    execute_python,
+    speech_to_text,
+    analyze_file,
+    # send_email 保留在 Conductor 中直接调用
+)
+
 from guardrails import input_guard, tool_call_guard, output_guard
 from pending_tools import pending
 import asyncio
@@ -61,6 +74,7 @@ worker_tools = {
     "web_search": web_search,
     "get_current_time": get_current_time,
     "calculator": calculator,
+    "speech_to_text": speech_to_text
     # send_email 仍由 Conductor 直接处理或单独 Worker
 }
 worker = WorkerAgent("Worker", worker_tools)
