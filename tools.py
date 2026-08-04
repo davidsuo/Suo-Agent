@@ -428,27 +428,6 @@ TOOLS_METADATA = [
     {
         "type": "function",
         "function": {
-            "name": "generate_image",
-            "description": "使用 Stable Diffusion 根据文字描述生成一张图片，返回图片的 URL。",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "prompt": {
-                        "type": "string",
-                        "description": "英文或中文的图片描述，例如 'a cat sitting on a cloud'"
-                    },
-                    "negative_prompt": {
-                        "type": "string",
-                        "description": "可选的负面提示，描述不希望出现在图片中的内容"
-                    }
-                },
-                "required": ["prompt"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "fetch_webpage",
             "description": "抓取指定 URL 的网页文本内容，返回前 3000 个字符。用于获取网页全文以深入分析。",
             "parameters": {
@@ -490,7 +469,6 @@ AVAILABLE_TOOLS = {
     "execute_python": execute_python,
     "speech_to_text": speech_to_text,
     "analyze_file": analyze_file,
-    "generate_image": generate_image,
     "fetch_webpage": fetch_webpage,
     "generate_image": generate_image,
 }
