@@ -6,6 +6,7 @@ from tools import speech_to_text   # 从 tools 导入百度语音转写函数
 from memory import memory   # 确保与 main.py 使用的同一个实例
 import tools
 import asyncio
+import json
 
 
 SESSION_ID = "render_user"
