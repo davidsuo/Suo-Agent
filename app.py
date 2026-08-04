@@ -109,12 +109,25 @@ with gr.Blocks(title="AI 智能体") as demo:
     chatbot = gr.Chatbot(label="对话", height=500)
 
     # ... 其他组件 ...
+    image_input = gr.Image(label="📷 上传图片 (OCR 识别)", type="filepath")
     file_input = gr.File(label="📁 上传 CSV 或 Excel 文件", file_types=[".csv", ".xlsx", ".xls"])
     # ...
 
     with gr.Row():
         text_input = gr.Textbox(label="输入文字（可选）", placeholder="在这里打字...", scale=2)
         audio_input = gr.Audio(label="🎤 上传音频", type="filepath", scale=1)
+        
+    async def handle_image_upload(image_path, history):
+        if image_path is None:
+            return history, ""
+        from tools import ocr_image
+        text = ocr_image(image_path)
+        history = history or []
+        history.append({"role": "user", "content": "（图片上传）请识别图片中的文字"})
+        history.append({"role": "assistant", "content": text})
+        return history, ""
+
+    image_input.upload(handle_image_upload, [image_input, chatbot], [chatbot, text_input])
 
     async def handle_file_upload(file, history):
         if file is None:

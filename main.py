@@ -30,6 +30,7 @@ from tools import (
     analyze_file,
     fetch_webpage,
     generate_image,
+    ocr_image,
 )
 
 from guardrails import input_guard, tool_call_guard, output_guard
@@ -38,6 +39,10 @@ import asyncio
 from agents import SearchWorker, CodeWorker, DataWorker
 
 # 定义各 Worker 的工具字典
+ocr_worker_tools = {
+    "ocr_image": ocr_image,
+}
+
 image_worker_tools = {
     "generate_image": generate_image,
 }
@@ -66,6 +71,7 @@ code_worker = CodeWorker("CodeWorker", code_worker_tools)
 data_worker = DataWorker("DataWorker", data_worker_tools)
 web_scraper_worker = SearchWorker("WebScraperWorker", web_scraper_tools)   # 复用 SearchWorker 类
 image_worker = SearchWorker("ImageWorker", image_worker_tools)  # 复用 SearchWorker 类
+ocr_worker = SearchWorker("OCRWorker", ocr_worker_tools)  # 复用 SearchWorker 类
 
 app = FastAPI()
 
@@ -85,6 +91,7 @@ SYSTEM_PROMPT = """
 - execute_python: 执行Python代码进行计算或数据处理
 - analyze_file: 分析CSV/Excel文件
 - generate_image: 根据文字描述生成图片（建议使用英文提示词）
+- ocr_image: 识别图片中的文字（参数必须为 "image_file_path"）
 
 当用户询问实时信息（如新闻、股价、天气）时，请调用 web_search。
 当用户要求计算或数据分析时，可调用 execute_python 执行代码。
@@ -190,6 +197,8 @@ data_worker_tools = {
 # 工具名 → Worker 映射（send_email 不在此列，由 Conductor 直接执行）
 TOOL_ROUTER = {}
 # 更新 TOOL_ROUTER
+for name in ocr_worker.tools:
+    TOOL_ROUTER[name] = ocr_worker
 for name in image_worker.tools:
     TOOL_ROUTER[name] = image_worker
 for name in web_scraper_worker.tools:
@@ -281,6 +290,9 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
     if not web_scraper_worker.is_running:
         asyncio.create_task(web_scraper_worker.run_loop())
         web_scraper_worker.is_running = True
+    if not ocr_worker.is_running:
+        asyncio.create_task(ocr_worker.run_loop())
+        ocr_worker.is_running = True
     print("Workers ready: Search=True, Code=True, Data=True, Image=True, WebScraper=True")
 
     # 1. 检查是否为二次确认的确认回复

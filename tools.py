@@ -312,6 +312,58 @@ def fetch_webpage(url: str) -> str:
         return text[:3000]  # 限制长度，避免超出 token 限制
     except Exception as e:
         return f"网页抓取失败: {e}"
+        
+# ---------- 识别图片文字 (OCRWorker) ----------
+def ocr_image(image_file_path: str) -> str:
+    """使用百度 OCR 识别图片中的文字，返回文本"""
+    api_key = os.getenv("BAIDU_ASR_API_KEY")      # 复用百度 API Key
+    secret_key = os.getenv("BAIDU_ASR_SECRET_KEY") # 复用百度 Secret Key
+    if not api_key or not secret_key:
+        return "OCR 功能未配置（缺少百度 API Key/Secret）"
+
+    # 获取 access_token
+    token_url = "https://aip.baidubce.com/oauth/2.0/token"
+    params = {
+        "grant_type": "client_credentials",
+        "client_id": api_key,
+        "client_secret": secret_key
+    }
+    try:
+        resp = requests.get(token_url, params=params, timeout=10)
+        token_data = resp.json()
+        access_token = token_data.get("access_token", "")
+        if not access_token:
+            return f"获取百度 access_token 失败: {token_data}"
+    except Exception as e:
+        return f"获取 access_token 错误: {e}"
+
+    # 读取图片并 base64 编码
+    try:
+        with open(image_file_path, "rb") as f:
+            img_base64 = base64.b64encode(f.read()).decode("utf-8")
+    except Exception as e:
+        return f"图片读取失败: {e}"
+
+    # 调用通用文字识别接口
+    ocr_url = "https://aip.baidubce.com/rest/2.0/ocr/v1/general_basic"
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    payload = {
+        "access_token": access_token,
+        "image": img_base64,
+        "language_type": "CHN_ENG"  # 中英文混合
+    }
+    try:
+        resp = requests.post(ocr_url, data=payload, headers=headers, timeout=15)
+        data = resp.json()
+        if data.get("error_code"):
+            return f"OCR 失败: {data.get('error_msg')}"
+        words_result = data.get("words_result", [])
+        if not words_result:
+            return "未识别到文字。"
+        texts = [item["words"] for item in words_result]
+        return "\n".join(texts)
+    except Exception as e:
+        return f"OCR 请求错误: {e}"
 
 # ---------- 工具元数据 ----------
 TOOLS_METADATA = [
@@ -458,6 +510,23 @@ TOOLS_METADATA = [
                 "required": ["prompt"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ocr_image",
+            "description": "识别图片中的文字（支持中英文），返回提取的文本。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "image_file_path": {
+                        "type": "string",
+                        "description": "图片文件的本地路径"
+                    }
+                },
+                "required": ["image_file_path"]
+            }
+        }
     }
 ]
 
@@ -473,4 +542,5 @@ AVAILABLE_TOOLS = {
     "analyze_file": analyze_file,
     "fetch_webpage": fetch_webpage,
     "generate_image": generate_image,
+    "ocr_image": ocr_image,
 }
