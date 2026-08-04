@@ -13,6 +13,7 @@ import replicate
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from ddgs import DDGS
+from bs4 import BeautifulSoup
 
 # 最近上传的文件路径（用于 analyze_file 自动使用）
 last_uploaded_file = None
@@ -291,6 +292,24 @@ def generate_image(prompt: str, negative_prompt: str = "") -> str:
     except Exception as e:
         return f"图像生成错误: {e}"
 
+# ---------- 网页抓取 (WebScraperWorker) ----------
+def fetch_webpage(url: str) -> str:
+    """抓取指定网页的文本内容，返回前 3000 字符"""
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+        resp = requests.get(url, headers=headers, timeout=10)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "lxml")
+        # 移除脚本和样式
+        for tag in soup(["script", "style", "nav", "footer", "header"]):
+            tag.decompose()
+        text = soup.get_text(separator="\n", strip=True)
+        return text[:3000]  # 限制长度，避免超出 token 限制
+    except Exception as e:
+        return f"网页抓取失败: {e}"
+
 # ---------- 工具元数据 ----------
 TOOLS_METADATA = [
     {
@@ -425,6 +444,23 @@ TOOLS_METADATA = [
                 "required": ["prompt"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "fetch_webpage",
+            "description": "抓取指定 URL 的网页文本内容，返回前 3000 个字符。用于获取网页全文以深入分析。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "要抓取的网页 URL"
+                    }
+                },
+                "required": ["url"]
+            }
+        }
     }
 ]
 
@@ -438,5 +474,6 @@ AVAILABLE_TOOLS = {
     "execute_python": execute_python,
     "speech_to_text": speech_to_text,
     "analyze_file": analyze_file,
-    "generate_image": generate_image
+    "generate_image": generate_image,
+    "fetch_webpage": fetch_webpage,
 }

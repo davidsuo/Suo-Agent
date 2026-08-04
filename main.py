@@ -26,6 +26,7 @@ from tools import (
     execute_python,
     speech_to_text,
     analyze_file,
+    fetch_webpage,
 )
 
 from guardrails import input_guard, tool_call_guard, output_guard
@@ -35,6 +36,8 @@ import asyncio
 from agents import SearchWorker, CodeWorker, DataWorker
 
 # 定义各 Worker 的工具字典
+web_scraper_tools = {"fetch_webpage": fetch_webpage}
+
 search_worker_tools = {
     "web_search": web_search,
     "speech_to_text": speech_to_text,
@@ -53,6 +56,7 @@ data_worker_tools = {
 search_worker = SearchWorker("SearchWorker", search_worker_tools)
 code_worker = CodeWorker("CodeWorker", code_worker_tools)
 data_worker = DataWorker("DataWorker", data_worker_tools)
+web_scraper_worker = SearchWorker("WebScraperWorker", web_scraper_tools)   # 复用 SearchWorker 类
 
 app = FastAPI()
 
@@ -137,6 +141,9 @@ data_worker_tools = {
 
 # 工具名 → Worker 映射（send_email 不在此列，由 Conductor 直接执行）
 TOOL_ROUTER = {}
+# 更新 TOOL_ROUTER
+for name in web_scraper_worker.tools:
+    TOOL_ROUTER[name] = web_scraper_worker
 for name in search_worker.tools:
     TOOL_ROUTER[name] = search_worker
 for name in code_worker.tools:
@@ -202,6 +209,9 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
     if not data_worker.is_running:
         asyncio.create_task(data_worker.run_loop())
         data_worker.is_running = True
+    if not web_scraper_worker.is_running:
+        asyncio.create_task(web_scraper_worker.run_loop())
+        web_scraper_worker.is_running = True
     print("Workers ready: Search=True, Code=True, Data=True")
 
     # 1. 检查是否为二次确认的确认回复
