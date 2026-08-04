@@ -164,7 +164,8 @@ for name in data_worker.tools:
 
     
 async def generate_plan(user_query, history, client):
-    prompt = f"""
+    try:
+        prompt = f"""
 你是一个任务规划器。根据用户的需求，生成一个 JSON 格式的执行计划。
 当前可用的工具及说明：
 - query_database: 查询员工数据库（SQLite，表名 employees）
@@ -175,6 +176,7 @@ async def generate_plan(user_query, history, client):
 - calculator: 数学计算
 - analyze_file: 分析 CSV/Excel 文件
 - send_email: 发送邮件（需要用户确认）
+- generate_image: 根据文字描述生成图片（建议使用英文提示词）
 
 计划是一个步骤列表，每个步骤包含：
 - id: 步骤唯一编号（从1开始）
@@ -190,41 +192,7 @@ async def generate_plan(user_query, history, client):
 4. 只返回 JSON 数组，不要有任何额外文字。
 
 用户需求：{user_query}
-
-正确示例（抓取网页并总结）：
-[
-  {{{{ "id": 1, "tool": "fetch_webpage", "arguments": {{{{ "url": "https://www.example.com" }}}}, "depends_on": [], "description": "抓取指定网页内容" }}}}
-]
-错误示例（切勿这样）：
-[
-  {{{{ "id": 1, "tool": "fetch_webpage", ... }}}},
-  {{{{ "id": 2, "tool": "execute_python", ... }}}}   <-- 禁止！提取/总结不应该用 Python
-]
 """
-
-def call_deepseek_with_retry(messages, tools=None, temperature=0, max_retries=3, max_tokens=None):
-    """带自动重试的 DeepSeek 调用"""
-    for attempt in range(max_retries):
-        try:
-            kwargs = {
-                "model": "deepseek-chat",
-                "messages": messages,
-                "temperature": temperature,
-            }
-            if tools:
-                kwargs["tools"] = tools
-                kwargs["tool_choice"] = "auto"
-            if max_tokens:
-                kwargs["max_tokens"] = max_tokens
-
-            return client.chat.completions.create(**kwargs)
-        except Exception as e:
-            print(f"[DeepSeek] 调用失败 (尝试 {attempt+1}/{max_retries}): {e}")
-            if attempt < max_retries - 1:
-                time.sleep(2 ** attempt)  # 指数退避
-            else:
-                raise
-
         messages = history + [{"role": "user", "content": prompt}]
         resp = call_deepseek_with_retry(messages, temperature=0)
         plan_text = resp.choices[0].message.content
