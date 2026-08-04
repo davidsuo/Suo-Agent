@@ -339,16 +339,16 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                             res = {"error": f"任务执行失败（重试{max_attempts}次）: {e}"}
                         else:
                             print(f"[规划引擎] 步骤{step_id}失败，重试... ({attempt+1}/{max_attempts})")
-                            await asyncio.sleep(1)  # 短暂等待后重试
+                            await asyncio.sleep(1)
+
                 raw_result = res.get("result", res.get("error")) if res else "未知错误"
                 if tool_name == "generate_image" and not raw_result.startswith("图像生成"):
                     image_output = raw_result
                     results[step_id] = "图片已生成，将在最终回答中展示。"
                 else:
                     results[step_id] = raw_result
-                    except Exception as e:
-                    results[step_id] = f"任务执行异常: {e}"
-                    print(f"[规划引擎] 步骤{step_id}完成: {str(results[step_id])[:80]}")
+
+                print(f"[规划引擎] 步骤{step_id}完成: {str(results[step_id])[:80]}")
             else:
                 results[step_id] = f"工具 {tool_name} 未配置"
 
