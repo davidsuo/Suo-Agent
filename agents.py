@@ -13,6 +13,14 @@ class Agent:
         self.task_count = 0      # 完成任务数
         self.error_count = 0     # 失败任务数
 
+    def get_stats(self):
+        return {
+            "name": self.name,
+            "is_running": self.is_running,
+            "task_count": self.task_count,
+            "error_count": self.error_count,
+            "queue_size": self.queue.qsize()
+        }
 
     async def send_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """发送任务到该智能体，并等待结果返回"""

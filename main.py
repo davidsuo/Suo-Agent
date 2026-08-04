@@ -72,6 +72,12 @@ data_worker = DataWorker("DataWorker", data_worker_tools)
 web_scraper_worker = SearchWorker("WebScraperWorker", web_scraper_tools)   # 复用 SearchWorker 类
 image_worker = SearchWorker("ImageWorker", image_worker_tools)  # 复用 SearchWorker 类
 ocr_worker = SearchWorker("OCRWorker", ocr_worker_tools)  # 复用 SearchWorker 类
+ALL_WORKERS = [search_worker, code_worker, data_worker, image_worker, web_scraper_worker, ocr_worker]
+
+
+def get_workers_status():
+    """返回所有 Worker 的状态列表"""
+    return [w.get_stats() for w in ALL_WORKERS]
 
 app = FastAPI()
 

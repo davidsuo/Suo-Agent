@@ -1,4 +1,5 @@
 import gradio as gr
+import pandas as pd
 import os
 import sqlite3
 from main import chat_core
@@ -104,90 +105,107 @@ async def handle_user_input(text, audio, history):
 
 # 构建界面
 with gr.Blocks(title="AI 智能体") as demo:
-    gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具 + 语音 + 文件分析）")
-    gr.Markdown("上传 CSV/Excel 文件、打字或上传音频，我会调用所有能力回答你。")
+    with gr.Tab("聊天"):
+        gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具 + 语音 + 文件分析）")
+        gr.Markdown("上传 CSV/Excel 文件、打字或上传音频，我会调用所有能力回答你。")
 
-    chatbot = gr.Chatbot(label="对话", height=500)
+        chatbot = gr.Chatbot(label="对话", height=500)
 
-    # ... 其他组件 ...
-    image_input = gr.Image(label="📷 上传图片 (OCR 识别)", type="filepath")
-    file_input = gr.File(label="📁 上传 CSV 或 Excel 文件", file_types=[".csv", ".xlsx", ".xls"])
-    # ...
+        # ... 其他组件 ...
+        image_input = gr.Image(label="📷 上传图片 (OCR 识别)", type="filepath")
+        file_input = gr.File(label="📁 上传 CSV 或 Excel 文件", file_types=[".csv", ".xlsx", ".xls"])
+        # ...
 
-    with gr.Row():
-        text_input = gr.Textbox(label="输入文字（可选）", placeholder="在这里打字...", scale=2)
-        audio_input = gr.Audio(label="🎤 上传音频", type="filepath", scale=1)
+        with gr.Row():
+            text_input = gr.Textbox(label="输入文字（可选）", placeholder="在这里打字...", scale=2)
+            audio_input = gr.Audio(label="🎤 上传音频", type="filepath", scale=1)
         
-    async def handle_image_upload(image_path, history):
-        if image_path is None:
+        async def handle_image_upload(image_path, history):
+            if image_path is None:
+                return history, ""
+            text = ocr_image(image_path)
+            history = history or []
+            history.append({"role": "user", "content": "（图片上传）请识别图片中的文字"})
+            history.append({"role": "assistant", "content": text})
             return history, ""
-        text = ocr_image(image_path)
-        history = history or []
-        history.append({"role": "user", "content": "（图片上传）请识别图片中的文字"})
-        history.append({"role": "assistant", "content": text})
-        return history, ""
 
-    image_input.upload(handle_image_upload, [image_input, chatbot], [chatbot, text_input])
+        image_input.upload(handle_image_upload, [image_input, chatbot], [chatbot, text_input])
 
-    async def handle_file_upload(file, history):
-        if file is None:
+        async def handle_file_upload(file, history):
+            if file is None:
+                return history, "", gr.update(value=None)
+
+            try:
+                # 尝试分析文件
+                analysis_result = tools.analyze_file(file.name)
+                # 记录最近文件路径
+                tools.last_uploaded_file = file.name
+                # 构建用户消息
+                history = history or []
+                history.append({"role": "user", "content": "（文件上传）请分析该文件"})
+                history.append({"role": "assistant", "content": analysis_result})
+                # 写入记忆
+                memory.append(SESSION_ID, "（文件上传）请分析该文件", analysis_result)
+            except Exception as e:
+                # 如果分析失败，返回错误信息
+                history = history or []
+                history.append({"role": "user", "content": "（文件上传）"})
+                history.append({"role": "assistant", "content": f"文件分析失败：{str(e)}"})
+                # 即使失败也尝试清空文件组件
+                return history, "", gr.update(value=None)
+
             return history, "", gr.update(value=None)
 
-        try:
-            # 尝试分析文件
-            analysis_result = tools.analyze_file(file.name)
-            # 记录最近文件路径
-            tools.last_uploaded_file = file.name
-            # 构建用户消息
-            history = history or []
-            history.append({"role": "user", "content": "（文件上传）请分析该文件"})
-            history.append({"role": "assistant", "content": analysis_result})
-            # 写入记忆
-            memory.append(SESSION_ID, "（文件上传）请分析该文件", analysis_result)
-        except Exception as e:
-            # 如果分析失败，返回错误信息
-            history = history or []
-            history.append({"role": "user", "content": "（文件上传）"})
-            history.append({"role": "assistant", "content": f"文件分析失败：{str(e)}"})
-            # 即使失败也尝试清空文件组件
-            return history, "", gr.update(value=None)
+        # 在界面构建部分
+        file_input.upload(
+            handle_file_upload,
+            [file_input, chatbot],
+            [chatbot, text_input, file_input]
+        )
 
-        return history, "", gr.update(value=None)
-
-    # 在界面构建部分
-    file_input.upload(
-        handle_file_upload,
-        [file_input, chatbot],
-        [chatbot, text_input, file_input]
-    )
-
-
-    # 原有的文本和音频处理保持不变（注意需要适配多输入）
-    async def handle_user_input(text, audio, history):
-        user_text = text or ""
-        if audio is not None:
-            from tools import speech_to_text
-            transcribed = speech_to_text(audio)
-            if not transcribed.startswith("语音识别失败"):
-                user_text = transcribed
+        # 原有的文本和音频处理保持不变（注意需要适配多输入）
+        async def handle_user_input(text, audio, history):
+            user_text = text or ""
+            if audio is not None:
+                from tools import speech_to_text
+                transcribed = speech_to_text(audio)
+                if not transcribed.startswith("语音识别失败"):
+                    user_text = transcribed
             else:
                 history = history or []
                 history.append({"role": "user", "content": "🎤 音频输入"})
                 history.append({"role": "assistant", "content": transcribed})
                 return history, "", None
 
-        if not user_text.strip():
+            if not user_text.strip():
+                return history, "", None
+
+            display_msg = user_text
+            if audio is not None:
+                display_msg += " 🎤"
+            history = history or []
+            history.append({"role": "user", "content": display_msg})
+
+            answer = await chat_core(SESSION_ID, user_text, None)
+            history.append({"role": "assistant", "content": answer})
             return history, "", None
+            
+    with gr.Tab("Worker 监控"):
+        gr.Markdown("## 实时 Worker 状态")
+        refresh_btn = gr.Button("刷新")
+        status_table = gr.Dataframe(headers=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度"], interactive=False)
 
-        display_msg = user_text
-        if audio is not None:
-            display_msg += " 🎤"
-        history = history or []
-        history.append({"role": "user", "content": display_msg})
+        def refresh_status():
+            from main import get_workers_status
+            stats = get_workers_status()
+            data = []
+            for s in stats:
+                data.append([s["name"], str(s["is_running"]), s["task_count"], s["error_count"], s["queue_size"]])
+            return pd.DataFrame(data, columns=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度"])
 
-        answer = await chat_core(SESSION_ID, user_text, None)
-        history.append({"role": "assistant", "content": answer})
-        return history, "", None
+        refresh_btn.click(fn=refresh_status, outputs=status_table)
+        # 页面加载时自动刷新一次
+        status_table.value = refresh_status()
 
     # 绑定事件
     text_input.submit(
