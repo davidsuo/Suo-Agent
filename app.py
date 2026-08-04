@@ -40,12 +40,14 @@ def init_database():
     else:
         print("✅ 数据库 sample.db 已存在，无需初始化。")
 
-async def handle_user_input(text, audio, history):
-    # 初始化变量
-    transcribed = ""
-    
-    # 特殊命令：查看规划日志
-    if text and text.strip().lower() == "/logs":
+# ========== 纯文本处理 ==========
+async def handle_text_input(text, history):
+    """只处理文本输入，忽略音频"""
+    if not text or not text.strip():
+        return history, ""
+
+    # 特殊命令：查看日志
+    if text.strip().lower() == "/logs":
         try:
             with open("plan_log.json", "r", encoding="utf-8") as f:
                 lines = f.readlines()
@@ -70,42 +72,39 @@ async def handle_user_input(text, audio, history):
         history = history or []
         history.append({"role": "user", "content": "/logs"})
         history.append({"role": "assistant", "content": answer})
-        return history, "", None
+        return history, ""
 
-    # 图片上传识别（通过 image_input 单独处理，此处不涉及）
-    # 文件上传分析（通过 file_input 单独处理，此处不涉及）
-    
-    # ===== 新增：文本优先，避免音频残留 =====
-    if text and text.strip():
-        audio = None
-    # =========================================
-    
-    # 处理语音输入
-    if audio is not None:
-        from tools import speech_to_text
-        transcribed = speech_to_text(audio)
-        if not transcribed.startswith("语音识别失败"):
-            user_text = transcribed
-        else:
-            history = history or []
-            history.append({"role": "user", "content": "🎤 音频输入"})
-            history.append({"role": "assistant", "content": transcribed})
-            return history, "", None
-    else:
-        user_text = text or ""
-
-    # 如果没有有效输入，直接返回
-    if not user_text.strip():
-        return history, "", None
-
-    # 显示用户消息（带语音标记）
-    display_msg = user_text
-    if audio is not None:
-        display_msg += " 🎤"
+    # 构建用户消息
+    display_msg = text
     history = history or []
     history.append({"role": "user", "content": display_msg})
 
-    # 调用智能体核心
+    # 调用智能体
+    answer = await chat_core(SESSION_ID, text, None)
+    history.append({"role": "assistant", "content": answer})
+    return history, ""
+
+
+# ========== 音频处理 ==========
+async def handle_audio_input(audio, history):
+    """处理音频输入，转写文字后自动发送"""
+    if audio is None:
+        return history, "", None
+
+    from tools import speech_to_text
+    transcribed = speech_to_text(audio)
+    if transcribed.startswith("语音识别失败"):
+        history = history or []
+        history.append({"role": "user", "content": "🎤 音频输入"})
+        history.append({"role": "assistant", "content": transcribed})
+        return history, "", None
+
+    # 转写成功，作为文本提交
+    user_text = transcribed
+    display_msg = user_text + " 🎤"
+    history = history or []
+    history.append({"role": "user", "content": display_msg})
+
     answer = await chat_core(SESSION_ID, user_text, None)
     history.append({"role": "assistant", "content": answer})
     return history, "", None
@@ -219,13 +218,14 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     # 绑定事件
     text_input.submit(
-        handle_user_input,
-        [text_input, audio_input, chatbot],
-        [chatbot, text_input, audio_input]
+        handle_text_input,
+        [text_input, chatbot],
+        [chatbot, text_input]
     )
+
     audio_input.change(
-        handle_user_input,
-        [text_input, audio_input, chatbot],
+        handle_audio_input,
+        [audio_input, chatbot],
         [chatbot, text_input, audio_input]
     )
 
