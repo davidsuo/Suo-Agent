@@ -346,9 +346,9 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                     results[step_id] = "图片已生成，将在最终回答中展示。"
                 else:
                         results[step_id] = raw_result
-                except Exception as e:
+                    except Exception as e:
                     results[step_id] = f"任务执行异常: {e}"
-                print(f"[规划引擎] 步骤{step_id}完成: {str(results[step_id])[:80]}")
+                    print(f"[规划引擎] 步骤{step_id}完成: {str(results[step_id])[:80]}")
             else:
                 results[step_id] = f"工具 {tool_name} 未配置"
 
