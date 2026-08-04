@@ -230,8 +230,9 @@ async def generate_plan(user_query, history, client):
 
 # ========== 核心聊天逻辑 ==========
 async def chat_core(session_id: str, query: str, image_base64: str = None):
+    image_output = None   # 用于存储图像生成的完整 base64 结果，最后附加到回答
     print(f"[DEBUG] 收到请求: session_id={session_id}, query={query[:50]}...")
-    print(f"[DEBUG] 当前 pending keys: {list(pending.keys())}")
+    print(f"[DEBUG] 当前 pending keys: {list(pending.keys())}")  
 
     # 0. 输入护栏
     is_safe, err_msg = input_guard(query)
@@ -328,7 +329,12 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                 task = {"tool": tool_name, "arguments": arguments}
                 try:
                     res = await TOOL_ROUTER[tool_name].send_task(task)
-                    results[step_id] = res.get("result", res.get("error"))
+                    raw_result = res.get("result", res.get("error"))
+                    if tool_name == "generate_image" and not raw_result.startswith("图像生成"):
+                        image_output = raw_result
+                        results[step_id] = "图片已生成，将在最终回答中展示。"
+                    else:
+                        results[step_id] = 
                 except Exception as e:
                     results[step_id] = f"任务执行异常: {e}"
                 print(f"[规划引擎] 步骤{step_id}完成: {str(results[step_id])[:80]}")
@@ -373,7 +379,9 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                 answer = f"结果整合失败: {e}"
             
             answer = output_guard(answer)
-            memory.append(session_id, query, answer)
+            if image_output:
+                answer = answer + "\n\n" + image_output 
+            memory.append(session_id, query, answer)    
             return answer
 
     else:
@@ -415,7 +423,13 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                         task = {"tool": func_name, "arguments": arguments}
                         try:
                             res = await target_worker.send_task(task)
-                            result = res.get("result", res.get("error"))
+                            raw_result = res.get("result", res.get("error"))
+                            # 如果是图像生成，保留完整结果用于显示，但发给模型的消息只放简略信息
+                            if func_name == "generate_image" and not raw_result.startswith("图像生成"):
+                                image_output = raw_result
+                                result = "图片已生成，将在最终回答中展示。"
+                            else:
+                                result = raw_result
                         except Exception as e:
                             result = f"任务执行错误: {e}"
                     else:
@@ -434,7 +448,9 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
             answer = "抱歉，处理超时，请简化您的问题。"
 
         answer = output_guard(answer)
-        memory.append(session_id, query, answer)
+        if image_output:
+            answer = answer + "\n\n" + image_output 
+        memory.append(session_id, query, answer)            
         return answer
 
 
