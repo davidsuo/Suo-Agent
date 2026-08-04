@@ -41,10 +41,11 @@ def init_database():
         print("✅ 数据库 sample.db 已存在，无需初始化。")
 
 async def handle_user_input(text, audio, history):
-    user_text = text or ""
+    # 初始化变量
+    transcribed = ""
     
     # 特殊命令：查看规划日志
-    if text.strip().lower() == "/logs":
+    if text and text.strip().lower() == "/logs":
         try:
             with open("plan_log.json", "r", encoding="utf-8") as f:
                 lines = f.readlines()
@@ -52,16 +53,14 @@ async def handle_user_input(text, audio, history):
                 answer = "暂无规划日志。"
             else:
                 recent = lines[-3:] if len(lines) > 3 else lines
-                logs_display = ""
+                logs_display = "**最近规划日志：**\n\n"
                 for idx, line in enumerate(recent, 1):
                     entry = json.loads(line)
-                    logs_display += f"**记录 {idx}** (时间: {entry['timestamp']})\n"
+                    logs_display += f"记录{idx} | 时间: {entry['timestamp']}\n"
                     logs_display += f"用户需求: {entry['user_query']}\n"
-                    logs_display += f"计划步骤: {len(entry['plan'])} 步\n"
-                    # 简单展示结果摘要，避免过长
+                    logs_display += f"步骤数: {len(entry['plan'])} 步\n"
                     for step_id, result in entry['results'].items():
-                        result_str = str(result)[:200]
-                        logs_display += f"  步骤{step_id}: {result_str}...\n"
+                        logs_display += f"  → 步骤{step_id}: {str(result)[:100]}...\n"
                     logs_display += "\n"
                 answer = logs_display
         except FileNotFoundError:
@@ -73,18 +72,24 @@ async def handle_user_input(text, audio, history):
         history.append({"role": "assistant", "content": answer})
         return history, "", None
 
-    # 如果有音频，先转成文字
+    # 图片上传识别（通过 image_input 单独处理，此处不涉及）
+    # 文件上传分析（通过 file_input 单独处理，此处不涉及）
+    
+    # 处理语音输入
     if audio is not None:
+        from tools import speech_to_text
         transcribed = speech_to_text(audio)
         if not transcribed.startswith("语音识别失败"):
             user_text = transcribed
         else:
-            # 转录失败，返回错误信息
             history = history or []
             history.append({"role": "user", "content": "🎤 音频输入"})
             history.append({"role": "assistant", "content": transcribed})
             return history, "", None
+    else:
+        user_text = text or ""
 
+    # 如果没有有效输入，直接返回
     if not user_text.strip():
         return history, "", None
 
@@ -96,10 +101,7 @@ async def handle_user_input(text, audio, history):
     history.append({"role": "user", "content": display_msg})
 
     # 调用智能体核心
-    try:
-        answer = await asyncio.wait_for(chat_core(SESSION_ID, user_text, None), timeout=60)
-    except asyncio.TimeoutError:
-        answer = "请求超时，请稍后重试或简化您的问题。"
+    answer = await chat_core(SESSION_ID, user_text, None)
     history.append({"role": "assistant", "content": answer})
     return history, "", None
 
@@ -165,6 +167,7 @@ with gr.Blocks(title="AI 智能体") as demo:
 
         # 原有的文本和音频处理保持不变（注意需要适配多输入）
         async def handle_user_input(text, audio, history):
+            transcribed = ""
             user_text = text or ""
             if audio is not None:
                 from tools import speech_to_text
