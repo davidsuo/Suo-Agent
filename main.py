@@ -28,6 +28,7 @@ from tools import (
     speech_to_text,
     analyze_file,
     fetch_webpage,
+    generate_image,
 )
 
 from guardrails import input_guard, tool_call_guard, output_guard
@@ -130,6 +131,29 @@ def home():
 async def chat(request: ChatRequest):
     answer = await chat_core(request.session_id, request.query)
     return {"answer": answer}
+
+def call_deepseek_with_retry(messages, tools=None, temperature=0, max_retries=3, max_tokens=None):
+    """带自动重试的 DeepSeek 调用"""
+    for attempt in range(max_retries):
+        try:
+            kwargs = {
+                "model": "deepseek-chat",
+                "messages": messages,
+                "temperature": temperature,
+            }
+            if tools:
+                kwargs["tools"] = tools
+                kwargs["tool_choice"] = "auto"
+            if max_tokens:
+                kwargs["max_tokens"] = max_tokens
+
+            return client.chat.completions.create(**kwargs)
+        except Exception as e:
+            print(f"[DeepSeek] 调用失败 (尝试 {attempt+1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)  # 指数退避
+            else:
+                raise
 
 # ========== 专业 Worker 初始化 ==========
 search_worker_tools = {
