@@ -226,12 +226,15 @@ def call_deepseek_with_retry(messages, tools=None, temperature=0, max_retries=3,
                 raise
 
     messages = history + [{"role": "user", "content": prompt}]
-    resp = call_deepseek_with_retry(messages, temperature=0)
-    plan_text = resp.choices[0].message.content
-    json_match = re.search(r'\[.*\]', plan_text, re.DOTALL)
-    if json_match:
-        return json.loads(json_match.group())
-    return None
+        resp = call_deepseek_with_retry(messages, temperature=0)
+        plan_text = resp.choices[0].message.content
+        json_match = re.search(r'\[.*\]', plan_text, re.DOTALL)
+        if json_match:
+            return json.loads(json_match.group())
+        return None
+    except Exception as e:
+        print(f"[规划引擎] 生成计划失败: {e}")
+        return None
 
 # ========== 核心聊天逻辑 ==========
 async def chat_core(session_id: str, query: str, image_base64: str = None):
@@ -303,10 +306,14 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
     messages.append(user_message)
 
     # 尝试生成任务计划（如果步骤>1则使用规划模式）
-    plan = await generate_plan(query, messages[:5], client)
-    if plan and len(plan) > 1:
+        plan = await generate_plan(query, messages[:5], client)
+    #if plan is None or len(plan) <= 1:
+    if plan:
+        # 规划失败或只有单步，回退到原有工具调用循环
+        plan = None   # 标记不使用规划模式
+    else:
         print(f"[规划引擎] 生成计划，共 {len(plan)} 步: {plan}")
-            # 规划执行循环
+        # 规划执行循环
     results = {}
     email_args = None
     for step in plan:
