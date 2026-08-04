@@ -447,17 +447,24 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                     elif func_name in TOOL_ROUTER:
                         target_worker = TOOL_ROUTER[func_name]
                         task = {"tool": func_name, "arguments": arguments}
-                        try:
-                            res = await target_worker.send_task(task)
-                            raw_result = res.get("result", res.get("error"))
-                            # 如果是图像生成，保留完整结果用于显示，但发给模型的消息只放简略信息
-                            if func_name == "generate_image" and not raw_result.startswith("图像生成"):
-                                image_output = raw_result
-                                result = "图片已生成，将在最终回答中展示。"
-                            else:
-                                result = raw_result
-                        except Exception as e:
-                            result = f"任务执行错误: {e}"
+                        max_attempts = 2 if func_name in ("web_search", "fetch_webpage", "generate_image") else 1
+                        res = None
+                        for attempt in range(max_attempts):
+                            try:
+                                res = await target_worker.send_task(task)
+                                break
+                            except Exception as e:
+                                if attempt == max_attempts - 1:
+                                    res = {"error": f"任务执行失败（重试{max_attempts}次）: {e}"}
+                                else:
+                                    print(f"[常规模式] {func_name}失败，重试... ({attempt+1}/{max_attempts})")
+                                    await asyncio.sleep(1)
+                        raw_result = res.get("result", res.get("error")) if res else "未知错误"
+                        if func_name == "generate_image" and not str(raw_result).startswith("图像生成"):
+                            image_output = raw_result
+                            result = "图片已生成，将在最终回答中展示。"
+                        else:
+                            result = raw_result
                     else:
                         result = f"未找到工具 {func_name}"
 
