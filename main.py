@@ -10,7 +10,7 @@ from memory import memory
 import re
 from pending_tools import pending, save_pending
 from tools import generate_image
-
+import time
 
 try:
     import rag
@@ -33,7 +33,6 @@ from tools import (
 from guardrails import input_guard, tool_call_guard, output_guard
 from pending_tools import pending
 import asyncio
-
 from agents import SearchWorker, CodeWorker, DataWorker
 
 # 定义各 Worker 的工具字典
@@ -161,6 +160,8 @@ for name in code_worker.tools:
     TOOL_ROUTER[name] = code_worker
 for name in data_worker.tools:
     TOOL_ROUTER[name] = data_worker
+
+
     
 async def generate_plan(user_query, history, client):
     prompt = f"""
@@ -200,12 +201,32 @@ async def generate_plan(user_query, history, client):
   {{{{ "id": 2, "tool": "execute_python", ... }}}}   <-- 禁止！提取/总结不应该用 Python
 ]
 """
+
+def call_deepseek_with_retry(messages, tools=None, temperature=0, max_retries=3, max_tokens=None):
+    """带自动重试的 DeepSeek 调用"""
+    for attempt in range(max_retries):
+        try:
+            kwargs = {
+                "model": "deepseek-chat",
+                "messages": messages,
+                "temperature": temperature,
+            }
+            if tools:
+                kwargs["tools"] = tools
+                kwargs["tool_choice"] = "auto"
+            if max_tokens:
+                kwargs["max_tokens"] = max_tokens
+
+            return client.chat.completions.create(**kwargs)
+        except Exception as e:
+            print(f"[DeepSeek] 调用失败 (尝试 {attempt+1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)  # 指数退避
+            else:
+                raise
+
     messages = history + [{"role": "user", "content": prompt}]
-    resp = client.chat.completions.create(
-        model="deepseek-chat",
-        messages=messages,
-        temperature=0,
-    )
+    resp = call_deepseek_with_retry(messages, temperature=0)
     plan_text = resp.choices[0].message.content
     json_match = re.search(r'\[.*\]', plan_text, re.DOTALL)
     if json_match:
@@ -347,12 +368,7 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
         # 让模型对抓取结果进行智能提取/总结
         summary_prompt = f"用户需求：{query}\n\n以下是执行结果：\n{raw_info}\n\n请根据用户需求，从以上结果中提取或总结出用户想要的信息（如新闻标题列表、文章摘要等），用简洁清晰的格式回答。如果结果中包含大量无关内容，请忽略它们，只输出相关部分。"
         messages.append({"role": "user", "content": summary_prompt})
-        summary_resp = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=messages,
-            temperature=0.3,
-            max_tokens=2000,
-        )
+        summary_resp = call_deepseek_with_retry(messages, temperature=0.3, max_tokens=2000)
         answer = summary_resp.choices[0].message.content
         
         answer = output_guard(answer)
@@ -361,12 +377,7 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
 
     # 4. 工具调用循环（多智能体调度版）
     for _ in range(8):
-        response = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=messages,
-            tools=TOOLS_METADATA,
-            tool_choice="auto"
-        )
+        response = call_deepseek_with_retry(messages, tools=TOOLS_METADATA, temperature=0)
         msg = response.choices[0].message
         if msg.tool_calls:
             messages.append(msg)
