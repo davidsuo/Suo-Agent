@@ -152,29 +152,39 @@ for name in data_worker.tools:
     TOOL_ROUTER[name] = data_worker
     
 async def generate_plan(user_query, history, client):
-    """让 DeepSeek 生成任务计划（JSON）"""
     prompt = f"""
 你是一个任务规划器。根据用户的需求，生成一个 JSON 格式的执行计划。
+当前可用的工具及说明：
+- query_database: 查询员工数据库（SQLite，表名 employees）
+- web_search: 搜索互联网，返回标题、链接和摘要
+- fetch_webpage: 抓取指定 URL 的网页全文（返回前3000字符）
+- execute_python: 安全执行 Python 代码（仅用于数学计算、数据处理，禁止导入模块）
+- get_current_time: 获取当前时间
+- calculator: 数学计算
+- analyze_file: 分析 CSV/Excel 文件
+- send_email: 发送邮件（需要用户确认）
+
 计划是一个步骤列表，每个步骤包含：
 - id: 步骤唯一编号（从1开始）
-- tool: 要调用的工具名称（可用工具：web_search, query_database, execute_python, get_current_time, calculator, analyze_file, send_email）
+- tool: 要调用的工具名称（必须从上面的列表中选择）
 - arguments: 工具参数字典
 - depends_on: 依赖的步骤id列表（如果没有则为空列表）
 - description: 步骤的中文描述
 
 【重要规则】
-- 对于“找出最大值/最小值/平均值”等数据统计需求，请使用 query_database 工具编写 SQL 聚合语句（如 SELECT MAX(salary) 等），不要使用 execute_python 处理数据依赖。
-- 如果步骤需要用到前一步的结果，请在 arguments 中使用占位符 {{{{step_X_result}}}}，其中 X 是依赖的步骤id。
-- send_email 工具需要二次确认，如果计划中需要发邮件，将其作为最后一个步骤，参数中的 body 可以使用占位符引用前面步骤的结果。
+- 如果用户要求“抓取网页内容”，请使用 fetch_webpage 工具，不要使用 execute_python 去抓取。
+- 如果用户要求“翻译”，可以直接在最后一步整合回答时由你完成，不需要单独生成翻译步骤。
+- 如果步骤需要用到前一步的结果，请在 arguments 中使用占位符 {{step_X_result}}，其中 X 是依赖的步骤id。
+- send_email 工具需要二次确认，请将其作为最后一个步骤。
+- 避免生成复杂的 Python 代码，如果需要数据计算，优先使用 SQL 聚合或 calculator。
 - 只返回 JSON 数组，不要有其他内容。
 
 用户需求：{user_query}
 
-示例（查询员工并搜索相关新闻后发邮件）：
+示例（搜索新闻并抓取全文）：
 [
-  {{{{ "id": 1, "tool": "query_database", "arguments": {{{{ "sql": "SELECT name, salary, position FROM employees ORDER BY salary DESC LIMIT 1" }}}}, "depends_on": [], "description": "查询工资最高的员工" }}}},
-  {{{{ "id": 2, "tool": "web_search", "arguments": {{{{ "query": "{{{{step_1_result}}}} 最新新闻" }}}}, "depends_on": [1], "description": "搜索该员工相关新闻" }}}},
-  {{{{ "id": 3, "tool": "send_email", "arguments": {{{{ "to_email": "kn000sq@163.com", "subject": "工资分析报告", "body": "最高工资员工：{{{{step_1_result}}}}\\n相关新闻：{{{{step_2_result}}}}" }}}}, "depends_on": [1, 2], "description": "发送邮件" }}}}
+  {{{{ "id": 1, "tool": "web_search", "arguments": {{{{ "query": "人工智能" }}}}, "depends_on": [], "description": "搜索人工智能新闻" }}}},
+  {{{{ "id": 2, "tool": "fetch_webpage", "arguments": {{{{ "url": "{{{{step_1_result}}链接}}" }}}}, "depends_on": [1], "description": "抓取第一个结果的全文" }}}}
 ]
 """
     messages = history + [{"role": "user", "content": prompt}]
