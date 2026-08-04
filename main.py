@@ -133,6 +133,21 @@ async def chat(request: ChatRequest):
     answer = await chat_core(request.session_id, request.query)
     return {"answer": answer}
 
+def log_plan(user_query, plan, results):
+    """将规划执行记录追加到 plan_log.json"""
+    log_entry = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "user_query": user_query,
+        "plan": plan,
+        "results": results
+    }
+    try:
+        with open("plan_log.json", "a", encoding="utf-8") as f:
+            f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+        print("[日志] 规划记录已写入 plan_log.json")
+    except Exception as e:
+        print(f"[日志] 写入规划日志失败: {e}")
+
 def call_deepseek_with_retry(messages, tools=None, temperature=0, max_retries=3, max_tokens=None):
     """带自动重试的 DeepSeek 调用"""
     for attempt in range(max_retries):
@@ -411,6 +426,8 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
             answer = output_guard(answer)
             if image_output:
                 answer = answer + "\n\n" + image_output 
+            # 记录规划日志
+            log_plan(query, plan, results)
             memory.append(session_id, query, answer)    
             return answer
 
