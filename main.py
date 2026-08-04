@@ -324,8 +324,18 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
         )
         return confirm_msg
     else:
-        # 无邮件步骤，整合结果
-        answer = "任务执行结果：\n" + "\n".join([f"- {step['description']}: {results[step['id']]}" for step in plan if step['tool'] != 'send_email'])
+        # 无邮件步骤，整合结果并让模型进行后处理总结
+        raw_info = "\n".join([f"{step['description']}: {results[step['id']]}" for step in plan if step['tool'] != 'send_email'])
+        # 让模型对抓取结果进行智能提取/总结
+        summary_prompt = f"用户需求：{query}\n\n以下是执行结果：\n{raw_info}\n\n请根据用户需求，从以上结果中提取或总结出用户想要的信息（如新闻标题列表、文章摘要等），用简洁清晰的格式回答。如果结果中包含大量无关内容，请忽略它们，只输出相关部分。"
+        messages.append({"role": "user", "content": summary_prompt})
+        summary_resp = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=messages,
+            temperature=0.3,
+        )
+        answer = summary_resp.choices[0].message.content
+        
         answer = output_guard(answer)
         memory.append(session_id, query, answer)
         return answer
