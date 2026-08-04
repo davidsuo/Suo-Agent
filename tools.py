@@ -27,6 +27,8 @@ def get_current_time():
 def calculator(expression: str):
     """安全计算数学表达式"""
     try:
+        # 移除数字中的逗号，允许用户或模型输入带逗号的数字
+        expression = expression.replace(",", "")
         allowed_chars = set("0123456789+-*/().% ^")
         if not all(c in allowed_chars for c in expression.replace(" ", "")):
             return "错误：表达式包含不允许的字符"

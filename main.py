@@ -211,9 +211,9 @@ async def generate_plan(user_query, history, client):
 - query_database: 查询员工数据库（参数必须为 "sql"，例如 {{"sql": "SELECT * FROM employees"}}）
 - web_search: 搜索互联网（参数必须为 "query" 和可选的 "max_results"）
 - fetch_webpage: 抓取指定 URL 的网页全文（参数必须为 "url"）
-- execute_python: 安全执行 Python 代码（参数必须为 "code"，**仅用于独立计算，不得使用外部数据**）
+- execute_python: 安全执行 Python 代码（参数必须为 "code"，**仅用于独立的逻辑判断或格式化输出，不得用于数学计算**）
 - get_current_time: 获取当前时间（无参数）
-- calculator: 数学计算（参数必须为 "expression"，例如 {{"expression": "(3+5)*2"}}）
+- calculator: 数学计算（参数必须为 "expression"，表达式只能包含数字和运算符，如 "60000+75000+55000+68000"）
 - analyze_file: 分析 CSV/Excel 文件（参数必须为 "file_path"）
 - send_email: 发送邮件（参数必须为 "to_email", "subject", "body"）
 - generate_image: 根据文字描述生成图片（参数必须为 "prompt", 可选 "negative_prompt"）
@@ -226,16 +226,21 @@ async def generate_plan(user_query, history, client):
 - description: 步骤的中文描述
 
 【核心规则】
-1. 任何数据统计、计算工资总和等**数学运算，必须使用 query_database 的 SQL 聚合函数（如 SUM、AVG）或 calculator 工具**，严禁使用 execute_python 处理来自数据库的数据。
-2. 如果步骤需要用到前一步的结果，请在 arguments 中使用占位符 {{step_X_result}}（X 是步骤id），**严禁在 execute_python 的 code 参数中假设变量已存在**。
+1. 所有数学计算（求和、平均等）必须使用 calculator 工具或 query_database 的 SQL 聚合函数（如 SUM）。**严禁使用 execute_python 进行任何算术运算**。
+2. 如果步骤需要用到前一步的结果，请在 arguments 中使用占位符 {{step_X_result}}（X 是步骤id），但 calculator 的表达式必须直接写死具体数字，不能包含占位符。如果需要从查询结果中提取数字，请生成单独的步骤，将数字直接写入 calculator 的 expression。
 3. send_email 必须放在最后一个步骤，且需要用户确认。
 4. 只返回 JSON 数组，不要有任何额外文字。
 
 用户需求：{user_query}
 
-正确示例（查询所有工资并计算总和）：
+正确示例（查询所有工资并计算总和，通过 SQL 聚合完成）：
 [
   {{{{ "id": 1, "tool": "query_database", "arguments": {{{{ "sql": "SELECT SUM(salary) FROM employees" }}}}, "depends_on": [], "description": "计算工资总和" }}}}
+]
+
+如果必须用 calculator，示例（手动列出数字）：
+[
+  {{{{ "id": 1, "tool": "calculator", "arguments": {{{{ "expression": "60000+75000+55000+68000" }}}}, "depends_on": [], "description": "计算工资总和" }}}}
 ]
 """
         messages = history + [{"role": "user", "content": prompt}]
