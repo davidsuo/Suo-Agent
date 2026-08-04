@@ -224,19 +224,15 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
     if not data_worker.is_running:
         asyncio.create_task(data_worker.run_loop())
         data_worker.is_running = True
-    if not web_scraper_worker.is_running:
-        asyncio.create_task(web_scraper_worker.run_loop())
-        web_scraper_worker.is_running = True
     if not image_worker.is_running:
         asyncio.create_task(image_worker.run_loop())
         image_worker.is_running = True
-    print("Workers ready: Search=True, Code=True, Data=True")
+    print("Workers ready: Search=True, Code=True, Data=True, Image=True")
 
     # 1. 检查是否为二次确认的确认回复
     if session_id in pending and "确认" in query.strip():
         print(f"[确认] 执行待处理工具 for session {session_id}")
         tool_info = pending.pop(session_id)
-        save_pending(pending)   # 持久化更新
         tool_name = tool_info["tool_name"]
         arguments = tool_info["arguments"]
         if tool_name in AVAILABLE_TOOLS:
@@ -251,11 +247,8 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
 
     # 2. 获取历史与知识库上下文
     history = memory.get(session_id)
-    if rag is not None:
-        context = rag.search_similar(query, k=3)
-    else:
-        context = "暂无相关文档（知识库未加载）"
-    system_content = SYSTEM_PROMPT.format(context=context)
+    context = rag.search_similar(query, k=3) if rag is not None else "暂无相关文档（知识库未加载）"
+    system_content = SYSTEM_PROMPT.format(context=context if context else "暂无相关文档")
 
     # 3. 构建初始消息
     messages = [{"role": "system", "content": system_content}]
@@ -273,148 +266,152 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
         user_message = {"role": "user", "content": query}
     messages.append(user_message)
 
-    # 尝试生成任务计划（如果步骤>1则使用规划模式）
-    plan = await generate_plan(query, messages[:5], client)
-    #if plan is None or len(plan) <= 1:
-    if plan:
-        # 规划失败或只有单步，回退到原有工具调用循环
-        plan = None   # 标记不使用规划模式
-    else:
-        print(f"[规划引擎] 生成计划，共 {len(plan)} 步: {plan}")
-        # 规划执行循环
-    results = {}
-    email_args = None
-    for step in plan:
-        step_id = step["id"]
-        tool_name = step["tool"]
-        arguments = step["arguments"]
-
-        # 先处理参数中的占位符替换（{step_X_result}）
-        for dep_id in step.get("depends_on", []):
-            if dep_id in results:
-                replacement = str(results[dep_id])
-                for key, val in arguments.items():
-                    if isinstance(val, str):
-                        arguments[key] = val.replace(f"{{step_{dep_id}_result}}", replacement)
-
-        if tool_name == "send_email":
-            # 记录邮件参数，暂不执行
-            email_args = arguments
-            continue
-        elif tool_name in TOOL_ROUTER:
-            task = {"tool": tool_name, "arguments": arguments}
-            res = await TOOL_ROUTER[tool_name].send_task(task)
-            results[step_id] = res.get("result", res.get("error"))
-            print(f"[规划引擎] 步骤{step_id}完成: {str(results[step_id])[:80]}")
+    # 4. 尝试生成任务计划
+    plan = None
+    try:
+        plan = await generate_plan(query, messages[:5], client)
+        if plan and len(plan) > 1:
+            print(f"[规划引擎] 生成计划，共 {len(plan)} 步")
         else:
-            results[step_id] = f"工具 {tool_name} 未配置"
+            plan = None
+            print("[规划引擎] 无法生成有效计划，回退到常规工具调用模式")
+    except Exception as e:
+        print(f"[规划引擎] 生成计划异常: {e}，回退到常规模式")
+        plan = None
 
-    # 如果存在邮件步骤，生成确认提示并持久化
-    if email_args:
-        # 再次替换邮件 body 中的占位符（因为可能依赖前面的步骤）
-        body = email_args.get("body", "")
-        for step_id, result_text in results.items():
-            body = body.replace(f"{{step_{step_id}_result}}", str(result_text))
-        email_args["body"] = body
+    # 5. 根据是否有计划选择执行模式
+    if plan:
+        # ========== 规划引擎执行模式 ==========
+        results = {}
+        email_args = None
+        for step in plan:
+            step_id = step["id"]
+            tool_name = step["tool"]
+            arguments = step["arguments"]
 
-        # 保存到持久化 pending
-        pending[session_id] = {
-            "tool_name": "send_email",
-            "arguments": email_args
-        }
-        save_pending(pending)
+            # 处理参数中的占位符替换
+            for dep_id in step.get("depends_on", []):
+                if dep_id in results:
+                    replacement = str(results[dep_id])
+                    for key, val in arguments.items():
+                        if isinstance(val, str):
+                            arguments[key] = val.replace(f"{{step_{dep_id}_result}}", replacement)
 
-        confirm_msg = (
-            f"⚠️ 危险操作确认\n"
-            f"工具：send_email\n"
-            f"收件人：{email_args.get('to_email')}\n"
-            f"主题：{email_args.get('subject')}\n"
-            f"内容：{email_args.get('body')}\n\n"
-            f"请回复 **“确认”** 以执行，或回复其他内容取消。"
-        )
-        return confirm_msg
+            if tool_name == "send_email":
+                email_args = arguments
+                continue
+            elif tool_name in TOOL_ROUTER:
+                task = {"tool": tool_name, "arguments": arguments}
+                try:
+                    res = await TOOL_ROUTER[tool_name].send_task(task)
+                    results[step_id] = res.get("result", res.get("error"))
+                except Exception as e:
+                    results[step_id] = f"任务执行异常: {e}"
+                print(f"[规划引擎] 步骤{step_id}完成: {str(results[step_id])[:80]}")
+            else:
+                results[step_id] = f"工具 {tool_name} 未配置"
+
+        # 如果有邮件步骤，生成确认提示并持久化
+        if email_args:
+            body = email_args.get("body", "")
+            for step_id, result_text in results.items():
+                body = body.replace(f"{{step_{step_id}_result}}", str(result_text))
+            email_args["body"] = body
+
+            pending[session_id] = {
+                "tool_name": "send_email",
+                "arguments": email_args
+            }
+            # 保存到文件（如果需要持久化）
+            # save_pending(pending)
+
+            confirm_msg = (
+                f"⚠️ 危险操作确认\n"
+                f"工具：send_email\n"
+                f"收件人：{email_args.get('to_email')}\n"
+                f"主题：{email_args.get('subject')}\n"
+                f"内容：{email_args.get('body')}\n\n"
+                f"请回复 **“确认”** 以执行，或回复其他内容取消。"
+            )
+            return confirm_msg
+        else:
+            # 无邮件步骤，整合结果并进行智能后处理
+            raw_info = "\n".join([f"{step['description']}: {str(results[step['id']])[:500]}" for step in plan if step['tool'] != 'send_email'])
+            if len(raw_info) > 10000:
+                raw_info = raw_info[:10000] + "\n...（内容过长，已截断）"
+            
+            summary_prompt = f"用户需求：{query}\n\n以下是执行结果：\n{raw_info}\n\n请根据用户需求，从以上结果中提取或总结出用户想要的信息，用简洁清晰的格式回答。如果结果中包含大量无关内容，请忽略它们，只输出相关部分。"
+            messages.append({"role": "user", "content": summary_prompt})
+            try:
+                summary_resp = call_deepseek_with_retry(messages, temperature=0.3, max_tokens=2000)
+                answer = summary_resp.choices[0].message.content
+            except Exception as e:
+                answer = f"结果整合失败: {e}"
+            
+            answer = output_guard(answer)
+            memory.append(session_id, query, answer)
+            return answer
+
     else:
-        # 无邮件步骤，整合结果并让模型进行后处理总结
-        raw_info = "\n".join([f"{step['description']}: {str(results[step['id']])[:500]}" for step in plan if step['tool'] != 'send_email'])
-        # 限制总输入长度，防止超出 token 限制
-        if len(raw_info) > 10000:
-            raw_info = raw_info[:10000] + "\n...（内容过长，已截断）"
-        
-        # 让模型对抓取结果进行智能提取/总结
-        summary_prompt = f"用户需求：{query}\n\n以下是执行结果：\n{raw_info}\n\n请根据用户需求，从以上结果中提取或总结出用户想要的信息（如新闻标题列表、文章摘要等），用简洁清晰的格式回答。如果结果中包含大量无关内容，请忽略它们，只输出相关部分。"
-        messages.append({"role": "user", "content": summary_prompt})
-        summary_resp = call_deepseek_with_retry(messages, temperature=0.3, max_tokens=2000)
-        answer = summary_resp.choices[0].message.content
-        
+        # ========== 常规单步/多工具调用模式 ==========
+        for _ in range(8):
+            try:
+                response = call_deepseek_with_retry(messages, tools=TOOLS_METADATA, temperature=0)
+            except Exception as e:
+                answer = f"模型调用失败: {e}"
+                memory.append(session_id, query, answer)
+                return output_guard(answer)
+
+            msg = response.choices[0].message
+            if msg.tool_calls:
+                messages.append(msg)
+                for tool_call in msg.tool_calls:
+                    func_name = tool_call.function.name
+                    arguments = json.loads(tool_call.function.arguments)
+
+                    if func_name == "send_email":
+                        if tool_call_guard(func_name):
+                            pending[session_id] = {
+                                "tool_name": func_name,
+                                "arguments": arguments
+                            }
+                            confirm_msg = (
+                                f"⚠️ 危险操作确认\n"
+                                f"工具：{func_name}\n"
+                                f"参数：{arguments}\n\n"
+                                f"请回复 **“确认”** 以执行，或回复其他内容取消。"
+                            )
+                            return confirm_msg
+                        try:
+                            result = AVAILABLE_TOOLS[func_name](**arguments)
+                        except Exception as e:
+                            result = f"工具执行错误: {e}"
+                    elif func_name in TOOL_ROUTER:
+                        target_worker = TOOL_ROUTER[func_name]
+                        task = {"tool": func_name, "arguments": arguments}
+                        try:
+                            res = await target_worker.send_task(task)
+                            result = res.get("result", res.get("error"))
+                        except Exception as e:
+                            result = f"任务执行错误: {e}"
+                    else:
+                        result = f"未找到工具 {func_name}"
+
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": result
+                    })
+                continue
+            else:
+                answer = msg.content
+                break
+        else:
+            answer = "抱歉，处理超时，请简化您的问题。"
+
         answer = output_guard(answer)
         memory.append(session_id, query, answer)
         return answer
-
-    # 4. 工具调用循环（多智能体调度版）
-    for _ in range(8):
-        response = call_deepseek_with_retry(messages, tools=TOOLS_METADATA, temperature=0)
-        msg = response.choices[0].message
-        if msg.tool_calls:
-            messages.append(msg)
-            for tool_call in msg.tool_calls:
-                func_name = tool_call.function.name
-                arguments = json.loads(tool_call.function.arguments)
-
-                # 处理邮件发送（需二次确认）
-                if func_name == "send_email":
-                    if tool_call_guard(func_name):
-                        pending[session_id] = {
-                            "tool_name": func_name,
-                            "arguments": arguments
-                        }
-                    if tool_name == "send_email":
-                        # 需要二次确认，直接返回确认提示，并终止规划执行
-                        confirm_msg = (
-                            f"⚠️ 危险操作确认\n"
-                            f"工具：{func_name}\n"
-                            f"参数：{arguments}\n\n"
-                            f"请回复 **“确认”** 以执行，或回复其他内容取消。"
-                        )
-                        return confirm_msg
-                    elif tool_name in TOOL_ROUTER:
-                        task = {"tool": tool_name, "arguments": arguments}
-                        res = await TOOL_ROUTER[tool_name].send_task(task)
-                        results[step_id] = res.get("result", res.get("error"))
-                        print(f"[规划引擎] 步骤{step_id}完成: {str(results[step_id])[:80]}")
-                    else:
-                        results[step_id] = f"工具 {tool_name} 未配置"
-                    try:
-                        result = AVAILABLE_TOOLS[func_name](**arguments)
-                    except Exception as e:
-                        result = f"工具执行错误: {e}"
-                # 其他工具通过专业 Worker 异步分派
-                elif func_name in TOOL_ROUTER:
-                    target_worker = TOOL_ROUTER[func_name]
-                    task = {"tool": func_name, "arguments": arguments}
-                    res = await target_worker.send_task(task)
-                    if "error" in res:
-                        result = f"工具执行错误: {res['error']}"
-                    else:
-                        result = res["result"]
-                else:
-                    result = f"未找到工具 {func_name}"
-
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "content": result
-                })
-            continue
-        else:
-            answer = msg.content
-            break
-    else:
-        answer = "抱歉，处理超时，请简化您的问题。"
-
-    # 5. 输出脱敏并更新记忆
-    answer = output_guard(answer)
-    memory.append(session_id, query, answer)
-    return answer
 
 
 if __name__ == "__main__":
