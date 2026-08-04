@@ -274,7 +274,7 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
     messages.append(user_message)
 
     # 尝试生成任务计划（如果步骤>1则使用规划模式）
-        plan = await generate_plan(query, messages[:5], client)
+    plan = await generate_plan(query, messages[:5], client)
     #if plan is None or len(plan) <= 1:
     if plan:
         # 规划失败或只有单步，回退到原有工具调用循环
