@@ -225,7 +225,7 @@ def call_deepseek_with_retry(messages, tools=None, temperature=0, max_retries=3,
             else:
                 raise
 
-    messages = history + [{"role": "user", "content": prompt}]
+        messages = history + [{"role": "user", "content": prompt}]
         resp = call_deepseek_with_retry(messages, temperature=0)
         plan_text = resp.choices[0].message.content
         json_match = re.search(r'\[.*\]', plan_text, re.DOTALL)
