@@ -158,7 +158,7 @@ async def generate_plan(user_query, history, client):
 - query_database: 查询员工数据库（SQLite，表名 employees）
 - web_search: 搜索互联网，返回标题、链接和摘要
 - fetch_webpage: 抓取指定 URL 的网页全文（返回前3000字符）
-- execute_python: 安全执行 Python 代码（仅用于数学计算、数据处理，禁止导入模块）
+- execute_python: 安全执行 Python 代码（**仅用于纯数学计算**，禁止导入任何模块，禁止进行文本处理、网页解析、网络请求）
 - get_current_time: 获取当前时间
 - calculator: 数学计算
 - analyze_file: 分析 CSV/Excel 文件
@@ -171,20 +171,22 @@ async def generate_plan(user_query, history, client):
 - depends_on: 依赖的步骤id列表（如果没有则为空列表）
 - description: 步骤的中文描述
 
-【重要规则】
-- 如果用户要求“抓取网页内容”，请使用 fetch_webpage 工具，不要使用 execute_python 去抓取。
-- 如果用户要求“翻译”，可以直接在最后一步整合回答时由你完成，不需要单独生成翻译步骤。
-- 如果步骤需要用到前一步的结果，请在 arguments 中使用占位符 {{step_X_result}}，其中 X 是依赖的步骤id。
-- send_email 工具需要二次确认，请将其作为最后一个步骤。
-- 避免生成复杂的 Python 代码，如果需要数据计算，优先使用 SQL 聚合或 calculator。
-- 只返回 JSON 数组，不要有其他内容。
+【核心规则】
+1. 如果用户要求“提取标题”、“总结内容”、“翻译”等文本处理任务，**不要生成任何 execute_python 步骤**。抓取网页后，直接将原始内容返回即可，后续的提取/总结/翻译由语言模型在最终回答中完成。
+2. 如果步骤需要用到前一步的结果，请在 arguments 中使用占位符 {{step_X_result}}（X 是步骤id）。
+3. send_email 必须放在最后一个步骤，且需要用户确认。
+4. 只返回 JSON 数组，不要有任何额外文字。
 
 用户需求：{user_query}
 
-示例（搜索新闻并抓取全文）：
+正确示例（抓取网页并总结）：
 [
-  {{{{ "id": 1, "tool": "web_search", "arguments": {{{{ "query": "人工智能" }}}}, "depends_on": [], "description": "搜索人工智能新闻" }}}},
-  {{{{ "id": 2, "tool": "fetch_webpage", "arguments": {{{{ "url": "{{{{step_1_result}}链接}}" }}}}, "depends_on": [1], "description": "抓取第一个结果的全文" }}}}
+  {{{{ "id": 1, "tool": "fetch_webpage", "arguments": {{{{ "url": "https://www.example.com" }}}}, "depends_on": [], "description": "抓取指定网页内容" }}}}
+]
+错误示例（切勿这样）：
+[
+  {{{{ "id": 1, "tool": "fetch_webpage", ... }}}},
+  {{{{ "id": 2, "tool": "execute_python", ... }}}}   <-- 禁止！提取/总结不应该用 Python
 ]
 """
     messages = history + [{"role": "user", "content": prompt}]
