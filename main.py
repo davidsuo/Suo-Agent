@@ -207,31 +207,36 @@ async def generate_plan(user_query, history, client):
     try:
         prompt = f"""
 你是一个任务规划器。根据用户的需求，生成一个 JSON 格式的执行计划。
-当前可用的工具及说明：
-- query_database: 查询员工数据库（SQLite，表名 employees）
-- web_search: 搜索互联网，返回标题、链接和摘要
-- fetch_webpage: 抓取指定 URL 的网页全文（返回前3000字符）
-- execute_python: 安全执行 Python 代码（**仅用于纯数学计算**，禁止导入任何模块，禁止进行文本处理、网页解析、网络请求）
-- get_current_time: 获取当前时间
-- calculator: 数学计算
-- analyze_file: 分析 CSV/Excel 文件
-- send_email: 发送邮件（需要用户确认）
-- generate_image: 根据文字描述生成图片（建议使用英文提示词）
+当前可用的工具及**必须遵守的参数**：
+- query_database: 查询员工数据库（参数必须为 "sql"，例如 {{"sql": "SELECT * FROM employees"}}）
+- web_search: 搜索互联网（参数必须为 "query" 和可选的 "max_results"）
+- fetch_webpage: 抓取指定 URL 的网页全文（参数必须为 "url"）
+- execute_python: 安全执行 Python 代码（参数必须为 "code"）
+- get_current_time: 获取当前时间（无参数）
+- calculator: 数学计算（参数必须为 "expression"）
+- analyze_file: 分析 CSV/Excel 文件（参数必须为 "file_path"）
+- send_email: 发送邮件（参数必须为 "to_email", "subject", "body"）
+- generate_image: 根据文字描述生成图片（参数必须为 "prompt", 可选 "negative_prompt"）
 
 计划是一个步骤列表，每个步骤包含：
 - id: 步骤唯一编号（从1开始）
 - tool: 要调用的工具名称（必须从上面的列表中选择）
-- arguments: 工具参数字典
+- arguments: 工具参数字典，键名必须与上述规定完全一致
 - depends_on: 依赖的步骤id列表（如果没有则为空列表）
 - description: 步骤的中文描述
 
 【核心规则】
-1. 如果用户要求“提取标题”、“总结内容”、“翻译”等文本处理任务，**不要生成任何 execute_python 步骤**。抓取网页后，直接将原始内容返回即可，后续的提取/总结/翻译由语言模型在最终回答中完成。
+1. 任何数据查询、统计都必须使用 query_database 的 SELECT 语句完成，禁止使用 execute_python 操作数据。
 2. 如果步骤需要用到前一步的结果，请在 arguments 中使用占位符 {{step_X_result}}（X 是步骤id）。
 3. send_email 必须放在最后一个步骤，且需要用户确认。
 4. 只返回 JSON 数组，不要有任何额外文字。
 
 用户需求：{user_query}
+
+正确示例（查询员工并计算平均工资）：
+[
+  {{{{ "id": 1, "tool": "query_database", "arguments": {{{{ "sql": "SELECT AVG(salary) FROM employees" }}}}, "depends_on": [], "description": "计算平均工资" }}}}
+]
 """
         messages = history + [{"role": "user", "content": prompt}]
         resp = call_deepseek_with_retry(messages, temperature=0)
@@ -343,6 +348,9 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
 
             if tool_name == "send_email":
                 email_args = arguments
+                continue
+            if tool_name == "query_database" and "sql" not in arguments:
+                results[step_id] = "错误：query_database 必须提供 'sql' 参数"
                 continue
             elif tool_name in TOOL_ROUTER:
                 task = {"tool": tool_name, "arguments": arguments}
