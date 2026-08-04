@@ -5,6 +5,7 @@ from main import chat_core
 from tools import speech_to_text   # 从 tools 导入百度语音转写函数
 from memory import memory   # 确保与 main.py 使用的同一个实例
 import tools
+import asyncio
 
 
 SESSION_ID = "render_user"
@@ -62,7 +63,10 @@ async def handle_user_input(text, audio, history):
     history.append({"role": "user", "content": display_msg})
 
     # 调用智能体核心
-    answer = await chat_core(SESSION_ID, user_text, None)
+    try:
+        answer = await asyncio.wait_for(chat_core(SESSION_ID, user_text, None), timeout=60)
+    except asyncio.TimeoutError:
+        answer = "请求超时，请稍后重试或简化您的问题。"
     history.append({"role": "assistant", "content": answer})
     return history, "", None
 

@@ -253,7 +253,10 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
     if not image_worker.is_running:
         asyncio.create_task(image_worker.run_loop())
         image_worker.is_running = True
-    print("Workers ready: Search=True, Code=True, Data=True, Image=True")
+    if not web_scraper_worker.is_running:
+        asyncio.create_task(web_scraper_worker.run_loop())
+        web_scraper_worker.is_running = True
+    print("Workers ready: Search=True, Code=True, Data=True, Image=True, WebScraper=True")
 
     # 1. 检查是否为二次确认的确认回复
     if session_id in pending and "确认" in query.strip():
