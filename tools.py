@@ -314,35 +314,51 @@ def fetch_webpage(url: str) -> str:
         return f"网页抓取失败: {e}"
         
 # ---------- 识别图片文字 (OCRWorker) ----------
-def ocr_image(image_file_path: str) -> str:
-    """使用百度 OCR 识别图片中的文字，返回文本"""
-    api_key = os.getenv("BAIDU_ASR_API_KEY")      # 复用百度 API Key
-    secret_key = os.getenv("BAIDU_ASR_SECRET_KEY") # 复用百度 Secret Key
+def ocr_image(image_path: str) -> str:
+    """使用百度文字识别 API 提取图片中的文字"""
+    api_key = os.getenv("BAIDU_OCR_API_KEY") or os.getenv("BAIDU_ASR_API_KEY")
+    secret_key = os.getenv("BAIDU_OCR_SECRET_KEY") or os.getenv("BAIDU_ASR_SECRET_KEY")
     if not api_key or not secret_key:
-        return "OCR 功能未配置（缺少百度 API Key/Secret）"
+        return "OCR 未配置（缺少百度 OCR API Key/Secret Key）"
 
-    # 获取 access_token
-    token_url = "https://aip.baidubce.com/oauth/2.0/token"
-    params = {
-        "grant_type": "client_credentials",
-        "client_id": api_key,
-        "client_secret": secret_key
-    }
-    try:
-        resp = requests.get(token_url, params=params, timeout=10)
-        token_data = resp.json()
-        access_token = token_data.get("access_token", "")
-        if not access_token:
-            return f"获取百度 access_token 失败: {token_data}"
-    except Exception as e:
-        return f"获取 access_token 错误: {e}"
+    # 获取 access_token（可以复用语音识别的 token 函数，但为清晰可单独写或直接调用）
+    def get_ocr_token():
+        url = "https://aip.baidubce.com/oauth/2.0/token"
+        params = {"grant_type": "client_credentials", "client_id": api_key, "client_secret": secret_key}
+        try:
+            resp = requests.get(url, params=params, timeout=10)
+            return resp.json().get("access_token", "")
+        except Exception:
+            return ""
+
+    token = get_ocr_token()
+    if not token:
+        return "OCR 鉴权失败"
 
     # 读取图片并 base64 编码
     try:
-        with open(image_file_path, "rb") as f:
+        with open(image_path, "rb") as f:
             img_base64 = base64.b64encode(f.read()).decode("utf-8")
     except Exception as e:
         return f"图片读取失败: {e}"
+
+    url = "https://aip.baidubce.com/rest/2.0/ocr/v1/general_basic"
+    payload = {
+        "image": img_base64,
+        "detect_direction": "true",
+        "language_type": "CHN_ENG"
+    }
+    params = {"access_token": token}
+    try:
+        resp = requests.post(url, data=payload, params=params, timeout=15)
+        data = resp.json()
+        if "words_result" in data:
+            texts = [item["words"] for item in data["words_result"]]
+            return "\n".join(texts)
+        else:
+            return f"OCR 识别失败: {data.get('error_msg', '未知错误')}"
+    except Exception as e:
+        return f"OCR 请求错误: {e}"
 
     # 调用通用文字识别接口
     ocr_url = "https://aip.baidubce.com/rest/2.0/ocr/v1/general_basic"

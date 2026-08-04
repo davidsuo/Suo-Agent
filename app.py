@@ -7,6 +7,7 @@ from memory import memory   # 确保与 main.py 使用的同一个实例
 import tools
 import asyncio
 import json
+from tools import ocr_image
 
 
 SESSION_ID = "render_user"
@@ -120,7 +121,6 @@ with gr.Blocks(title="AI 智能体") as demo:
     async def handle_image_upload(image_path, history):
         if image_path is None:
             return history, ""
-        from tools import ocr_image
         text = ocr_image(image_path)
         history = history or []
         history.append({"role": "user", "content": "（图片上传）请识别图片中的文字"})
