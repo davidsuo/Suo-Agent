@@ -332,28 +332,29 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
             elif tool_name in TOOL_ROUTER:
                 task = {"tool": tool_name, "arguments": arguments}
                 max_attempts = 2 if tool_name in ("web_search", "fetch_webpage", "generate_image") else 1
-                res = None
+                raw_result = None
                 for attempt in range(max_attempts):
                     try:
                         res = await TOOL_ROUTER[tool_name].send_task(task)
-                        break
+                        raw_result = res.get("result", res.get("error")) if res else "未知错误"
+                        # 如果结果包含失败关键词，且还有重试机会，则重试
+                        if "失败" in str(raw_result) or "错误" in str(raw_result):
+                            raise ValueError(f"工具返回失败: {raw_result}")
+                        break  # 成功则不重试
                     except Exception as e:
                         if attempt == max_attempts - 1:
-                            res = {"error": f"任务执行失败（重试{max_attempts}次）: {e}"}
+                            raw_result = f"任务执行失败（重试{max_attempts}次）: {e}"
                         else:
                             print(f"[规划引擎] 步骤{step_id}失败，重试... ({attempt+1}/{max_attempts})")
                             await asyncio.sleep(1)
-
-                raw_result = res.get("result", res.get("error")) if res else "未知错误"
-                if tool_name == "generate_image" and not raw_result.startswith("图像生成"):
+                if raw_result is None:
+                    raw_result = "未知错误"
+                if tool_name == "generate_image" and not str(raw_result).startswith("图像生成"):
                     image_output = raw_result
                     results[step_id] = "图片已生成，将在最终回答中展示。"
                 else:
                     results[step_id] = raw_result
-
                 print(f"[规划引擎] 步骤{step_id}完成: {str(results[step_id])[:80]}")
-            else:
-                results[step_id] = f"工具 {tool_name} 未配置"
 
         # 如果有邮件步骤，生成确认提示并持久化
         if email_args:
@@ -451,25 +452,27 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                         target_worker = TOOL_ROUTER[func_name]
                         task = {"tool": func_name, "arguments": arguments}
                         max_attempts = 2 if func_name in ("web_search", "fetch_webpage", "generate_image") else 1
-                        res = None
+                        raw_result = None
                         for attempt in range(max_attempts):
                             try:
                                 res = await target_worker.send_task(task)
+                                raw_result = res.get("result", res.get("error")) if res else "未知错误"
+                                if "失败" in str(raw_result) or "错误" in str(raw_result):
+                                    raise ValueError(f"工具返回失败: {raw_result}")
                                 break
                             except Exception as e:
                                 if attempt == max_attempts - 1:
-                                    res = {"error": f"任务执行失败（重试{max_attempts}次）: {e}"}
+                                    raw_result = f"任务执行失败（重试{max_attempts}次）: {e}"
                                 else:
                                     print(f"[常规模式] {func_name}失败，重试... ({attempt+1}/{max_attempts})")
                                     await asyncio.sleep(1)
-                        raw_result = res.get("result", res.get("error")) if res else "未知错误"
+                        if raw_result is None:
+                            raw_result = "未知错误"
                         if func_name == "generate_image" and not str(raw_result).startswith("图像生成"):
                             image_output = raw_result
                             result = "图片已生成，将在最终回答中展示。"
                         else:
                             result = raw_result
-                    else:
-                        result = f"未找到工具 {func_name}"
 
                     messages.append({
                         "role": "tool",
