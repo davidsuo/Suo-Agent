@@ -39,6 +39,36 @@ def init_database():
 
 async def handle_user_input(text, audio, history):
     user_text = text or ""
+    
+    # 特殊命令：查看规划日志
+    if text.strip().lower() == "/logs":
+        try:
+            with open("plan_log.json", "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            if not lines:
+                answer = "暂无规划日志。"
+            else:
+                recent = lines[-3:] if len(lines) > 3 else lines
+                logs_display = ""
+                for idx, line in enumerate(recent, 1):
+                    entry = json.loads(line)
+                    logs_display += f"**记录 {idx}** (时间: {entry['timestamp']})\n"
+                    logs_display += f"用户需求: {entry['user_query']}\n"
+                    logs_display += f"计划步骤: {len(entry['plan'])} 步\n"
+                    # 简单展示结果摘要，避免过长
+                    for step_id, result in entry['results'].items():
+                        result_str = str(result)[:200]
+                        logs_display += f"  步骤{step_id}: {result_str}...\n"
+                    logs_display += "\n"
+                answer = logs_display
+        except FileNotFoundError:
+            answer = "暂无规划日志文件。"
+        except Exception as e:
+            answer = f"读取日志失败: {e}"
+        history = history or []
+        history.append({"role": "user", "content": "/logs"})
+        history.append({"role": "assistant", "content": answer})
+        return history, "", None
 
     # 如果有音频，先转成文字
     if audio is not None:
