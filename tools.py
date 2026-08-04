@@ -259,36 +259,37 @@ def analyze_file(file_path: str = None) -> str:
 
 # ---------- 图像生成 (Stable Diffusion via Replicate) ----------
 def generate_image(prompt: str, negative_prompt: str = "") -> str:
-    # 临时降级，避免超时
-    return "图像生成服务暂时不可用，请稍后重试或使用其他平台。"
+    """使用 Stability AI 生成图片，返回图片的 base64 数据或错误信息"""
+    api_key = os.getenv("STABILITY_API_KEY")
+    if not api_key:
+        return "图像生成未配置（缺少 STABILITY_API_KEY）"
 
-    API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-1"
-    headers = {"Authorization": f"Bearer {token}"}
+    url = "https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Accept": "application/json"
+    }
     payload = {
-        "inputs": prompt,
-        "parameters": {
-            "negative_prompt": negative_prompt or "",
-            "width": 512,
-            "height": 512,
-            "num_inference_steps": 30,
-        }
+        "text_prompts": [
+            {"text": prompt, "weight": 1.0},
+            {"text": negative_prompt or "blurry, ugly, low quality", "weight": -1.0}
+        ],
+        "cfg_scale": 7,
+        "samples": 1,
+        "steps": 30,
+        "width": 1024,
+        "height": 1024,
     }
 
     try:
-        resp = requests.post(API_URL, headers=headers, json=payload, timeout=60)
-        if resp.status_code == 200:
-            # 返回的是图片二进制数据，我们需要上传到临时图片托管或直接返回 base64
-            # 简单方案：将图片保存到 Render 的临时文件，返回 URL
-            import tempfile
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
-                f.write(resp.content)
-                temp_path = f.name
-            # 由于 Render 无法直接提供临时文件访问，我们改为返回 base64 图像
-            import base64
-            img_base64 = base64.b64encode(resp.content).decode("utf-8")
-            return f"图片已生成（base64）：![生成图片](data:image/png;base64,{img_base64})"
+        resp = requests.post(url, json=payload, headers=headers, timeout=30)
+        data = resp.json()
+        if resp.status_code == 200 and "artifacts" in data:
+            # 返回第一张图片的 base64 编码
+            img_b64 = data["artifacts"][0]["base64"]
+            return f"图片已生成（base64）：![生成图片](data:image/png;base64,{img_b64})"
         else:
-            return f"图像生成失败: {resp.status_code} {resp.text[:200]}"
+            return f"图像生成失败: {data.get('message', '未知错误')}"
     except Exception as e:
         return f"图像生成错误: {e}"
 
@@ -461,6 +462,21 @@ TOOLS_METADATA = [
                 "required": ["url"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_image",
+            "description": "使用 AI 根据文字描述生成一张图片，返回图片链接（base64）。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "prompt": {"type": "string", "description": "图片的英文描述（中文可能识别不佳，建议使用英文）"},
+                    "negative_prompt": {"type": "string", "description": "可选的负面提示，描述不希望出现的内容"}
+                },
+                "required": ["prompt"]
+            }
+        }
     }
 ]
 
@@ -476,4 +492,5 @@ AVAILABLE_TOOLS = {
     "analyze_file": analyze_file,
     "generate_image": generate_image,
     "fetch_webpage": fetch_webpage,
+    "generate_image": generate_image,
 }

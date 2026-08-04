@@ -6,10 +6,11 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from openai import OpenAI
-
 from memory import memory
 import re
 from pending_tools import pending, save_pending
+from tools import generate_image
+
 
 try:
     import rag
@@ -36,7 +37,13 @@ import asyncio
 from agents import SearchWorker, CodeWorker, DataWorker
 
 # 定义各 Worker 的工具字典
-web_scraper_tools = {"fetch_webpage": fetch_webpage}
+image_worker_tools = {
+    "generate_image": generate_image,
+}
+
+web_scraper_tools = {
+    "fetch_webpage": fetch_webpage
+}
 
 search_worker_tools = {
     "web_search": web_search,
@@ -57,6 +64,7 @@ search_worker = SearchWorker("SearchWorker", search_worker_tools)
 code_worker = CodeWorker("CodeWorker", code_worker_tools)
 data_worker = DataWorker("DataWorker", data_worker_tools)
 web_scraper_worker = SearchWorker("WebScraperWorker", web_scraper_tools)   # 复用 SearchWorker 类
+image_worker = SearchWorker("ImageWorker", image_worker_tools)  # 复用 SearchWorker 类
 
 app = FastAPI()
 
@@ -75,6 +83,7 @@ SYSTEM_PROMPT = """
 - web_search: 搜索互联网获取最新信息
 - execute_python: 执行Python代码进行计算或数据处理
 - analyze_file: 分析CSV/Excel文件
+- generate_image: 根据文字描述生成图片（建议使用英文提示词）
 
 当用户询问实时信息（如新闻、股价、天气）时，请调用 web_search。
 当用户要求计算或数据分析时，可调用 execute_python 执行代码。
@@ -142,6 +151,8 @@ data_worker_tools = {
 # 工具名 → Worker 映射（send_email 不在此列，由 Conductor 直接执行）
 TOOL_ROUTER = {}
 # 更新 TOOL_ROUTER
+for name in image_worker.tools:
+    TOOL_ROUTER[name] = image_worker
 for name in web_scraper_worker.tools:
     TOOL_ROUTER[name] = web_scraper_worker
 for name in search_worker.tools:
@@ -224,6 +235,9 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
     if not web_scraper_worker.is_running:
         asyncio.create_task(web_scraper_worker.run_loop())
         web_scraper_worker.is_running = True
+    if not image_worker.is_running:
+        asyncio.create_task(image_worker.run_loop())
+        image_worker.is_running = True
     print("Workers ready: Search=True, Code=True, Data=True")
 
     # 1. 检查是否为二次确认的确认回复
