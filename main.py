@@ -11,6 +11,7 @@ import re
 from pending_tools import pending, save_pending
 from tools import generate_image
 import time
+import datetime
 
 try:
     import rag
@@ -327,13 +328,23 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                 continue
             elif tool_name in TOOL_ROUTER:
                 task = {"tool": tool_name, "arguments": arguments}
-                try:
-                    res = await TOOL_ROUTER[tool_name].send_task(task)
-                    raw_result = res.get("result", res.get("error"))
-                    if tool_name == "generate_image" and not raw_result.startswith("图像生成"):
-                        image_output = raw_result
-                        results[step_id] = "图片已生成，将在最终回答中展示。"
-                    else:
+                max_attempts = 2 if tool_name in ("web_search", "fetch_webpage", "generate_image") else 1
+                res = None
+                for attempt in range(max_attempts):
+                    try:
+                        res = await TOOL_ROUTER[tool_name].send_task(task)
+                        break
+                    except Exception as e:
+                        if attempt == max_attempts - 1:
+                            res = {"error": f"任务执行失败（重试{max_attempts}次）: {e}"}
+                        else:
+                            print(f"[规划引擎] 步骤{step_id}失败，重试... ({attempt+1}/{max_attempts})")
+                            await asyncio.sleep(1)  # 短暂等待后重试
+                raw_result = res.get("result", res.get("error")) if res else "未知错误"
+                if tool_name == "generate_image" and not raw_result.startswith("图像生成"):
+                    image_output = raw_result
+                    results[step_id] = "图片已生成，将在最终回答中展示。"
+                else:
                         results[step_id] = raw_result
                 except Exception as e:
                     results[step_id] = f"任务执行异常: {e}"
@@ -365,7 +376,22 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
             )
             return confirm_msg
         else:
-            # 无邮件步骤，整合结果并进行智能后处理
+            # 记录规划日志
+            log_entry = {
+                "timestamp": datetime.datetime.now().isoformat(),
+                "session_id": session_id,
+                "query": query,
+                "plan": plan,
+                "results": {str(k): str(v)[:200] for k, v in results.items()},  # 截断长结果
+                "status": "completed"
+            }
+            try:
+                with open("plan_log.json", "a", encoding="utf-8") as f:
+                    f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+            except Exception as e:
+                print(f"规划日志写入失败: {e}")   
+                
+            # 无邮件步骤，整合结果并进行智能后处理            
             raw_info = "\n".join([f"{step['description']}: {str(results[step['id']])[:500]}" for step in plan if step['tool'] != 'send_email'])
             if len(raw_info) > 10000:
                 raw_info = raw_info[:10000] + "\n...（内容过长，已截断）"
