@@ -232,7 +232,7 @@ def call_deepseek_with_retry(messages, tools=None, temperature=0, max_retries=3,
         if json_match:
             return json.loads(json_match.group())
         return None
-    except Exception as e:
+        except Exception as e:
         print(f"[规划引擎] 生成计划失败: {e}")
         return None
 
