@@ -75,6 +75,11 @@ async def handle_user_input(text, audio, history):
     # 图片上传识别（通过 image_input 单独处理，此处不涉及）
     # 文件上传分析（通过 file_input 单独处理，此处不涉及）
     
+    # ===== 新增：文本优先，避免音频残留 =====
+    if text and text.strip():
+        audio = None
+    # =========================================
+    
     # 处理语音输入
     if audio is not None:
         from tools import speech_to_text
@@ -168,6 +173,8 @@ with gr.Blocks(title="AI 智能体") as demo:
         # 原有的文本和音频处理保持不变（注意需要适配多输入）
         async def handle_user_input(text, audio, history):
             transcribed = ""
+            if text and text.strip():
+                audio = None
             user_text = text or ""
             if audio is not None:
                 from tools import speech_to_text
