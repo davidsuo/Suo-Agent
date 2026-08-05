@@ -459,8 +459,8 @@ def get_ocr_token():
     except Exception:
         return ""
 
-def recognize_table(image_path: str) -> str:
-    """识别图片中的表格，返回 CSV 格式的表格内容"""
+ddef recognize_table(image_path: str) -> str:
+    """使用百度表格文字识别 V2 接口，返回 CSV 格式表格内容"""
     token = get_ocr_token()
     if not token:
         return "表格识别未配置或鉴权失败"
@@ -471,26 +471,31 @@ def recognize_table(image_path: str) -> str:
     except Exception as e:
         return f"图片读取失败: {e}"
 
-    url = "https://aip.baidubce.com/rest/2.0/solution/v1/form_ocr/request"
-    data = {"image": img_b64}
+    # 表格识别 V2 正确端点
+    url = "https://aip.baidubce.com/rest/2.0/ocr/v1/table"
+    data = {
+        "image": img_b64,
+        "return_excel": "false",   # 返回 JSON 格式的表格数据
+        "cell_contents": "true"    # 包含单元格文字
+    }
     params = {"access_token": token}
     try:
         resp = requests.post(url, data=data, params=params, timeout=30)
         result = resp.json()
-        if "result" in result:
-            tables = result["result"]
-            csv_output = ""
-            for table in tables:
-                if "cells" in table:
-                    rows_data = table["cells"]
-                    for row in rows_data:
-                        row_text = ",".join(cell.get("word", "") for cell in row)
-                        csv_output += row_text + "\n"
-                else:
-                    csv_output = "表格为空"
-            return csv_output if csv_output else "未识别到表格"
-        else:
+        if "error_code" in result:
             return f"表格识别失败: {result.get('error_msg', '未知错误')}"
+        # 解析表格数据
+        tables_data = result.get("tables_result", [])
+        if not tables_data:
+            return "未识别到表格"
+        csv_output = ""
+        for table in tables_data:
+            # 每个表格的 body 是一个二维数组
+            body = table.get("body", [])
+            for row in body:
+                row_text = ",".join(cell.get("word", "") for cell in row)
+                csv_output += row_text + "\n"
+        return csv_output if csv_output else "未识别到表格内容"
     except Exception as e:
         return f"表格识别请求错误: {e}"
         
