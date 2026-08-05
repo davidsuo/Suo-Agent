@@ -460,7 +460,7 @@ def get_ocr_token():
         return ""
 
 def recognize_table(image_path: str) -> str:
-    """使用百度表格文字识别 V2 接口，返回 CSV 格式表格内容（增强兼容性）"""
+    """使用百度表格文字识别 V2 接口，返回表格文本（按行列重排）"""
     token = get_ocr_token()
     if not token:
         return "表格识别未配置或鉴权失败"
@@ -481,50 +481,54 @@ def recognize_table(image_path: str) -> str:
     try:
         resp = requests.post(url, data=data, params=params, timeout=30)
         result = resp.json()
-        # 强制输出调试日志到终端
         print("[表格识别] 百度原始响应:", json.dumps(result, ensure_ascii=False)[:800], flush=True)
     except Exception as e:
         return f"表格识别请求失败: {e}"
 
-    # 检查错误
     if "error_code" in result:
         return f"表格识别失败: {result.get('error_msg', '未知错误')}"
-    if "errno" in result and result["errno"] != 0:
-        return f"表格识别失败: {result.get('errmsg', '未知错误')}"
 
     try:
         tables_data = result.get("tables_result", [])
         if not tables_data:
-            # 备用字段
-            tables_data = result.get("result", [])
-        if not tables_data:
             return "未识别到表格结构"
 
-        csv_output = ""
-        for table in tables_data:
-            # 兼容 table 直接是列表的情况
-            if isinstance(table, list):
-                rows = table
-            else:
-                body = table.get("body", [])
-                if not body:
-                    rows = table.get("cells", [])
-                else:
-                    rows = body
+        all_tables_text = ""
+        for table_idx, table in enumerate(tables_data):
+            # table 是单元格列表，每个单元格有 row_start, col_start, row_end, col_end, words
+            cells = table
+            if not isinstance(cells, list):
+                continue
 
-            for row in rows:
-                # 兼容 row 是字符串列表
-                if isinstance(row, str):
-                    csv_output += row + "\n"
-                elif isinstance(row, list):
-                    row_text = ",".join(
-                        cell.get("word", "") if isinstance(cell, dict) else str(cell)
-                        for cell in row
-                    )
-                    csv_output += row_text + "\n"
-                else:
-                    csv_output += str(row) + "\n"
-        return csv_output if csv_output else "未识别到表格内容"
+            # 找出最大行和列
+            max_row = 0
+            max_col = 0
+            for cell in cells:
+                r = cell.get("row_end", cell.get("row_start", 0))
+                c = cell.get("col_end", cell.get("col_start", 0))
+                if r > max_row:
+                    max_row = r
+                if c > max_col:
+                    max_col = c
+
+            # 创建空的二维数组
+            grid = [["" for _ in range(max_col + 1)] for _ in range(max_row + 1)]
+
+            # 填充单元格文字
+            for cell in cells:
+                r_start = cell.get("row_start", 0)
+                c_start = cell.get("col_start", 0)
+                words = cell.get("words", "")
+                # 如果为空，尝试用 " " 占位，保持表格结构
+                grid[r_start][c_start] = words if words else " "
+
+            # 将二维数组转换为文本（用制表符或逗号分隔）
+            table_text = ""
+            for row in grid:
+                table_text += ",".join(row) + "\n"
+            all_tables_text += f"表格 {table_idx+1}:\n{table_text}\n"
+
+        return all_tables_text if all_tables_text else "未识别到表格内容"
     except Exception as e:
         return f"表格数据解析失败: {e}"
         
