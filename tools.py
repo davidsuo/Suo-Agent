@@ -459,7 +459,7 @@ def get_ocr_token():
     except Exception:
         return ""
 
-ddef recognize_table(image_path: str) -> str:
+def recognize_table(image_path: str) -> str:
     """使用百度表格文字识别 V2 接口，返回 CSV 格式表格内容"""
     token = get_ocr_token()
     if not token:
