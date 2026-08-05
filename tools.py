@@ -1,5 +1,4 @@
 # tools.py
-import datetime
 import sqlite3
 import smtplib
 import os
@@ -14,14 +13,16 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from ddgs import DDGS
 from bs4 import BeautifulSoup
+from datetime import datetime, timezone, timedelta
 
 # 最近上传的文件路径（用于 analyze_file 自动使用）
 last_uploaded_file = None
 
 # ---------- 基础工具 ----------
 def get_current_time():
-    """返回当前日期和时间"""
-    now = datetime.datetime.now()
+    """返回当前东八区（北京时间）日期和时间"""
+    tz_beijing = timezone(timedelta(hours=8))
+    now = datetime.now(tz_beijing)
     return now.strftime("%Y-%m-%d %H:%M:%S")
 
 def calculator(expression: str):
