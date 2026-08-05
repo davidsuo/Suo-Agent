@@ -543,10 +543,69 @@ TOOLS_METADATA = [
                 "required": ["image_file_path"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_event",
+            "description": "添加一个日程事件，时间格式 YYYY-MM-DD HH:MM",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "事件标题"},
+                    "start_time": {"type": "string", "description": "开始时间，如 2025-08-05 14:00"},
+                    "end_time": {"type": "string", "description": "结束时间（可选）"},
+                    "description": {"type": "string", "description": "事件描述（可选）"}
+                },
+                "required": ["title", "start_time"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_events",
+            "description": "列出日程，可指定日期（YYYY-MM-DD）或不填列出所有",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "date": {"type": "string", "description": "查询日期，如 2025-08-05"}
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_event",
+            "description": "根据日程ID删除一个日程",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "event_id": {"type": "integer", "description": "日程ID"}
+                },
+                "required": ["event_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "recognize_table",
+            "description": "识别图片中的表格，返回 CSV 格式的表格内容。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "image_path": {"type": "string", "description": "图片文件的本地路径"}
+                },
+                "required": ["image_path"]
+            }
+        }
     }
 ]
 
-# 工具名称到函数的映射
+# ---------- 工具名称到函数的映射 ----------
 AVAILABLE_TOOLS = {
     "get_current_time": get_current_time,
     "calculator": calculator,
@@ -559,4 +618,134 @@ AVAILABLE_TOOLS = {
     "fetch_webpage": fetch_webpage,
     "generate_image": generate_image,
     "ocr_image": ocr_image,
+    "add_event": add_event,
+    "list_events": list_events,
+    "delete_event": delete_event,
+    "recognize_table": recognize_table,    
 }
+
+# ---------- 初始化函数和日程工具函数 ----------
+import sqlite3
+
+def init_calendar():
+    conn = sqlite3.connect("calendar.db")
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS events
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  title TEXT,
+                  start_time TEXT,
+                  end_time TEXT,
+                  description TEXT)''')
+    conn.commit()
+    conn.close()
+
+def add_event(title: str, start_time: str, end_time: str = "", description: str = "") -> str:
+    """添加日程事件，时间格式 YYYY-MM-DD HH:MM"""
+    init_calendar()
+    try:
+        conn = sqlite3.connect("calendar.db")
+        c = conn.cursor()
+        c.execute("INSERT INTO events (title, start_time, end_time, description) VALUES (?,?,?,?)",
+                  (title, start_time, end_time, description))
+        conn.commit()
+        conn.close()
+        return f"日程已添加：{title} 于 {start_time}"
+    except Exception as e:
+        return f"添加日程失败: {e}"
+
+def list_events(date: str = "") -> str:
+    """列出指定日期的所有日程，日期格式 YYYY-MM-DD，不填则列出所有"""
+    init_calendar()
+    try:
+        conn = sqlite3.connect("calendar.db")
+        c = conn.cursor()
+        if date:
+            c.execute("SELECT id, title, start_time, end_time, description FROM events WHERE start_time LIKE ? ORDER BY start_time", (date + "%",))
+        else:
+            c.execute("SELECT id, title, start_time, end_time, description FROM events ORDER BY start_time")
+        rows = c.fetchall()
+        conn.close()
+        if not rows:
+            return "暂无日程。"
+        result = "日程列表：\n"
+        for row in rows:
+            result += f"ID:{row[0]} | {row[1]} | 开始:{row[2]} | 结束:{row[3]} | {row[4]}\n"
+        return result
+    except Exception as e:
+        return f"查询日程失败: {e}"
+
+def delete_event(event_id: int) -> str:
+    """删除指定 ID 的日程"""
+    init_calendar()
+    try:
+        conn = sqlite3.connect("calendar.db")
+        c = conn.cursor()
+        c.execute("DELETE FROM events WHERE id=?", (event_id,))
+        conn.commit()
+        conn.close()
+        return f"日程 {event_id} 已删除"
+    except Exception as e:
+        return f"删除失败: {e}"
+
+
+# ---------- 表格识别函数 ----------
+def recognize_table(image_path: str) -> str:
+    """识别图片中的表格，返回 CSV 格式的表格内容"""
+    api_key = os.getenv("BAIDU_OCR_API_KEY") or os.getenv("BAIDU_ASR_API_KEY")
+    secret_key = os.getenv("BAIDU_OCR_SECRET_KEY") or os.getenv("BAIDU_ASR_SECRET_KEY")
+    if not api_key or not secret_key:
+        return "表格识别未配置"
+
+    # 获取 token
+    token = get_baidu_access_token()  # 注意：这里可以复用语音识别的 token 获取函数，但那个函数读取的是 ASR 的 key，可能需要统一
+    if not token:
+        return "表格识别鉴权失败"
+
+    # 读取图片并编码
+    try:
+        with open(image_path, "rb") as f:
+            img_b64 = base64.b64encode(f.read()).decode("utf-8")
+    except Exception as e:
+        return f"图片读取失败: {e}"
+
+    url = "https://aip.baidubce.com/rest/2.0/solution/v1/form_ocr/request"
+    data = {"image": img_b64}
+    params = {"access_token": token}
+    try:
+        resp = requests.post(url, data=data, params=params, timeout=30)
+        result = resp.json()
+        if "result" in result:
+            # 提取表格数据，转为 CSV 格式
+            tables = result["result"]
+            csv_output = ""
+            for table in tables:
+                # 表格数据是二维数组
+                if "cells" in table:
+                    rows_data = table["cells"]
+                    for row in rows_data:
+                        row_text = ",".join(cell.get("word", "") for cell in row)
+                        csv_output += row_text + "\n"
+                else:
+                    csv_output = "表格为空"
+            return csv_output if csv_output else "未识别到表格"
+        else:
+            return f"表格识别失败: {result.get('error_msg', '未知错误')}"
+    except Exception as e:
+        return f"表格识别请求错误: {e}"
+
+# ---------- 获取 OCR Token ----------
+def get_ocr_token():
+    api_key = os.getenv("BAIDU_OCR_API_KEY") or os.getenv("BAIDU_ASR_API_KEY")
+    secret_key = os.getenv("BAIDU_OCR_SECRET_KEY") or os.getenv("BAIDU_ASR_SECRET_KEY")
+    if not api_key or not secret_key:
+        return ""
+    url = "https://aip.baidubce.com/oauth/2.0/token"
+    params = {"grant_type": "client_credentials", "client_id": api_key, "client_secret": secret_key}
+    try:
+        resp = requests.get(url, params=params, timeout=10)
+        return resp.json().get("access_token", "")
+    except:
+        return ""
+        
+
+

@@ -64,6 +64,14 @@ data_worker_tools = {
     "query_database": query_database,
     "analyze_file": analyze_file,
 }
+calendar_worker_tools = {
+    "add_event": add_event,
+    "list_events": list_events,
+    "delete_event": delete_event,
+}
+table_ocr_worker_tools = {
+    "recognize_table": recognize_table,
+}
 
 # 读取 Worker 环境变量
 search_worker = SearchWorker("SearchWorker", search_worker_tools)
@@ -72,7 +80,9 @@ data_worker = DataWorker("DataWorker", data_worker_tools)
 web_scraper_worker = SearchWorker("WebScraperWorker", web_scraper_tools)   # 复用 SearchWorker 类
 image_worker = SearchWorker("ImageWorker", image_worker_tools)  # 复用 SearchWorker 类
 ocr_worker = SearchWorker("OCRWorker", ocr_worker_tools)  # 复用 SearchWorker 类
-ALL_WORKERS = [search_worker, code_worker, data_worker, image_worker, web_scraper_worker, ocr_worker]
+calendar_worker = SearchWorker("CalendarWorker", calendar_worker_tools)
+table_ocr_worker = SearchWorker("TableOCRWorker", table_ocr_worker_tools
+ALL_WORKERS = [search_worker, code_worker, data_worker, image_worker, web_scraper_worker, ocr_worker, calendar_worker, table_ocr_worker]
 
 
 def get_workers_status():
@@ -98,6 +108,10 @@ SYSTEM_PROMPT = """
 - analyze_file: 分析CSV/Excel文件
 - generate_image: 根据文字描述生成图片（建议使用英文提示词）
 - ocr_image: 识别图片中的文字（参数必须为 "image_file_path"）
+- add_event: 添加日程
+- list_events: 列出日程
+- delete_event: 删除日程
+- recognize_table: 识别图片中的表格，返回 CSV
 
 当用户询问实时信息（如新闻、股价、天气）时，请调用 web_search。
 当用户要求计算或数据分析时，可调用 execute_python 执行代码。
@@ -203,6 +217,10 @@ data_worker_tools = {
 # 工具名 → Worker 映射（send_email 不在此列，由 Conductor 直接执行）
 TOOL_ROUTER = {}
 # 更新 TOOL_ROUTER
+for name in table_ocr_worker.tools:
+    TOOL_ROUTER[name] = table_ocr_worker
+for name in calendar_worker.tools:
+    TOOL_ROUTER[name] = calendar_worker
 for name in ocr_worker.tools:
     TOOL_ROUTER[name] = ocr_worker
 for name in image_worker.tools:
@@ -232,6 +250,7 @@ async def generate_plan(user_query, history, client):
 - analyze_file: 分析 CSV/Excel 文件（参数必须为 "file_path"）
 - send_email: 发送邮件（参数必须为 "to_email", "subject", "body"）
 - generate_image: 根据文字描述生成图片（参数必须为 "prompt", 可选 "negative_prompt"）
+
 
 计划是一个步骤列表，每个步骤包含：
 - id: 步骤唯一编号（从1开始）
@@ -281,6 +300,12 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
         return err_msg
 
     # 惰性启动所有专业 Worker（仅首次调用时执行）
+    if not calendar_worker.is_running:
+        asyncio.create_task(calendar_worker.run_loop())
+        calendar_worker.is_running = True
+    if not table_ocr_worker.is_running:
+        asyncio.create_task(table_ocr_worker.run_loop())
+        table_ocr_worker.is_running = True
     if not search_worker.is_running:
         asyncio.create_task(search_worker.run_loop())
         search_worker.is_running = True
