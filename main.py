@@ -81,7 +81,7 @@ web_scraper_worker = SearchWorker("WebScraperWorker", web_scraper_tools)   # 复
 image_worker = SearchWorker("ImageWorker", image_worker_tools)  # 复用 SearchWorker 类
 ocr_worker = SearchWorker("OCRWorker", ocr_worker_tools)  # 复用 SearchWorker 类
 calendar_worker = SearchWorker("CalendarWorker", calendar_worker_tools)
-table_ocr_worker = SearchWorker("TableOCRWorker", table_ocr_worker_tools
+table_ocr_worker = SearchWorker("TableOCRWorker", table_ocr_worker_tools)
 ALL_WORKERS = [search_worker, code_worker, data_worker, image_worker, web_scraper_worker, ocr_worker, calendar_worker, table_ocr_worker]
 
 
