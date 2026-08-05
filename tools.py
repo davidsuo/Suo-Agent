@@ -495,9 +495,9 @@ def recognize_table(image_path: str) -> str:
 
         all_tables_text = ""
         for table_idx, table in enumerate(tables_data):
-            # table 是单元格列表，每个单元格有 row_start, col_start, row_end, col_end, words
-            cells = table
-            if not isinstance(cells, list):
+            # 关键：单元格列表在 "body" 中
+            cells = table.get("body", [])
+            if not cells:
                 continue
 
             # 找出最大行和列
@@ -519,10 +519,9 @@ def recognize_table(image_path: str) -> str:
                 r_start = cell.get("row_start", 0)
                 c_start = cell.get("col_start", 0)
                 words = cell.get("words", "")
-                # 如果为空，尝试用 " " 占位，保持表格结构
                 grid[r_start][c_start] = words if words else " "
 
-            # 将二维数组转换为文本（用制表符或逗号分隔）
+            # 将二维数组转换为文本（逗号分隔）
             table_text = ""
             for row in grid:
                 table_text += ",".join(row) + "\n"
