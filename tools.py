@@ -471,33 +471,58 @@ def recognize_table(image_path: str) -> str:
     except Exception as e:
         return f"图片读取失败: {e}"
 
-    # 表格识别 V2 正确端点
     url = "https://aip.baidubce.com/rest/2.0/ocr/v1/table"
     data = {
         "image": img_b64,
-        "return_excel": "false",   # 返回 JSON 格式的表格数据
-        "cell_contents": "true"    # 包含单元格文字
+        "return_excel": "false",
+        "cell_contents": "true"
     }
     params = {"access_token": token}
     try:
         resp = requests.post(url, data=data, params=params, timeout=30)
         result = resp.json()
-        if "error_code" in result:
-            return f"表格识别失败: {result.get('error_msg', '未知错误')}"
-        # 解析表格数据
+        print(f"[表格识别] 百度原始响应: {json.dumps(result, ensure_ascii=False)[:500]}")  # 调试日志
+    except Exception as e:
+        return f"表格识别请求失败: {e}"
+
+    # 检查是否为错误响应
+    if "error_code" in result:
+        return f"表格识别失败: {result.get('error_msg', '未知错误')}"
+    if "errno" in result and result["errno"] != 0:
+        return f"表格识别失败: {result.get('errmsg', '未知错误')}"
+
+    # 解析表格数据
+    try:
         tables_data = result.get("tables_result", [])
         if not tables_data:
-            return "未识别到表格"
+            # 尝试另一种可能的结构：百度新版本可能将结果放在 "result" 中
+            if "result" in result and isinstance(result["result"], list):
+                tables_data = result["result"]
+            else:
+                return "未识别到表格结构"
+
         csv_output = ""
         for table in tables_data:
-            # 每个表格的 body 是一个二维数组
+            # 表格可能包含 body（二维数组）或 cells（数组）
             body = table.get("body", [])
+            if not body:
+                # 尝试备用字段 header/rows 等
+                cells = table.get("cells", [])
+                if cells:
+                    # 假设 cells 是二维数组
+                    for row in cells:
+                        row_text = ",".join(cell.get("word", "") for cell in row)
+                        csv_output += row_text + "\n"
+                    continue
+                else:
+                    return "表格数据格式未知，请检查日志"
+            # 标准 body 处理
             for row in body:
                 row_text = ",".join(cell.get("word", "") for cell in row)
                 csv_output += row_text + "\n"
         return csv_output if csv_output else "未识别到表格内容"
     except Exception as e:
-        return f"表格识别请求错误: {e}"
+        return f"表格数据解析失败: {e}"
         
 
 # ---------- 工具元数据 ----------
