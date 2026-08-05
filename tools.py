@@ -460,7 +460,7 @@ def get_ocr_token():
         return ""
 
 def recognize_table(image_path: str) -> str:
-    """使用百度表格文字识别 V2 接口，返回 CSV 格式表格内容"""
+    """使用百度表格文字识别 V2 接口，返回 CSV 格式表格内容（增强兼容性）"""
     token = get_ocr_token()
     if not token:
         return "表格识别未配置或鉴权失败"
@@ -481,45 +481,49 @@ def recognize_table(image_path: str) -> str:
     try:
         resp = requests.post(url, data=data, params=params, timeout=30)
         result = resp.json()
-        print(f"[表格识别] 百度原始响应: {json.dumps(result, ensure_ascii=False)[:500]}")  # 调试日志
+        # 强制输出调试日志到终端
+        print("[表格识别] 百度原始响应:", json.dumps(result, ensure_ascii=False)[:800], flush=True)
     except Exception as e:
         return f"表格识别请求失败: {e}"
 
-    # 检查是否为错误响应
+    # 检查错误
     if "error_code" in result:
         return f"表格识别失败: {result.get('error_msg', '未知错误')}"
     if "errno" in result and result["errno"] != 0:
         return f"表格识别失败: {result.get('errmsg', '未知错误')}"
 
-    # 解析表格数据
     try:
         tables_data = result.get("tables_result", [])
         if not tables_data:
-            # 尝试另一种可能的结构：百度新版本可能将结果放在 "result" 中
-            if "result" in result and isinstance(result["result"], list):
-                tables_data = result["result"]
-            else:
-                return "未识别到表格结构"
+            # 备用字段
+            tables_data = result.get("result", [])
+        if not tables_data:
+            return "未识别到表格结构"
 
         csv_output = ""
         for table in tables_data:
-            # 表格可能包含 body（二维数组）或 cells（数组）
-            body = table.get("body", [])
-            if not body:
-                # 尝试备用字段 header/rows 等
-                cells = table.get("cells", [])
-                if cells:
-                    # 假设 cells 是二维数组
-                    for row in cells:
-                        row_text = ",".join(cell.get("word", "") for cell in row)
-                        csv_output += row_text + "\n"
-                    continue
+            # 兼容 table 直接是列表的情况
+            if isinstance(table, list):
+                rows = table
+            else:
+                body = table.get("body", [])
+                if not body:
+                    rows = table.get("cells", [])
                 else:
-                    return "表格数据格式未知，请检查日志"
-            # 标准 body 处理
-            for row in body:
-                row_text = ",".join(cell.get("word", "") for cell in row)
-                csv_output += row_text + "\n"
+                    rows = body
+
+            for row in rows:
+                # 兼容 row 是字符串列表
+                if isinstance(row, str):
+                    csv_output += row + "\n"
+                elif isinstance(row, list):
+                    row_text = ",".join(
+                        cell.get("word", "") if isinstance(cell, dict) else str(cell)
+                        for cell in row
+                    )
+                    csv_output += row_text + "\n"
+                else:
+                    csv_output += str(row) + "\n"
         return csv_output if csv_output else "未识别到表格内容"
     except Exception as e:
         return f"表格数据解析失败: {e}"
