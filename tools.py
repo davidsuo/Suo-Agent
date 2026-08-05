@@ -460,7 +460,7 @@ def get_ocr_token():
         return ""
 
 def recognize_table(image_path: str) -> str:
-    """使用百度表格文字识别 V2 接口，返回表格文本（按行列重排）"""
+    """使用百度表格文字识别 V2 接口，返回表格文本（按行列重排，去除空列）"""
     token = get_ocr_token()
     if not token:
         return "表格识别未配置或鉴权失败"
@@ -495,12 +495,10 @@ def recognize_table(image_path: str) -> str:
 
         all_tables_text = ""
         for table_idx, table in enumerate(tables_data):
-            # 关键：单元格列表在 "body" 中
             cells = table.get("body", [])
             if not cells:
                 continue
 
-            # 找出最大行和列
             max_row = 0
             max_col = 0
             for cell in cells:
@@ -511,20 +509,29 @@ def recognize_table(image_path: str) -> str:
                 if c > max_col:
                     max_col = c
 
-            # 创建空的二维数组
             grid = [["" for _ in range(max_col + 1)] for _ in range(max_row + 1)]
 
-            # 填充单元格文字
             for cell in cells:
                 r_start = cell.get("row_start", 0)
                 c_start = cell.get("col_start", 0)
                 words = cell.get("words", "")
-                grid[r_start][c_start] = words if words else " "
+                grid[r_start][c_start] = words
 
-            # 将二维数组转换为文本（逗号分隔）
-            table_text = ""
+            # 清洗行：去除尾部连续空列，忽略全空行
+            cleaned_rows = []
             for row in grid:
+                while row and row[-1] == "":
+                    row.pop()
+                if any(cell != "" for cell in row):
+                    cleaned_rows.append(row)
+
+            if not cleaned_rows:
+                continue
+
+            table_text = ""
+            for row in cleaned_rows:
                 table_text += ",".join(row) + "\n"
+
             all_tables_text += f"表格 {table_idx+1}:\n{table_text}\n"
 
         return all_tables_text if all_tables_text else "未识别到表格内容"
