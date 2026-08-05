@@ -31,6 +31,10 @@ from tools import (
     fetch_webpage,
     generate_image,
     ocr_image,
+    add_event, 
+    list_events, 
+    delete_event,
+    recognize_table,
 )
 
 from guardrails import input_guard, tool_call_guard, output_guard
