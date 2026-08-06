@@ -91,7 +91,7 @@ client = OpenAI(
 )
 
 SYSTEM_PROMPT = """
-你是一个全能的AI助手，可以使用记忆、知识库和多种工具来回答用户问题。
+你是一个全能的AI助手。当调用工具获得结果后，必须严格基于工具返回的信息回答问题，严禁编造或声称无法获取。
 可用工具：
 - get_current_time: 获取当前时间
 - calculator: 数学计算
@@ -486,34 +486,12 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                         else:
                             result = raw_result
 
-                        # --- 新增：简单查询直接返回结果 ---
-                        if func_name in ("get_current_time", "calculator"):
-                            try:
-                                final_result = raw_result  # 使用原始结果
-                                print(f"[直接返回] 工具: {func_name}, raw_result: {str(final_result)[:200]}", flush=True)
-                                if not final_result or "失败" in str(final_result) or "错误" in str(final_result):
-                                    # 结果无效，回退为正常追加消息，让模型处理
-                                    messages.append({
-                                        "role": "tool",
-                                        "tool_call_id": tool_call.id,
-                                        "content": result
-                                    })
-                                    continue
-                                answer = final_result
-                                answer = output_guard(answer)
-                                if image_output:
-                                    answer = answer + "\n\n" + image_output
-                                memory.append(session_id, query, answer)
-                                return answer
-                            except Exception as e:
-                                import traceback
-                                traceback.print_exc()
-                                messages.append({
-                                    "role": "tool",
-                                    "tool_call_id": tool_call.id,
-                                    "content": result
-                                })
-                                continue
+                        # 始终追加 tool 消息，保持消息链完整
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": result
+                        })
             else:
                 print(f"[DEBUG] 最终消息数量: {len(messages)}")
                 # 打印最后一条工具消息（如果有）
