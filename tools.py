@@ -18,7 +18,22 @@ from bs4 import BeautifulSoup
 # 最近上传的文件路径（用于 analyze_file 自动使用）
 last_uploaded_file = None
 
-# ---------- 基础工具 ----------
+# ========== 基础工具 ==========
+
+# ---------- 计算器  (calculator) ----------
+def calculator(expression: str):
+    """安全计算数学表达式，支持带逗号的数字"""
+    try:
+        expression = expression.replace(",", "")  # 允许逗号分隔数字
+        allowed_chars = set("0123456789+-*/().% ^")
+        if not all(c in allowed_chars for c in expression.replace(" ", "")):
+            return "错误：表达式包含不允许的字符"
+        result = eval(expression, {"__builtins__": {}})
+        return str(result)
+    except Exception as e:
+        return f"计算出错: {e}"
+        
+# ---------- 获取当前的日期和时间  (get_current_time) ----------
 def get_current_time():
     """返回当前东八区（北京时间）日期和时间"""
     try:
@@ -29,7 +44,8 @@ def get_current_time():
     except Exception as e:
         print(f"[get_current_time] 执行异常: {e}", flush=True)
         return f"获取时间失败: {e}"
-
+        
+# ---------- 查询数据库  (query_database) ----------
 def query_database(sql: str):
     """查询 SQLite 数据库，仅允许 SELECT"""
     db_path = "sample.db"
@@ -49,7 +65,8 @@ def query_database(sql: str):
         return result
     except Exception as e:
         return f"数据库查询错误: {e}"
-
+        
+# ---------- 发送邮件  (send_email) ----------
 def send_email(to_email: str, subject: str, body: str):
     api_key = os.getenv("BREVO_API_KEY")
     from_email = os.getenv("EMAIL_FROM")
@@ -387,7 +404,8 @@ def init_calendar():
                   description TEXT)''')
     conn.commit()
     conn.close()
-
+    
+# ---------- 添加事件 ----------
 def add_event(title: str, start_time: str, end_time: str = "", description: str = "") -> str:
     """添加日程事件，时间格式 YYYY-MM-DD HH:MM"""
     init_calendar()
@@ -401,7 +419,8 @@ def add_event(title: str, start_time: str, end_time: str = "", description: str 
         return f"日程已添加：{title} 于 {start_time}"
     except Exception as e:
         return f"添加日程失败: {e}"
-
+        
+# ---------- 列举事件 ----------
 def list_events(date: str = "") -> str:
     """列出指定日期的所有日程，日期格式 YYYY-MM-DD，不填则列出所有"""
     init_calendar()
@@ -422,7 +441,8 @@ def list_events(date: str = "") -> str:
         return result
     except Exception as e:
         return f"查询日程失败: {e}"
-
+        
+# ---------- 删除事件 ----------
 def delete_event(event_id: int) -> str:
     """删除指定 ID 的日程"""
     init_calendar()
@@ -451,7 +471,8 @@ def get_ocr_token():
         return resp.json().get("access_token", "")
     except Exception:
         return ""
-
+        
+# ---------- 识别图片中的表格 ----------
 def recognize_table(image_path: str) -> str:
     """使用百度表格文字识别 V2 接口，返回表格文本（按行列重排，去除空列）"""
     token = get_ocr_token()
