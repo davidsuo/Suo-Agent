@@ -4,6 +4,7 @@ import uuid
 import traceback
 from functools import partial
 from typing import Any, Dict, Callable
+import json
 
 class Agent:
     def __init__(self, name: str):
