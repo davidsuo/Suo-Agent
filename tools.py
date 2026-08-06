@@ -407,16 +407,16 @@ def init_calendar():
     
 # ---------- 添加事件 ----------
 def add_event(title: str, start_time: str, end_time: str = "", description: str = "") -> str:
-    """添加日程事件，时间格式 YYYY-MM-DD HH:MM"""
     init_calendar()
     try:
         conn = sqlite3.connect("calendar.db")
         c = conn.cursor()
         c.execute("INSERT INTO events (title, start_time, end_time, description) VALUES (?,?,?,?)",
                   (title, start_time, end_time, description))
+        event_id = c.lastrowid
         conn.commit()
         conn.close()
-        return f"日程已添加：{title} 于 {start_time}"
+        return f"日程已添加 (ID:{event_id})：{title} 于 {start_time}"
     except Exception as e:
         return f"添加日程失败: {e}"
         
@@ -552,22 +552,39 @@ def recognize_table(image_path: str) -> str:
     except Exception as e:
         return f"表格数据解析失败: {e}"
         
-# ===================== Saga 补偿函数 =====================
-def compensate_send_email(to_email: str, subject: str, body: str):
-    """邮件发送失败时的补偿：记录日志并通知用户"""
-    # 实际可调用邮件 API 发送致歉信，或写入失败队列
-    return f"补偿通知：邮件发送至 {to_email} 失败，已记录。请稍后重试或手动发送。"
+# ===================== Saga 补偿函数（可执行回滚） =====================
+def compensate_add_event(title: str, start_time: str, end_time: str = "", description: str = "", **kwargs):
+    """补偿添加日程：根据返回结果中的 ID 删除日程"""
+    result = kwargs.get("result", "")
+    import re
+    match = re.search(r'ID:(\d+)', result)
+    if match:
+        event_id = int(match.group(1))
+        return delete_event(event_id)
+    else:
+        # 没有找到 ID，尝试根据标题和时间模糊删除（可能不精确）
+        return f"补偿：无法精确定位日程「{title}」，请手动检查。"
 
-def compensate_add_event(title: str, start_time: str, end_time: str = "", description: str = ""):
-    """添加日程失败的补偿：演示回滚逻辑"""
-    # 如果添加失败（实际可能没有真正写入），这里简单返回提示
-    return f"补偿：日程「{title}」添加失败，已取消。"
+def compensate_send_email(to_email: str, subject: str, body: str, **kwargs):
+    """补偿发送邮件：记录到日志文件，通知用户"""
+    import datetime
+    try:
+        with open("email_failures.log", "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.datetime.now()}] 邮件发送失败: 收件人={to_email}, 主题={subject}\n")
+        return f"补偿：邮件发送至 {to_email} 失败，已记录到日志。"
+    except Exception as e:
+        return f"补偿记录失败: {e}"
 
-def compensate_execute_python(code: str):
-    """代码执行失败的补偿：记录错误日志"""
-    return f"补偿：代码执行失败，已记录错误。"
+def compensate_execute_python(code: str, **kwargs):
+    """补偿代码执行：记录错误日志（不改变状态）"""
+    import datetime
+    try:
+        with open("code_failures.log", "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.datetime.now()}] 代码执行失败:\n{code}\n")
+        return "补偿：代码执行错误已记录。"
+    except Exception as e:
+        return f"补偿记录失败: {e}"
 
-# 补偿函数映射表
 COMPENSATIONS = {
     "send_email": compensate_send_email,
     "add_event": compensate_add_event,
@@ -610,7 +627,6 @@ TOOLS_METADATA = [
                     "sql": {"type": "string", "description": "SELECT 查询语句"}
                 },
                 "required": ["sql"]
-            }
         }
     },
     {

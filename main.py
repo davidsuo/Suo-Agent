@@ -358,7 +358,7 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                     if "error" in res or "失败" in str(raw_result) or "错误" in str(raw_result):
                         # -------- Saga 补偿回滚 --------
                         print(f"[Saga] 步骤{step_id}失败，开始补偿...")
-                        for comp_step, comp_args in reversed(completed_steps):
+                        for comp_step, comp_args, comp_result in reversed(completed_steps):
                             comp_func_name = comp_step.get("tool")
                             if comp_func_name in COMPENSATIONS:
                                 try:
@@ -372,13 +372,13 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
 
                     # 执行成功，记录结果
                     results[step_id] = raw_result
-                    completed_steps.append((step, arguments))  # 保存步骤及参数，用于可能的补偿
+                    completed_steps.append((step, arguments, raw_result))  # 保存步骤及参数，用于可能的补偿
                     print(f"[规划引擎] 步骤{step_id}完成: {str(raw_result)[:80]}")
 
                 except Exception as e:
                     # 网络异常等也触发补偿
                     print(f"[Saga] 步骤{step_id}异常，开始补偿: {e}")
-                    for comp_step, comp_args in reversed(completed_steps):
+                    for comp_step, comp_args, comp_result in reversed(completed_steps):
                         comp_func_name = comp_step.get("tool")
                         if comp_func_name in COMPENSATIONS:
                             try:
