@@ -499,12 +499,15 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                         event_data = {"task": task, "future": future}
                         try:
                             await bus.publish(f"ToolRequested.{worker_name}", event_data)
-                            res = await future
+                            # 增加超时，防止永久等待
+                            res = await asyncio.wait_for(future, timeout=30)
                             raw_result = res.get("result", res.get("error")) if res else "未知错误"
-                        except Exception as e:    
+                        except asyncio.TimeoutError:
+                            raw_result = "工具执行超时，请稍后重试。"
+                        except Exception as e:
                             raw_result = f"事件驱动调用失败: {e}"
 
-                        # 图像生成特殊处理：保存完整结果，发送占位符
+                        # 图像生成特殊处理
                         if func_name == "generate_image" and not str(raw_result).startswith("图像生成"):
                             image_output = raw_result
                             result = "图片已生成，将在最终回答中展示。"
