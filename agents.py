@@ -70,6 +70,39 @@ class WorkerAgent(Agent):
             return {"result": result}
         except Exception as e:
             return {"error": str(e), "traceback": traceback.format_exc()}
+
+class QueryWorker(WorkerAgent):
+    """带缓存的查询 Worker"""
+    def __init__(self, name: str, tools: Dict[str, Callable]):
+        super().__init__(name, tools)
+        self.cache = {}  # {cache_key: result}
+
+    def _get_cache_key(self, tool_name, arguments):
+        # 生成缓存键：工具名 + 参数的字符串表示
+        return f"{tool_name}:{json.dumps(arguments, sort_keys=True)}"
+
+    async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        tool_name = task.get("tool")
+        arguments = task.get("arguments", {})
+
+        # 生成缓存键
+        cache_key = self._get_cache_key(tool_name, arguments)
+
+        # 如果是可缓存工具且命中缓存，直接返回
+        if cache_key in self.cache:
+            print(f"[QueryWorker] 缓存命中: {cache_key}")
+            return {"result": self.cache[cache_key]}
+
+        # 否则执行工具
+        result = await super().handle_task(task)
+
+        # 缓存结果（简单的内存缓存，不设置过期时间，后续可加 TTL）
+        if "error" not in result:
+            self.cache[cache_key] = result["result"]
+            print(f"[QueryWorker] 缓存写入: {cache_key}")
+
+        return result
+
             
 # ---------- 专业智能体子类（实际仍继承 WorkerAgent，只是职责明确） ----------
 class SearchWorker(WorkerAgent):

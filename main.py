@@ -42,52 +42,40 @@ from pending_tools import pending
 import asyncio
 from agents import SearchWorker, CodeWorker, DataWorker
 
-# 定义各 Worker 的工具字典
-ocr_worker_tools = {
-    "ocr_image": ocr_image,
-}
-
-image_worker_tools = {
-    "generate_image": generate_image,
-}
-
-web_scraper_tools = {
-    "fetch_webpage": fetch_webpage
-}
-
-search_worker_tools = {
-    "web_search": web_search,
-    "speech_to_text": speech_to_text,
+# ========== 查询类 Worker（带缓存） ==========
+query_worker_tools = {
     "get_current_time": get_current_time,
     "calculator": calculator,
-}
-code_worker_tools = {
-    "execute_python": execute_python,
-}
-data_worker_tools = {
     "query_database": query_database,
-    "analyze_file": analyze_file,
-}
-calendar_worker_tools = {
-    "add_event": add_event,
     "list_events": list_events,
-    "delete_event": delete_event,
-}
-table_ocr_worker_tools = {
+    "web_search": web_search,
+    "fetch_webpage": fetch_webpage,
+    "ocr_image": ocr_image,
     "recognize_table": recognize_table,
+    "analyze_file": analyze_file,
+    "speech_to_text": speech_to_text,
 }
+query_worker = QueryWorker("QueryWorker", query_worker_tools)
 
-# 读取 Worker 环境变量
-search_worker = SearchWorker("SearchWorker", search_worker_tools)
-code_worker = CodeWorker("CodeWorker", code_worker_tools)
-data_worker = DataWorker("DataWorker", data_worker_tools)
-web_scraper_worker = SearchWorker("WebScraperWorker", web_scraper_tools)   # 复用 SearchWorker 类
-image_worker = SearchWorker("ImageWorker", image_worker_tools)  # 复用 SearchWorker 类
-ocr_worker = SearchWorker("OCRWorker", ocr_worker_tools)  # 复用 SearchWorker 类
-calendar_worker = SearchWorker("CalendarWorker", calendar_worker_tools)
-table_ocr_worker = SearchWorker("TableOCRWorker", table_ocr_worker_tools)
-ALL_WORKERS = [search_worker, code_worker, data_worker, image_worker, web_scraper_worker, ocr_worker, calendar_worker, table_ocr_worker]
+# ========== 命令类 Worker ==========
+command_worker_tools = {
+    "send_email": send_email,
+    "add_event": add_event,
+    "delete_event": delete_event,
+    "execute_python": execute_python,
+    "generate_image": generate_image,
+}
+command_worker = WorkerAgent("CommandWorker", command_worker_tools)   # 不需要缓存的命令 Worker
 
+# ========== 工具路由表 ==========
+TOOL_ROUTER = {}
+for name in query_worker.tools:
+    TOOL_ROUTER[name] = query_worker
+for name in command_worker.tools:
+    TOOL_ROUTER[name] = command_worker
+
+# 监控用列表（如果需要）
+ALL_WORKERS = [query_worker, command_worker]
 
 def get_workers_status():
     """返回所有 Worker 的状态列表"""
@@ -202,43 +190,6 @@ def call_deepseek_with_retry(messages, tools=None, temperature=0, max_retries=3,
             else:
                 raise
 
-# ========== 专业 Worker 初始化 ==========
-search_worker_tools = {
-    "web_search": web_search,
-    "speech_to_text": speech_to_text,
-    "get_current_time": get_current_time,
-    "calculator": calculator,
-}
-code_worker_tools = {
-    "execute_python": execute_python,
-}
-data_worker_tools = {
-    "query_database": query_database,
-    "analyze_file": analyze_file,
-}
-
-
-# 工具名 → Worker 映射（send_email 不在此列，由 Conductor 直接执行）
-TOOL_ROUTER = {}
-# 更新 TOOL_ROUTER
-for name in table_ocr_worker.tools:
-    TOOL_ROUTER[name] = table_ocr_worker
-for name in calendar_worker.tools:
-    TOOL_ROUTER[name] = calendar_worker
-for name in ocr_worker.tools:
-    TOOL_ROUTER[name] = ocr_worker
-for name in image_worker.tools:
-    TOOL_ROUTER[name] = image_worker
-for name in web_scraper_worker.tools:
-    TOOL_ROUTER[name] = web_scraper_worker
-for name in search_worker.tools:
-    TOOL_ROUTER[name] = search_worker
-for name in code_worker.tools:
-    TOOL_ROUTER[name] = code_worker
-for name in data_worker.tools:
-    TOOL_ROUTER[name] = data_worker
-
-
     
 async def generate_plan(user_query, history, client):
     try:
@@ -303,32 +254,14 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
     if not is_safe:
         return err_msg
 
-    # 惰性启动所有专业 Worker（仅首次调用时执行）
-    if not calendar_worker.is_running:
-        asyncio.create_task(calendar_worker.run_loop())
-        calendar_worker.is_running = True
-    if not table_ocr_worker.is_running:
-        asyncio.create_task(table_ocr_worker.run_loop())
-        table_ocr_worker.is_running = True
-    if not search_worker.is_running:
-        asyncio.create_task(search_worker.run_loop())
-        search_worker.is_running = True
-    if not code_worker.is_running:
-        asyncio.create_task(code_worker.run_loop())
-        code_worker.is_running = True
-    if not data_worker.is_running:
-        asyncio.create_task(data_worker.run_loop())
-        data_worker.is_running = True
-    if not image_worker.is_running:
-        asyncio.create_task(image_worker.run_loop())
-        image_worker.is_running = True
-    if not web_scraper_worker.is_running:
-        asyncio.create_task(web_scraper_worker.run_loop())
-        web_scraper_worker.is_running = True
-    if not ocr_worker.is_running:
-        asyncio.create_task(ocr_worker.run_loop())
-        ocr_worker.is_running = True
-    print("Workers ready: Search=True, Code=True, Data=True, Image=True, WebScraper=True")
+    # 惰性启动查询和命令 Workers
+    if not query_worker.is_running:
+        asyncio.create_task(query_worker.run_loop())
+        query_worker.is_running = True
+    if not command_worker.is_running:
+        asyncio.create_task(command_worker.run_loop())
+        command_worker.is_running = True
+    print("Workers ready: QueryWorker, CommandWorker")
 
     # 1. 检查是否为二次确认的确认回复
     if session_id in pending and "确认" in query.strip():
