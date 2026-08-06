@@ -36,12 +36,13 @@ from tools import (
     list_events, 
     delete_event,
     recognize_table,
+    send_email,  
 )
 
 from guardrails import input_guard, tool_call_guard, output_guard
 from pending_tools import pending
 import asyncio
-from agents import SearchWorker, CodeWorker, DataWorker
+
 
 # ========== 查询类 Worker（带缓存） ==========
 query_worker_tools = {

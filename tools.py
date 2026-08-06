@@ -23,8 +23,6 @@ def get_current_time():
     """返回当前东八区（北京时间）日期和时间"""
     tz_beijing = timezone(timedelta(hours=8))
     now = datetime.now(tz_beijing)
-    return now.strftime("%Y-%m-%d %H:%M:%S")
-
 def calculator(expression: str):
     """安全计算数学表达式"""
     try:
