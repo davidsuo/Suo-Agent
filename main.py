@@ -223,6 +223,12 @@ async def generate_plan(user_query, history, client):
 3. send_email 必须放在最后一个步骤，且需要用户确认。
 4. 只返回 JSON 数组，不要有任何额外文字。
 
+【核心规则补充】
+- 调用 add_event 时，必须提供 title 和 start_time 参数，格式为 "YYYY-MM-DD HH:MM"。
+- 调用 send_email 时，必须提供 to_email、subject、body。
+- 调用 query_database 时，必须提供 sql 参数。
+- 所有参数必须符合工具要求的类型和格式，不得遗漏必填字段。
+
 用户需求：{user_query}
 
 正确示例（查询所有工资并计算总和，通过 SQL 聚合完成）：
