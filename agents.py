@@ -61,16 +61,28 @@ class WorkerAgent(Agent):
     async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         tool_name = task.get("tool")
         arguments = task.get("arguments", {})
-        if tool_name not in self.tools:
-            return {"error": f"工具 {tool_name} 不存在"}
-        try:
-            func = self.tools[tool_name]
-            loop = asyncio.get_event_loop()
-            # 使用 partial 传递关键字参数，在线程池中执行同步函数
-            result = await loop.run_in_executor(None, partial(func, **arguments))
-            return {"result": result}
-        except Exception as e:
-            return {"error": str(e), "traceback": traceback.format_exc()}
+
+        # 某些工具禁用缓存（如时间查询需要实时更新）
+        if tool_name in ("get_current_time",):
+            return await super().handle_task(task)
+
+        # 生成缓存键
+        cache_key = self._get_cache_key(tool_name, arguments)
+
+        # 如果是可缓存工具且命中缓存，直接返回
+        if cache_key in self.cache:
+            print(f"[QueryWorker] 缓存命中: {cache_key}")
+            return {"result": self.cache[cache_key]}
+
+        # 否则执行工具
+        result = await super().handle_task(task)
+
+        # 缓存结果
+        if "error" not in result:
+            self.cache[cache_key] = result["result"]
+            print(f"[QueryWorker] 缓存写入: {cache_key}")
+
+        return result
 
 class QueryWorker(WorkerAgent):
     """带缓存的查询 Worker"""
