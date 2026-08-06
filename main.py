@@ -486,11 +486,21 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                         else:
                             result = raw_result
 
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": result
-                    })
+                        # --- 新增：简单查询直接返回结果 ---
+                        if func_name in ("get_current_time", "calculator"):
+                            answer = result
+                            answer = output_guard(answer)
+                            if image_output:
+                                answer = answer + "\n\n" + image_output
+                            memory.append(session_id, query, answer)
+                            return answer
+                        # --- 结束新增 ---
+
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": result
+                        })
                 continue
             else:
                 print(f"[DEBUG] 最终消息数量: {len(messages)}")
