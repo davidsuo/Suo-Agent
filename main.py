@@ -358,15 +358,21 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                     if "error" in res or "失败" in str(raw_result) or "错误" in str(raw_result):
                         # -------- Saga 补偿回滚 --------
                         print(f"[Saga] 步骤{step_id}失败，开始补偿...")
+                        compensation_msgs = []
                         for comp_step, comp_args, comp_result in reversed(completed_steps):
                             comp_func_name = comp_step.get("tool")
                             if comp_func_name in COMPENSATIONS:
                                 try:
-                                    comp_result = COMPENSATIONS[comp_func_name](**comp_args)
-                                    print(f"[Saga] 补偿 {comp_func_name}: {comp_result}")
+                                    comp_msg = COMPENSATIONS[comp_func_name](**comp_args, result=comp_result)
+                                    compensation_msgs.append(comp_msg)
+                                    print(f"[Saga] 补偿 {comp_func_name}: {comp_msg}")
                                 except Exception as comp_exc:
+                                    compensation_msgs.append(f"补偿失败: {comp_exc}")
                                     print(f"[Saga] 补偿失败: {comp_exc}")
-                        answer = f"任务执行失败（步骤{step_id}），已自动回滚。错误: {raw_result}"
+                        # 构建详细的回滚消息
+                        answer = f"任务执行失败（步骤{step_id}），已自动回滚。\n错误: {raw_result}"
+                        if compensation_msgs:
+                            answer += "\n补偿操作：\n" + "\n".join(f"  - {msg}" for msg in compensation_msgs)
                         memory.append(session_id, query, answer)
                         return output_guard(answer)
 
@@ -378,14 +384,20 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                 except Exception as e:
                     # 网络异常等也触发补偿
                     print(f"[Saga] 步骤{step_id}异常，开始补偿: {e}")
+                    compensation_msgs = []
                     for comp_step, comp_args, comp_result in reversed(completed_steps):
                         comp_func_name = comp_step.get("tool")
                         if comp_func_name in COMPENSATIONS:
                             try:
-                                COMPENSATIONS[comp_func_name](**comp_args)
-                            except Exception:
-                                pass
+                                comp_msg = COMPENSATIONS[comp_func_name](**comp_args, result=comp_result)
+                                compensation_msgs.append(comp_msg)
+                                print(f"[Saga] 补偿 {comp_func_name}: {comp_msg}")
+                            except Exception as comp_exc:
+                                compensation_msgs.append(f"补偿失败: {comp_exc}")
+                                print(f"[Saga] 补偿失败: {comp_exc}")
                     answer = f"任务执行异常（步骤{step_id}），已自动回滚。原因: {e}"
+                    if compensation_msgs:
+                        answer += "\n补偿操作：\n" + "\n".join(f"  - {msg}" for msg in compensation_msgs)
                     memory.append(session_id, query, answer)
                     return output_guard(answer)
             else:

@@ -776,7 +776,6 @@ TOOLS_METADATA = [
 
 # ===================== Saga 补偿函数（可执行回滚） =====================
 def compensate_add_event(title: str, start_time: str, end_time: str = "", description: str = "", **kwargs):
-    """补偿添加日程：根据返回结果中的 ID 删除日程"""
     result = kwargs.get("result", "")
     import re
     match = re.search(r'ID:(\d+)', result)
@@ -784,8 +783,7 @@ def compensate_add_event(title: str, start_time: str, end_time: str = "", descri
         event_id = int(match.group(1))
         return delete_event(event_id)
     else:
-        # 没有找到 ID，尝试根据标题和时间模糊删除（可能不精确）
-        return f"补偿：无法精确定位日程「{title}」，请手动检查。"
+        return f"无法找到日程ID，请手动检查「{title}」"
 
 def compensate_send_email(to_email: str, subject: str, body: str, **kwargs):
     """补偿发送邮件：记录到日志文件，通知用户"""
