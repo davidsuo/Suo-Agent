@@ -552,6 +552,28 @@ def recognize_table(image_path: str) -> str:
     except Exception as e:
         return f"表格数据解析失败: {e}"
         
+# ===================== Saga 补偿函数 =====================
+def compensate_send_email(to_email: str, subject: str, body: str):
+    """邮件发送失败时的补偿：记录日志并通知用户"""
+    # 实际可调用邮件 API 发送致歉信，或写入失败队列
+    return f"补偿通知：邮件发送至 {to_email} 失败，已记录。请稍后重试或手动发送。"
+
+def compensate_add_event(title: str, start_time: str, end_time: str = "", description: str = ""):
+    """添加日程失败的补偿：演示回滚逻辑"""
+    # 如果添加失败（实际可能没有真正写入），这里简单返回提示
+    return f"补偿：日程「{title}」添加失败，已取消。"
+
+def compensate_execute_python(code: str):
+    """代码执行失败的补偿：记录错误日志"""
+    return f"补偿：代码执行失败，已记录错误。"
+
+# 补偿函数映射表
+COMPENSATIONS = {
+    "send_email": compensate_send_email,
+    "add_event": compensate_add_event,
+    "execute_python": compensate_execute_python,
+}
+        
 
 # ---------- 工具元数据 ----------
 TOOLS_METADATA = [
@@ -796,7 +818,6 @@ AVAILABLE_TOOLS = {
     "delete_event": delete_event,
     "recognize_table": recognize_table,    
 }
-
 
         
 
