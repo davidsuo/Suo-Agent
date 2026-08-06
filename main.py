@@ -493,6 +493,10 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                     })
                 continue
             else:
+                print(f"[DEBUG] 最终消息数量: {len(messages)}")
+                # 打印最后一条工具消息（如果有）
+                if messages and messages[-1]["role"] == "tool":
+                print(f"[DEBUG] 最后一条工具消息: {messages[-1]['content'][:100]}")
                 answer = msg.content
                 break
         else:
