@@ -497,8 +497,20 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                 # 打印最后一条工具消息（如果有）
                 if messages and messages[-1]["role"] == "tool":
                     print(f"[DEBUG] 最后一条工具消息: {messages[-1]['content'][:100]}")
+           
                 answer = msg.content
-                break
+                # 智能替换：如果模型生成歉意回复，但工具成功返回了结果，则强制使用工具结果
+                if any(keyword in answer for keyword in ["无法获取", "暂时无法", "没有返回", "抱歉"]):
+                    # 查找最后一条工具消息的内容
+                    last_tool_result = None
+                    for msg_item in reversed(messages):
+                        if msg_item.get("role") == "tool":
+                            last_tool_result = msg_item.get("content")
+                            break
+                    if last_tool_result and not any(err in last_tool_result for err in ["失败", "错误", "未知错误"]):
+                        answer = last_tool_result
+                        print(f"[智能替换] 模型歉意回复被替换为工具结果: {answer[:100]}...")
+                break                
         else:
             answer = "抱歉，处理超时，请简化您的问题。"
 
