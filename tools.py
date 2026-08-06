@@ -551,46 +551,7 @@ def recognize_table(image_path: str) -> str:
         return all_tables_text if all_tables_text else "未识别到表格内容"
     except Exception as e:
         return f"表格数据解析失败: {e}"
-        
-# ===================== Saga 补偿函数（可执行回滚） =====================
-def compensate_add_event(title: str, start_time: str, end_time: str = "", description: str = "", **kwargs):
-    """补偿添加日程：根据返回结果中的 ID 删除日程"""
-    result = kwargs.get("result", "")
-    import re
-    match = re.search(r'ID:(\d+)', result)
-    if match:
-        event_id = int(match.group(1))
-        return delete_event(event_id)
-    else:
-        # 没有找到 ID，尝试根据标题和时间模糊删除（可能不精确）
-        return f"补偿：无法精确定位日程「{title}」，请手动检查。"
-
-def compensate_send_email(to_email: str, subject: str, body: str, **kwargs):
-    """补偿发送邮件：记录到日志文件，通知用户"""
-    import datetime
-    try:
-        with open("email_failures.log", "a", encoding="utf-8") as f:
-            f.write(f"[{datetime.datetime.now()}] 邮件发送失败: 收件人={to_email}, 主题={subject}\n")
-        return f"补偿：邮件发送至 {to_email} 失败，已记录到日志。"
-    except Exception as e:
-        return f"补偿记录失败: {e}"
-
-def compensate_execute_python(code: str, **kwargs):
-    """补偿代码执行：记录错误日志（不改变状态）"""
-    import datetime
-    try:
-        with open("code_failures.log", "a", encoding="utf-8") as f:
-            f.write(f"[{datetime.datetime.now()}] 代码执行失败:\n{code}\n")
-        return "补偿：代码执行错误已记录。"
-    except Exception as e:
-        return f"补偿记录失败: {e}"
-
-COMPENSATIONS = {
-    "send_email": compensate_send_email,
-    "add_event": compensate_add_event,
-    "execute_python": compensate_execute_python,
-}
-        
+                
 
 # ---------- 工具元数据 ----------
 TOOLS_METADATA = [
@@ -627,6 +588,7 @@ TOOLS_METADATA = [
                     "sql": {"type": "string", "description": "SELECT 查询语句"}
                 },
                 "required": ["sql"]
+            }
         }
     },
     {
@@ -701,7 +663,6 @@ TOOLS_METADATA = [
                         "description": "上传文件的本地路径（可选，不填则使用最近上传的文件）"
                     }
                 }
-                # 注意：不再要求 file_path 必填
             }
         }
     },
@@ -741,16 +702,13 @@ TOOLS_METADATA = [
         "type": "function",
         "function": {
             "name": "ocr_image",
-            "description": "识别图片中的文字（支持中英文），返回提取的文本。",
+            "description": "识别并提取图片中的文字，支持中文和英文。",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "image_file_path": {
-                        "type": "string",
-                        "description": "图片文件的本地路径"
-                    }
+                    "image_path": {"type": "string", "description": "图片文件的本地路径"}
                 },
-                "required": ["image_file_path"]
+                "required": ["image_path"]
             }
         }
     },
@@ -814,6 +772,46 @@ TOOLS_METADATA = [
         }
     }
 ]
+
+
+# ===================== Saga 补偿函数（可执行回滚） =====================
+def compensate_add_event(title: str, start_time: str, end_time: str = "", description: str = "", **kwargs):
+    """补偿添加日程：根据返回结果中的 ID 删除日程"""
+    result = kwargs.get("result", "")
+    import re
+    match = re.search(r'ID:(\d+)', result)
+    if match:
+        event_id = int(match.group(1))
+        return delete_event(event_id)
+    else:
+        # 没有找到 ID，尝试根据标题和时间模糊删除（可能不精确）
+        return f"补偿：无法精确定位日程「{title}」，请手动检查。"
+
+def compensate_send_email(to_email: str, subject: str, body: str, **kwargs):
+    """补偿发送邮件：记录到日志文件，通知用户"""
+    import datetime
+    try:
+        with open("email_failures.log", "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.datetime.now()}] 邮件发送失败: 收件人={to_email}, 主题={subject}\n")
+        return f"补偿：邮件发送至 {to_email} 失败，已记录到日志。"
+    except Exception as e:
+        return f"补偿记录失败: {e}"
+
+def compensate_execute_python(code: str, **kwargs):
+    """补偿代码执行：记录错误日志（不改变状态）"""
+    import datetime
+    try:
+        with open("code_failures.log", "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.datetime.now()}] 代码执行失败:\n{code}\n")
+        return "补偿：代码执行错误已记录。"
+    except Exception as e:
+        return f"补偿记录失败: {e}"
+
+COMPENSATIONS = {
+    "send_email": compensate_send_email,
+    "add_event": compensate_add_event,
+    "execute_python": compensate_execute_python,
+}
 
 
 # ---------- 工具名称到函数的映射 ----------
