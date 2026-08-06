@@ -465,9 +465,13 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                         target_worker = TOOL_ROUTER[func_name]
                         task = {"tool": func_name, "arguments": arguments}
                         res = await target_worker.send_task(task)
-                        raw_result = res.get("result", res.get("error")) if res else "未知错误"
+                        if not isinstance(res, dict):
+                            res = {"error": "Worker 返回无效结果"}
+                        raw_result = res.get("result", res.get("error"))
+                        if raw_result is None or (isinstance(raw_result, str) and raw_result.strip() == ""):
+                            raw_result = "工具未返回有效数据"
 
-                        # 特殊处理图像生成（将完整结果保存，发送占位符给模型）
+                        # 图像生成特殊处理：保存完整结果，发送占位符
                         if func_name == "generate_image" and not str(raw_result).startswith("图像生成"):
                             image_output = raw_result
                             result = "图片已生成，将在最终回答中展示。"

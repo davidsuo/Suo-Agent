@@ -2,17 +2,44 @@
 import asyncio
 import uuid
 import traceback
+import json
 from functools import partial
 from typing import Any, Dict, Callable
-import json
 
 class Agent:
     def __init__(self, name: str):
         self.name = name
         self.queue = asyncio.Queue()
         self.is_running = False
-        self.task_count = 0      # 完成任务数
-        self.error_count = 0     # 失败任务数
+        self.task_count = 0
+        self.error_count = 0
+
+    async def send_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        task_id = str(uuid.uuid4())
+        task["task_id"] = task_id
+        future = asyncio.get_event_loop().create_future()
+        self.queue.put_nowait((task, future))
+        result = await future
+        return result
+
+    async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    async def run_loop(self):
+        print(f"[{self.name}] Worker 启动，等待任务...")
+        self.is_running = True
+        while True:
+            task, future = await self.queue.get()
+            print(f"[{self.name}] 收到任务: {task.get('tool', 'unknown')}")
+            try:
+                result = await self.handle_task(task)
+                self.task_count += 1
+                print(f"[{self.name}] 任务完成 (成功: {self.task_count}, 失败: {self.error_count})")
+            except Exception as e:
+                self.error_count += 1
+                result = {"error": f"{type(e).__name__}: {e}", "traceback": traceback.format_exc()}
+                print(f"[{self.name}] 任务执行异常: {e}")
+            future.set_result(result)
 
     def get_stats(self):
         return {
@@ -23,37 +50,7 @@ class Agent:
             "queue_size": self.queue.qsize()
         }
 
-    async def send_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """发送任务到该智能体，并等待结果返回"""
-        task_id = str(uuid.uuid4())
-        task["task_id"] = task_id
-        future = asyncio.get_event_loop().create_future()
-        self.queue.put_nowait((task, future))
-        result = await future
-        return result
-
-    async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """子类必须实现，处理具体任务"""
-        raise NotImplementedError
-
-    async def run_loop(self):
-        """智能体主循环，从队列中取任务并处理"""
-        self.is_running = True
-        while True:
-            task, future = await self.queue.get()
-            try:
-                result = await self.handle_task(task)
-                self.task_count += 1
-            except Exception as e:
-                self.error_count += 1
-                result = {"error": str(e), "traceback": traceback.format_exc()}
-                print(f"[{self.name}] 任务执行失败: {e}")
-            future.set_result(result)
-            print(f"[{self.name}] 任务完成 (成功: {self.task_count}, 失败: {self.error_count})")
-            print(f"[{self.name}] Worker 启动，等待任务...", flush=True)
-
 class WorkerAgent(Agent):
-    """通用执行智能体，可调用多种工具"""
     def __init__(self, name: str, tools: Dict[str, Callable]):
         super().__init__(name)
         self.tools = tools
@@ -61,28 +58,12 @@ class WorkerAgent(Agent):
     async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         tool_name = task.get("tool")
         arguments = task.get("arguments", {})
-
-        # 某些工具禁用缓存（如时间查询需要实时更新）
-        if tool_name in ("get_current_time",):
-            return await super().handle_task(task)
-
-        # 生成缓存键
-        cache_key = self._get_cache_key(tool_name, arguments)
-
-        # 如果是可缓存工具且命中缓存，直接返回
-        if cache_key in self.cache:
-            print(f"[QueryWorker] 缓存命中: {cache_key}")
-            return {"result": self.cache[cache_key]}
-
-        # 否则执行工具
-        result = await super().handle_task(task)
-
-        # 缓存结果
-        if "error" not in result:
-            self.cache[cache_key] = result["result"]
-            print(f"[QueryWorker] 缓存写入: {cache_key}")
-
-        return result
+        if tool_name not in self.tools:
+            return {"error": f"工具 {tool_name} 不存在"}
+        func = self.tools[tool_name]
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, partial(func, **arguments))
+        return {"result": result}
 
 class QueryWorker(WorkerAgent):
     """带缓存的查询 Worker（时间查询禁用缓存）"""
@@ -97,7 +78,7 @@ class QueryWorker(WorkerAgent):
         tool_name = task.get("tool")
         arguments = task.get("arguments", {})
 
-        # 时间查询：不使用缓存，直接执行
+        # 时间查询不缓存
         if tool_name == "get_current_time":
             return await super().handle_task(task)
 
@@ -106,29 +87,9 @@ class QueryWorker(WorkerAgent):
             print(f"[QueryWorker] 缓存命中: {cache_key}", flush=True)
             return {"result": self.cache[cache_key]}
 
-        # 执行工具
         result = await super().handle_task(task)
-        print(f"[QueryWorker] 执行结果原始数据: {result}", flush=True)
-
-        # 如果执行成功（没有 error 字段），缓存结果
-        if "error" not in result:
+        # 成功才缓存，且确保 result 是成功格式
+        if "result" in result and "error" not in result:
             self.cache[cache_key] = result["result"]
             print(f"[QueryWorker] 缓存写入: {cache_key}", flush=True)
-        else:
-            print(f"[QueryWorker] 工具执行失败: {result.get('error')}", flush=True)
-
         return result
-
-            
-# ---------- 专业智能体子类（实际仍继承 WorkerAgent，只是职责明确） ----------
-class SearchWorker(WorkerAgent):
-    """负责网页搜索和语音转文字"""
-    pass
-
-class CodeWorker(WorkerAgent):
-    """负责 Python 代码执行"""
-    pass
-
-class DataWorker(WorkerAgent):
-    """负责数据库查询和文件分析"""
-    pass
