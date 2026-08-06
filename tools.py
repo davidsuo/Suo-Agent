@@ -13,7 +13,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from ddgs import DDGS
 from bs4 import BeautifulSoup
-from datetime import datetime, timezone, timedelta
+
 
 # 最近上传的文件路径（用于 analyze_file 自动使用）
 last_uploaded_file = None
@@ -21,20 +21,14 @@ last_uploaded_file = None
 # ---------- 基础工具 ----------
 def get_current_time():
     """返回当前东八区（北京时间）日期和时间"""
-    tz_beijing = timezone(timedelta(hours=8))
-    now = datetime.now(tz_beijing)
-def calculator(expression: str):
-    """安全计算数学表达式"""
     try:
-        # 移除数字中的逗号，允许用户或模型输入带逗号的数字
-        expression = expression.replace(",", "")
-        allowed_chars = set("0123456789+-*/().% ^")
-        if not all(c in allowed_chars for c in expression.replace(" ", "")):
-            return "错误：表达式包含不允许的字符"
-        result = eval(expression, {"__builtins__": {}})
-        return str(result)
+        from datetime import datetime, timezone, timedelta
+        tz = timezone(timedelta(hours=8))
+        now = datetime.now(tz)
+        return now.strftime("%Y-%m-%d %H:%M:%S")
     except Exception as e:
-        return f"计算出错: {e}"
+        print(f"[get_current_time] 执行异常: {e}", flush=True)
+        return f"获取时间失败: {e}"
 
 def query_database(sql: str):
     """查询 SQLite 数据库，仅允许 SELECT"""
