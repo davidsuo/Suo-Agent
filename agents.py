@@ -7,39 +7,40 @@ from functools import partial
 from typing import Any, Dict, Callable
 
 class Agent:
-    def __init__(self, name: str):
+    def __init__(self, name: str, event_bus: 'EventBus'):
         self.name = name
+        self.bus = event_bus
         self.queue = asyncio.Queue()
         self.is_running = False
         self.task_count = 0
         self.error_count = 0
 
-    async def send_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        task_id = str(uuid.uuid4())
-        task["task_id"] = task_id
+    async def send_task(self, task):
         future = asyncio.get_event_loop().create_future()
         self.queue.put_nowait((task, future))
-        result = await future
-        return result
+        return await future
 
     async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         raise NotImplementedError
 
     async def run_loop(self):
-        print(f"[{self.name}] Worker 启动，等待任务...")
+        self.bus.subscribe(f"ToolRequested.{self.name}", self._on_tool_requested)
         self.is_running = True
-        while True:
-            task, future = await self.queue.get()
-            print(f"[{self.name}] 收到任务: {task.get('tool', 'unknown')}")
-            try:
-                result = await self.handle_task(task)
-                self.task_count += 1
-                print(f"[{self.name}] 任务完成 (成功: {self.task_count}, 失败: {self.error_count})")
-            except Exception as e:
-                self.error_count += 1
-                result = {"error": f"{type(e).__name__}: {e}", "traceback": traceback.format_exc()}
-                print(f"[{self.name}] 任务执行异常: {e}")
-            future.set_result(result)
+        while self.is_running:
+            await asyncio.sleep(3600)
+
+    async def _on_tool_requested(self, event_data):
+        task = event_data.get("task")
+        future = event_data.get("future")
+        if not task or not future:
+            return
+        try:
+            result = await self.handle_task(task)
+            self.task_count += 1
+        except Exception as e:
+            self.error_count += 1
+            result = {"error": str(e), "traceback": traceback.format_exc()}
+        future.set_result(result)
 
     def get_stats(self):
         return {
@@ -51,8 +52,8 @@ class Agent:
         }
 
 class WorkerAgent(Agent):
-    def __init__(self, name: str, tools: Dict[str, Callable]):
-        super().__init__(name)
+    def __init__(self, name: str, tools: Dict[str, Callable], event_bus: 'EventBus'):
+        super().__init__(name, event_bus)
         self.tools = tools
 
     async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
@@ -66,9 +67,8 @@ class WorkerAgent(Agent):
         return {"result": result}
 
 class QueryWorker(WorkerAgent):
-    """带缓存的查询 Worker（时间查询禁用缓存）"""
-    def __init__(self, name: str, tools: Dict[str, Callable]):
-        super().__init__(name, tools)
+    def __init__(self, name: str, tools: Dict[str, Callable], event_bus: 'EventBus'):
+        super().__init__(name, tools, event_bus)
         self.cache = {}
 
     def _get_cache_key(self, tool_name, arguments):
@@ -78,7 +78,6 @@ class QueryWorker(WorkerAgent):
         tool_name = task.get("tool")
         arguments = task.get("arguments", {})
 
-        # 时间查询不缓存
         if tool_name == "get_current_time":
             return await super().handle_task(task)
 
@@ -88,7 +87,6 @@ class QueryWorker(WorkerAgent):
             return {"result": self.cache[cache_key]}
 
         result = await super().handle_task(task)
-        # 成功才缓存，且确保 result 是成功格式
         if "result" in result and "error" not in result:
             self.cache[cache_key] = result["result"]
             print(f"[QueryWorker] 缓存写入: {cache_key}", flush=True)
