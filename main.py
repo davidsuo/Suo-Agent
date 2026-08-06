@@ -488,20 +488,25 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
 
                         # --- 新增：简单查询直接返回结果 ---
                         if func_name in ("get_current_time", "calculator"):
-                            answer = result
-                            answer = output_guard(answer)
-                            if image_output:
-                                answer = answer + "\n\n" + image_output
-                            memory.append(session_id, query, answer)
-                            return answer
-                        # --- 结束新增 ---
-
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "content": result
-                        })
-                continue
+                            try:
+                                answer = result
+                                print(f"[直接返回] 工具: {func_name}, 结果: {answer}", flush=True)
+                                answer = output_guard(answer)
+                                if image_output:
+                                    answer = answer + "\n\n" + image_output
+                                memory.append(session_id, query, answer)
+                                return answer
+                            except Exception as e:
+                                import traceback
+                                traceback.print_exc()
+                                # 如果直接返回失败，回退为正常追加消息，让模型总结
+                                messages.append({
+                                    "role": "tool",
+                                    "tool_call_id": tool_call.id,
+                                    "content": result
+                                })
+                                # 不 return，继续循环让模型生成回复
+                                continue
             else:
                 print(f"[DEBUG] 最终消息数量: {len(messages)}")
                 # 打印最后一条工具消息（如果有）

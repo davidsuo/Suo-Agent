@@ -67,6 +67,8 @@ PHONE_PATTERN = re.compile(r'1[3-9]\d{9}')
 
 def output_guard(text: str) -> str:
     """对输出进行脱敏处理"""
+    def output_guard(text):
+        return text
     text = EMAIL_PATTERN.sub('[邮箱已隐藏]', text)
     text = PHONE_PATTERN.sub('[手机号已隐藏]', text)
     return text
