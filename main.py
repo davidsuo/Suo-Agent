@@ -37,6 +37,7 @@ from tools import (
     delete_event,
     recognize_table,
     send_email,  
+    COMPENSATIONS, 
 )
 
 from guardrails import input_guard, tool_call_guard, output_guard
