@@ -318,15 +318,17 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
 
     # 5. 根据是否有计划选择执行模式
     if plan:
-        # ========== 规划引擎执行模式 ==========
+        # ========== 规划引擎执行模式（Saga 补偿版） ==========
         results = {}
         email_args = None
+        completed_steps = []  # 记录已成功执行的步骤信息 (step, arguments)
+
         for step in plan:
             step_id = step["id"]
             tool_name = step["tool"]
             arguments = step["arguments"]
 
-            # 处理参数中的占位符替换
+            # 处理参数中的占位符替换（{step_X_result}）
             for dep_id in step.get("depends_on", []):
                 if dep_id in results:
                     replacement = str(results[dep_id])
@@ -335,40 +337,56 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                             arguments[key] = val.replace(f"{{step_{dep_id}_result}}", replacement)
 
             if tool_name == "send_email":
+                # 邮件步骤先记录，最后统一处理（需要用户确认）
                 email_args = arguments
                 continue
-            if tool_name == "query_database" and "sql" not in arguments:
-                results[step_id] = "错误：query_database 必须提供 'sql' 参数"
-                continue
+
             elif tool_name in TOOL_ROUTER:
                 task = {"tool": tool_name, "arguments": arguments}
-                max_attempts = 2 if tool_name in ("web_search", "fetch_webpage", "generate_image") else 1
-                raw_result = None
-                for attempt in range(max_attempts):
-                    try:
-                        res = await TOOL_ROUTER[tool_name].send_task(task)
-                        raw_result = res.get("result", res.get("error")) if res else "未知错误"
-                        # 如果结果包含失败关键词，且还有重试机会，则重试
-                        if "失败" in str(raw_result) or "错误" in str(raw_result):
-                            raise ValueError(f"工具返回失败: {raw_result}")
-                        break  # 成功则不重试
-                    except Exception as e:
-                        if attempt == max_attempts - 1:
-                            raw_result = f"任务执行失败（重试{max_attempts}次）: {e}"
-                        else:
-                            print(f"[规划引擎] 步骤{step_id}失败，重试... ({attempt+1}/{max_attempts})")
-                            await asyncio.sleep(1)
-                if raw_result is None:
-                    raw_result = "未知错误"
-                if tool_name == "generate_image" and not str(raw_result).startswith("图像生成"):
-                    image_output = raw_result
-                    results[step_id] = "图片已生成，将在最终回答中展示。"
-                else:
-                    results[step_id] = raw_result
-                print(f"[规划引擎] 步骤{step_id}完成: {str(results[step_id])[:80]}")
+                try:
+                    res = await TOOL_ROUTER[tool_name].send_task(task)
+                    raw_result = res.get("result", res.get("error")) if res else "未知错误"
+                    
+                    # 判断是否执行失败
+                    if "error" in res or "失败" in str(raw_result) or "错误" in str(raw_result):
+                        # -------- Saga 补偿回滚 --------
+                        print(f"[Saga] 步骤{step_id}失败，开始补偿...")
+                        for comp_step, comp_args in reversed(completed_steps):
+                            comp_func_name = comp_step.get("tool")
+                            if comp_func_name in COMPENSATIONS:
+                                try:
+                                    comp_result = COMPENSATIONS[comp_func_name](**comp_args)
+                                    print(f"[Saga] 补偿 {comp_func_name}: {comp_result}")
+                                except Exception as comp_exc:
+                                    print(f"[Saga] 补偿失败: {comp_exc}")
+                        answer = f"任务执行失败（步骤{step_id}），已自动回滚。错误: {raw_result}"
+                        memory.append(session_id, query, answer)
+                        return output_guard(answer)
 
-        # 如果有邮件步骤，生成确认提示并持久化
+                    # 执行成功，记录结果
+                    results[step_id] = raw_result
+                    completed_steps.append((step, arguments))  # 保存步骤及参数，用于可能的补偿
+                    print(f"[规划引擎] 步骤{step_id}完成: {str(raw_result)[:80]}")
+
+                except Exception as e:
+                    # 网络异常等也触发补偿
+                    print(f"[Saga] 步骤{step_id}异常，开始补偿: {e}")
+                    for comp_step, comp_args in reversed(completed_steps):
+                        comp_func_name = comp_step.get("tool")
+                        if comp_func_name in COMPENSATIONS:
+                            try:
+                                COMPENSATIONS[comp_func_name](**comp_args)
+                            except Exception:
+                                pass
+                    answer = f"任务执行异常（步骤{step_id}），已自动回滚。原因: {e}"
+                    memory.append(session_id, query, answer)
+                    return output_guard(answer)
+            else:
+                results[step_id] = f"工具 {tool_name} 未配置"
+
+        # ========== 步骤执行完毕，处理邮件确认或结果整合 ==========
         if email_args:
+            # 邮件需要二次确认，生成确认提示
             body = email_args.get("body", "")
             for step_id, result_text in results.items():
                 body = body.replace(f"{{step_{step_id}_result}}", str(result_text))
@@ -378,8 +396,6 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                 "tool_name": "send_email",
                 "arguments": email_args
             }
-            # 保存到文件（如果需要持久化）
-            # save_pending(pending)
 
             confirm_msg = (
                 f"⚠️ 危险操作确认\n"
@@ -391,26 +407,11 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
             )
             return confirm_msg
         else:
-            # 记录规划日志
-            log_entry = {
-                "timestamp": datetime.datetime.now().isoformat(),
-                "session_id": session_id,
-                "query": query,
-                "plan": plan,
-                "results": {str(k): str(v)[:200] for k, v in results.items()},  # 截断长结果
-                "status": "completed"
-            }
-            try:
-                with open("plan_log.json", "a", encoding="utf-8") as f:
-                    f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
-            except Exception as e:
-                print(f"规划日志写入失败: {e}")   
-                
-            # 无邮件步骤，整合结果并进行智能后处理            
+            # 无邮件步骤，整合结果并进行智能后处理
             raw_info = "\n".join([f"{step['description']}: {str(results[step['id']])[:500]}" for step in plan if step['tool'] != 'send_email'])
             if len(raw_info) > 10000:
                 raw_info = raw_info[:10000] + "\n...（内容过长，已截断）"
-            
+
             summary_prompt = f"用户需求：{query}\n\n以下是执行结果：\n{raw_info}\n\n请根据用户需求，从以上结果中提取或总结出用户想要的信息，用简洁清晰的格式回答。如果结果中包含大量无关内容，请忽略它们，只输出相关部分。"
             messages.append({"role": "user", "content": summary_prompt})
             try:
@@ -418,13 +419,15 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                 answer = summary_resp.choices[0].message.content
             except Exception as e:
                 answer = f"结果整合失败: {e}"
-            
+
             answer = output_guard(answer)
             if image_output:
-                answer = answer + "\n\n" + image_output 
+                answer = answer + "\n\n" + image_output
+
             # 记录规划日志
             log_plan(query, plan, results)
-            memory.append(session_id, query, answer)    
+
+            memory.append(session_id, query, answer)
             return answer
 
     else:
