@@ -13,6 +13,7 @@ from tools import generate_image
 import time
 import datetime
 from agents import WorkerAgent, QueryWorker
+from event_bus import bus
 
 try:
     import rag
@@ -58,7 +59,9 @@ query_worker_tools = {
     "analyze_file": analyze_file,
     "speech_to_text": speech_to_text,
 }
-query_worker = QueryWorker("QueryWorker", query_worker_tools)
+
+# 将 bus 传递给 Worker
+query_worker = QueryWorker("QueryWorker", query_worker_tools, bus)
 
 # ========== 命令类 Worker ==========
 command_worker_tools = {
@@ -68,14 +71,16 @@ command_worker_tools = {
     "execute_python": execute_python,
     "generate_image": generate_image,
 }
-command_worker = WorkerAgent("CommandWorker", command_worker_tools)   # 不需要缓存的命令 Worker
+# 将 bus 传递给 Worker
+command_worker = WorkerAgent("CommandWorker", command_worker_tools, bus)   # 不需要缓存的命令 Worker
 
 # ========== 工具路由表 ==========
-TOOL_ROUTER = {}
+# 工具名 → Worker 名称映射（用于事件发布）
+tool_to_worker = {}
 for name in query_worker.tools:
-    TOOL_ROUTER[name] = query_worker
+    tool_to_worker[name] = query_worker.name
 for name in command_worker.tools:
-    TOOL_ROUTER[name] = command_worker
+    tool_to_worker[name] = command_worker.name
 
 # 监控用列表（如果需要）
 ALL_WORKERS = [query_worker, command_worker]
@@ -348,10 +353,14 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                 email_args = arguments
                 continue
 
-            elif tool_name in TOOL_ROUTER:
+            elif tool_name in tool_to_worker:
+                worker_name = tool_to_worker[tool_name]
                 task = {"tool": tool_name, "arguments": arguments}
+                future = asyncio.get_event_loop().create_future()
+                event_data = {"task": task, "future": future}
                 try:
-                    res = await TOOL_ROUTER[tool_name].send_task(task)
+                    await bus.publish(f"ToolRequested.{worker_name}", event_data)
+                    res = await future
                     raw_result = res.get("result", res.get("error")) if res else "未知错误"
                     
                     # 判断是否执行失败
@@ -483,15 +492,17 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                             result = AVAILABLE_TOOLS[func_name](**arguments)
                         except Exception as e:
                             result = f"工具执行错误: {e}"
-                    elif func_name in TOOL_ROUTER:
-                        target_worker = TOOL_ROUTER[func_name]
+                    elif func_name in tool_to_worker:
+                        worker_name = tool_to_worker[func_name]
                         task = {"tool": func_name, "arguments": arguments}
-                        res = await target_worker.send_task(task)
-                        if not isinstance(res, dict):
-                            res = {"error": "Worker 返回无效结果"}
-                        raw_result = res.get("result", res.get("error"))
-                        if raw_result is None or (isinstance(raw_result, str) and raw_result.strip() == ""):
-                            raw_result = "工具未返回有效数据"
+                        future = asyncio.get_event_loop().create_future()
+                        event_data = {"task": task, "future": future}
+                        try:
+                            await bus.publish(f"ToolRequested.{worker_name}", event_data)
+                            res = await future
+                            raw_result = res.get("result", res.get("error")) if res else "未知错误"
+                        except Exception as e:    
+                            raw_result = f"事件驱动调用失败: {e}"
 
                         # 图像生成特殊处理：保存完整结果，发送占位符
                         if func_name == "generate_image" and not str(raw_result).startswith("图像生成"):
