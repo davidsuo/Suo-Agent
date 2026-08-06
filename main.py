@@ -107,6 +107,7 @@ SYSTEM_PROMPT = """
 - delete_event: 删除日程
 - recognize_table: 识别图片中的表格，返回 CSV
 
+【强制规则】当工具返回时间、计算结果等信息时，你必须直接使用这些数据生成简洁回答，严禁说“无法获取”、“抱歉”、“工具未返回”等话语。如果工具返回了有效数据，就原样呈现。
 当用户询问实时信息（如新闻、股价、天气）时，请调用 web_search。
 当用户要求计算或数据分析时，可调用 execute_python 执行代码。
 如果 web_search 返回的结果包含“(实时搜索暂时不可用)”，请在回答中首先说明搜索服务暂时受限，然后根据提供的模拟信息给出参考。
@@ -463,30 +464,16 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                     elif func_name in TOOL_ROUTER:
                         target_worker = TOOL_ROUTER[func_name]
                         task = {"tool": func_name, "arguments": arguments}
-                        max_attempts = 2 if func_name in ("web_search", "fetch_webpage", "generate_image") else 1
-                        raw_result = None
-                        for attempt in range(max_attempts):
-                            try:
-                                res = await target_worker.send_task(task)
-                                raw_result = res.get("result", res.get("error")) if res else "未知错误"
-                                if "失败" in str(raw_result) or "错误" in str(raw_result):
-                                    raise ValueError(f"工具返回失败: {raw_result}")
-                                break
-                            except Exception as e:
-                                if attempt == max_attempts - 1:
-                                    raw_result = f"任务执行失败（重试{max_attempts}次）: {e}"
-                                else:
-                                    print(f"[常规模式] {func_name}失败，重试... ({attempt+1}/{max_attempts})")
-                                    await asyncio.sleep(1)
-                        if raw_result is None:
-                            raw_result = "未知错误"
+                        res = await target_worker.send_task(task)
+                        raw_result = res.get("result", res.get("error")) if res else "未知错误"
+
+                        # 特殊处理图像生成（将完整结果保存，发送占位符给模型）
                         if func_name == "generate_image" and not str(raw_result).startswith("图像生成"):
                             image_output = raw_result
                             result = "图片已生成，将在最终回答中展示。"
                         else:
                             result = raw_result
 
-                        # 始终追加 tool 消息，保持消息链完整
                         messages.append({
                             "role": "tool",
                             "tool_call_id": tool_call.id,

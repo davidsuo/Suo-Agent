@@ -85,34 +85,37 @@ class WorkerAgent(Agent):
         return result
 
 class QueryWorker(WorkerAgent):
-    """带缓存的查询 Worker"""
+    """带缓存的查询 Worker（时间查询禁用缓存）"""
     def __init__(self, name: str, tools: Dict[str, Callable]):
         super().__init__(name, tools)
-        self.cache = {}  # {cache_key: result}
+        self.cache = {}
 
     def _get_cache_key(self, tool_name, arguments):
-        # 生成缓存键：工具名 + 参数的字符串表示
         return f"{tool_name}:{json.dumps(arguments, sort_keys=True)}"
 
     async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         tool_name = task.get("tool")
         arguments = task.get("arguments", {})
 
-        # 生成缓存键
-        cache_key = self._get_cache_key(tool_name, arguments)
+        # 时间查询：不使用缓存，直接执行
+        if tool_name == "get_current_time":
+            return await super().handle_task(task)
 
-        # 如果是可缓存工具且命中缓存，直接返回
+        cache_key = self._get_cache_key(tool_name, arguments)
         if cache_key in self.cache:
-            print(f"[QueryWorker] 缓存命中: {cache_key}")
+            print(f"[QueryWorker] 缓存命中: {cache_key}", flush=True)
             return {"result": self.cache[cache_key]}
 
-        # 否则执行工具
+        # 执行工具
         result = await super().handle_task(task)
+        print(f"[QueryWorker] 执行结果原始数据: {result}", flush=True)
 
-        # 缓存结果（简单的内存缓存，不设置过期时间，后续可加 TTL）
+        # 如果执行成功（没有 error 字段），缓存结果
         if "error" not in result:
             self.cache[cache_key] = result["result"]
-            print(f"[QueryWorker] 缓存写入: {cache_key}")
+            print(f"[QueryWorker] 缓存写入: {cache_key}", flush=True)
+        else:
+            print(f"[QueryWorker] 工具执行失败: {result.get('error')}", flush=True)
 
         return result
 
