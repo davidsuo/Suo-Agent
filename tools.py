@@ -40,7 +40,7 @@ def get_current_time():
         from datetime import datetime, timezone, timedelta
         tz = timezone(timedelta(hours=8))
         now = datetime.now(tz)
-        return now.strftime("%Y-%m-%d %H:%M:%S")
+        return now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]  # 保留毫秒，例如 19:31:20.123
     except Exception as e:
         print(f"[get_current_time] 执行异常: {e}", flush=True)
         return f"获取时间失败: {e}"

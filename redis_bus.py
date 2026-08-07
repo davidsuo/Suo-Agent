@@ -48,7 +48,7 @@ class RedisEventBus:
         轮询结果队列，直到获取对应 task_id 的结果或超时。
         """
         result_queue = f"result:{worker_name}"
-        timeout = 30  # 秒
+        timeout = 60  # 秒
         start = asyncio.get_event_loop().time()
         while True:
             elapsed = asyncio.get_event_loop().time() - start
