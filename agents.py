@@ -1,32 +1,31 @@
 # agents.py
 import asyncio
-import uuid
-import traceback
 import json
+import traceback
+import time
 from functools import partial
 from typing import Any, Dict, Callable
-import time
-from redis.exceptions import ConnectionError 
 
 class Agent:
-    def __init__(self, name: str, event_bus: 'RedisEventBus'):
+    def __init__(self, name: str, event_bus: 'EventBus'):
         self.name = name
         self.bus = event_bus
+        self.queue = asyncio.Queue()   # 恢复内存队列
         self.is_running = False
         self.task_count = 0
         self.error_count = 0
-        # 不再需要 self.queue
 
-    # send_task
-    async def send_task(self, task: dict) -> dict:
+    async def send_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """发送任务到该智能体，并等待结果返回"""
         future = asyncio.get_event_loop().create_future()
         self.queue.put_nowait((task, future))
         return await future
 
-    async def handle_task(self, task: dict) -> dict:
+    async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         raise NotImplementedError
 
     async def run_loop(self):
+        """智能体主循环：从内存队列取任务并处理"""
         print(f"[{self.name}] Worker 启动（内存总线），等待任务...")
         self.is_running = True
         while True:
@@ -48,15 +47,15 @@ class Agent:
             "is_running": self.is_running,
             "task_count": self.task_count,
             "error_count": self.error_count,
-            "queue_size": "N/A"  # Redis 队列无法本地查看，可忽略
+            "queue_size": self.queue.qsize()
         }
 
 class WorkerAgent(Agent):
-    def __init__(self, name: str, tools: dict, event_bus: 'RedisEventBus'):
+    def __init__(self, name: str, tools: Dict[str, Callable], event_bus: 'EventBus'):
         super().__init__(name, event_bus)
         self.tools = tools
 
-    async def handle_task(self, task: dict) -> dict:
+    async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         tool_name = task.get("tool")
         arguments = task.get("arguments", {})
         # 移除内部使用的 _tenant 参数
@@ -68,17 +67,15 @@ class WorkerAgent(Agent):
         result = await loop.run_in_executor(None, partial(func, **arguments))
         return {"result": result}
 
-
 class QueryWorker(WorkerAgent):
+    """带缓存的查询 Worker，时间查询禁用缓存"""
     def __init__(self, name: str, tools: Dict[str, Callable], event_bus: 'EventBus'):
         super().__init__(name, tools, event_bus)
-        self.cache = {}          # {cache_key: (result, expiry_time)}
-        # 工具 -> TTL (秒)
+        self.cache = {}
         self.ttl_map = {
             "get_current_time": 1,
             "query_database": 30,
             "list_events": 30,
-            # 其他工具默认 10 秒
         }
 
     def _get_cache_key(self, tool_name, arguments):
@@ -88,8 +85,9 @@ class QueryWorker(WorkerAgent):
         tool_name = task.get("tool")
         arguments = task.get("arguments", {})
 
+        # 时间查询：跳过缓存，直接执行
         if tool_name == "get_current_time":
-            return await super().handle_task(task)   # 不使用缓存
+            return await super().handle_task(task)
 
         cache_key = self._get_cache_key(tool_name, arguments)
         now = time.time()
