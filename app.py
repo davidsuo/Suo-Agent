@@ -42,17 +42,7 @@ def init_database():
 
 # ========== 纯文本处理 ==========
 async def handle_text_input(text, history):
-    """只处理文本输入，忽略音频"""
-    if not text or not text.strip():
-        return history, ""
-    
-    # 在 /logs 命令处理之前
-    if text.strip().startswith("#tenant "):
-        tenant = text.strip()[8:].strip()
-        memory.set_tenant(SESSION_ID, tenant)   # 需要 memory 支持
-        return history, f"已切换到租户: {tenant}"
-
-    # 特殊命令：查看日志
+    # 处理 /logs 命令
     if text.strip().lower() == "/logs":
         try:
             with open("plan_log.json", "r", encoding="utf-8") as f:
@@ -79,14 +69,13 @@ async def handle_text_input(text, history):
         history.append({"role": "user", "content": "/logs"})
         history.append({"role": "assistant", "content": answer})
         return history, ""
-    
+
     # 处理 #tenant 命令
     if text.strip().startswith("#tenant"):
         parts = text.strip().split(maxsplit=1)
         if len(parts) == 1:
             current_tenant = memory.get_tenant(SESSION_ID)
             answer = f"当前租户：{current_tenant}"
-            # 不切换，不清屏，返回原历史
             history = history or []
             history.append({"role": "user", "content": text})
             history.append({"role": "assistant", "content": answer})
@@ -95,11 +84,20 @@ async def handle_text_input(text, history):
             new_tenant = parts[1].strip()
             memory.set_tenant(SESSION_ID, new_tenant)
             answer = f"已切换到租户：{new_tenant}。会话已清空，您可以开始新的对话。"
-            # 返回一个全新的历史，仅包含本次切换消息，实现清屏
-            new_history = [
-                {"role": "assistant", "content": answer}
-            ]
+            new_history = [{"role": "assistant", "content": answer}]
             return new_history, ""
+
+    # 普通文本处理
+    if not text or not text.strip():
+        return history, ""
+
+    display_msg = text
+    history = history or []
+    history.append({"role": "user", "content": display_msg})
+
+    answer = await chat_core(SESSION_ID, text, None)
+    history.append({"role": "assistant", "content": answer})
+    return history, ""
 
 
 # ========== 音频处理 ==========
