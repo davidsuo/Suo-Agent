@@ -96,14 +96,14 @@ async def unified_handler(message, history, file, tenant_dropdown):
                 new_history = [{"role": "assistant", "content": answer}]
             return new_history, "", None
 
-    # ========== 文件上传处理 ==========
+    # ========== 文件/音频上传处理 ==========
     if file is not None:
         file_path = file if isinstance(file, str) else (file.name if hasattr(file, 'name') else str(file))
         ext = os.path.splitext(file_path)[1].lower()
         loop = asyncio.get_event_loop()
         file_result = ""
 
-        # 根据文件类型调用对应工具（异步执行）
+        # 异步执行工具，避免阻塞
         if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif'):
             if message and "表格" in message:
                 file_result = await loop.run_in_executor(None, recognize_table, file_path)
@@ -118,17 +118,23 @@ async def unified_handler(message, history, file, tenant_dropdown):
 
         history = history or []
         if message and message.strip():
-            # 有文字：暂存文件内容到记忆，并将文件结果作为助手消息显示（帮助用户确认），然后正常处理文字
+            # 同时有文字：暂存文件内容到记忆，并显示文件分析摘要
             memory.append(SESSION_ID, f"[文件内容] {file_result}", "")
-            history.append({"role": "assistant", "content": f"📁 文件分析结果：\n{file_result}"})
-            # 继续处理用户文字输入（保留文本框内容，让用户继续编辑）
-            # 注意：这里不直接调用 chat_core，而是将控制权交回给文字输入处理流程
-            # 我们通过返回 history 和保留 message 来实现
+            history.append({"role": "assistant", "content": f"📁 文件已分析，内容已暂存。您现在可以基于它提问。"})
+            # 不清空文字框，让用户继续编辑
             return history, message, None
         else:
-            # 仅有文件：直接显示分析结果为助手消息，不调用智能体
-            history.append({"role": "assistant", "content": f"📁 文件分析结果：\n{file_result}"})
-            memory.append(SESSION_ID, f"[文件内容] {file_result}", "")
+            # 仅文件/音频：直接作为对话内容
+            if ext in ('.wav', '.mp3', '.m4a', '.ogg'):
+                # 语音：将识别文本作为用户消息，自动回复
+                history.append({"role": "user", "content": file_result})
+                answer = await chat_core(SESSION_ID, file_result, None)
+                history.append({"role": "assistant", "content": answer})
+                memory.append(SESSION_ID, file_result, answer)
+            else:
+                # 其他文件：显示分析结果，并允许后续提问
+                history.append({"role": "assistant", "content": f"📁 文件分析结果：\n{file_result}"})
+                memory.append(SESSION_ID, f"[文件内容] {file_result}", "")
             return history, "", None
 
     # ========== 普通文本处理 ==========
@@ -167,7 +173,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             )
             refresh_btn = gr.Button("刷新租户列表", size="sm", scale=0)
 
-        chatbot = gr.Chatbot(label="对话", height=500)
+        chatbot = gr.Chatbot(label="对话", height=500, type="messages")
 
         with gr.Row():
             text_input = gr.Textbox(
@@ -203,16 +209,12 @@ with gr.Blocks(title="AI 智能体") as demo:
             [chatbot, text_input, file_upload_btn]
         )
 
+        # 仅保留 stop_recording 事件，避免重复触发
         audio_input_btn.stop_recording(
             unified_handler,
             [text_input, chatbot, audio_input_btn, tenant_dropdown],
             [chatbot, text_input, audio_input_btn]
         )
-        #audio_input_btn.upload(
-        #    unified_handler,
-        #    [text_input, chatbot, audio_input_btn, tenant_dropdown],
-        #    [chatbot, text_input, audio_input_btn]
-        #)
 
         tenant_dropdown.change(
             on_tenant_change,
