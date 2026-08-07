@@ -9,40 +9,48 @@ import time
 
 
 class Agent:
-    def __init__(self, name: str, event_bus: 'EventBus'):
+    def __init__(self, name: str, event_bus: 'RedisEventBus'):
         self.name = name
         self.bus = event_bus
-        self.queue = asyncio.Queue()
         self.is_running = False
         self.task_count = 0
         self.error_count = 0
+        # 不再需要 self.queue
 
-    async def send_task(self, task):
-        future = asyncio.get_event_loop().create_future()
-        self.queue.put_nowait((task, future))
-        return await future
+    # send_task 已废弃，不再使用
 
-    async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def handle_task(self, task: dict) -> dict:
         raise NotImplementedError
 
     async def run_loop(self):
-        self.bus.subscribe(f"ToolRequested.{self.name}", self._on_tool_requested)
+        """Worker 主循环：从 Redis 任务队列拉取任务，执行后放入结果队列"""
+        task_queue = f"task:{self.name}"
+        result_queue = f"result:{self.name}"
+        print(f"[{self.name}] Redis Worker 启动，监听队列: {task_queue}", flush=True)
         self.is_running = True
-        while self.is_running:
-            await asyncio.sleep(3600)
-
-    async def _on_tool_requested(self, event_data):
-        task = event_data.get("task")
-        future = event_data.get("future")
-        if not task or not future:
-            return
-        try:
-            result = await self.handle_task(task)
-            self.task_count += 1
-        except Exception as e:
-            self.error_count += 1
-            result = {"error": str(e), "traceback": traceback.format_exc()}
-        future.set_result(result)
+        while True:
+            try:
+                # 阻塞式弹出任务，超时 5 秒
+                result = await self.bus.redis.brpop(task_queue, timeout=5)
+                if result is None:
+                    continue
+                _, task_data = result
+                task = json.loads(task_data)
+                task_id = task.get("task_id")
+                print(f"[{self.name}] 收到任务: {task.get('tool', 'unknown')} (ID: {task_id})")
+                try:
+                    res = await self.handle_task(task)
+                    self.task_count += 1
+                except Exception as e:
+                    self.error_count += 1
+                    res = {"error": str(e), "traceback": traceback.format_exc()}
+                # 将结果放入结果队列
+                result_payload = {"task_id": task_id, "result": res}
+                await self.bus.redis.lpush(result_queue, json.dumps(result_payload))
+                print(f"[{self.name}] 任务完成 (成功: {self.task_count}, 失败: {self.error_count})")
+            except Exception as e:
+                print(f"[{self.name}] 循环异常: {e}", flush=True)
+                await asyncio.sleep(1)
 
     def get_stats(self):
         return {
@@ -50,17 +58,18 @@ class Agent:
             "is_running": self.is_running,
             "task_count": self.task_count,
             "error_count": self.error_count,
-            "queue_size": self.queue.qsize()
+            "queue_size": "N/A"  # Redis 队列无法本地查看，可忽略
         }
 
 class WorkerAgent(Agent):
-    def __init__(self, name: str, tools: Dict[str, Callable], event_bus: 'EventBus'):
+    def __init__(self, name: str, tools: dict, event_bus: 'RedisEventBus'):
         super().__init__(name, event_bus)
         self.tools = tools
 
-    async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def handle_task(self, task: dict) -> dict:
         tool_name = task.get("tool")
         arguments = task.get("arguments", {})
+        # 移除内部使用的 _tenant 参数
         arguments.pop("_tenant", None)
         if tool_name not in self.tools:
             return {"error": f"工具 {tool_name} 不存在"}

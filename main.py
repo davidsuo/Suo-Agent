@@ -13,7 +13,8 @@ from tools import generate_image
 import time
 import datetime
 from agents import WorkerAgent, QueryWorker
-from event_bus import bus
+#from event_bus import bus
+from redis_bus import RedisEventBus
 
 try:
     import rag
@@ -45,6 +46,13 @@ from guardrails import input_guard, tool_call_guard, output_guard
 from pending_tools import pending
 import asyncio
 
+# 从环境变量获取 Redis URL
+REDIS_URL = os.getenv("REDIS_URL")
+if not REDIS_URL:
+    raise ValueError("REDIS_URL 环境变量未设置")
+
+bus = RedisEventBus(REDIS_URL)
+
 
 # ========== 查询类 Worker（带缓存） ==========
 query_worker_tools = {
@@ -62,6 +70,7 @@ query_worker_tools = {
 
 # 将 bus 传递给 Worker
 query_worker = QueryWorker("QueryWorker", query_worker_tools, bus)
+
 
 # ========== 命令类 Worker ==========
 command_worker_tools = {
