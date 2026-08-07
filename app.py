@@ -204,11 +204,11 @@ with gr.Blocks(title="AI 智能体") as demo:
             [text_input, chatbot, audio_input_btn, tenant_dropdown],
             [chatbot, text_input, audio_input_btn]
         )
-        audio_input_btn.upload(
-            unified_handler,
-            [text_input, chatbot, audio_input_btn, tenant_dropdown],
-            [chatbot, text_input, audio_input_btn]
-        )
+        #audio_input_btn.upload(
+        #    unified_handler,
+        #    [text_input, chatbot, audio_input_btn, tenant_dropdown],
+        #    [chatbot, text_input, audio_input_btn]
+        #)
 
         tenant_dropdown.change(
             on_tenant_change,
