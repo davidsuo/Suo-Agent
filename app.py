@@ -79,6 +79,22 @@ async def handle_text_input(text, history):
         history.append({"role": "user", "content": "/logs"})
         history.append({"role": "assistant", "content": answer})
         return history, ""
+    
+    # 处理 #tenant 命令
+    if text.strip().startswith("#tenant"):
+        parts = text.strip().split(maxsplit=1)
+        if len(parts) == 1:
+            # 没有参数，显示当前租户
+            current_tenant = memory.get_tenant(SESSION_ID)
+            answer = f"当前租户：{current_tenant}"
+        else:
+            new_tenant = parts[1].strip()
+            memory.set_tenant(SESSION_ID, new_tenant)
+            answer = f"已切换到租户：{new_tenant}"
+        history = history or []
+        history.append({"role": "user", "content": text})
+        history.append({"role": "assistant", "content": answer})
+        return history, ""
 
     # 构建用户消息
     display_msg = text

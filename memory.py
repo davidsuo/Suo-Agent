@@ -6,6 +6,9 @@ class ConversationMemory:
 
     def set_tenant(self, session_id, tenant_id):
         self.tenant_map[session_id] = tenant_id
+        
+    def get_tenant(self, session_id: str) -> str:
+        return self.tenant_map.get(session_id, "default")    
 
     def _get_session_key(self, session_id):
         tenant = self.tenant_map.get(session_id, "default")
