@@ -114,15 +114,14 @@ async def unified_handler(message, history, file, tenant_dropdown):
             file_result = "不支持的文件类型"
 
         history = history or []
-        # 如果同时输入了文字，暂存文件结果，不触发智能体
         if message and message.strip():
-            history.append({"role": "user", "content": file_result})
-            memory.append(SESSION_ID, file_result, "")
+            # 有文字输入：暂存文件内容到记忆，不直接显示在聊天中
+            memory.append(SESSION_ID, f"[文件内容] {file_result}", "")
             # 保留文本框内容，不清空，让用户继续编辑
             return history, message, None
         else:
-            # 仅有音频/文件，直接作为问题调用智能体
-            history.append({"role": "user", "content": file_result})
+            # 仅有文件：直接作为用户问题，显示在右侧，并触发智能体回答
+            history.append({"role": "user", "content": f"（文件上传）\n{file_result}"})
             answer = await chat_core(SESSION_ID, file_result, None)
             history.append({"role": "assistant", "content": answer})
             memory.append(SESSION_ID, file_result, answer)
