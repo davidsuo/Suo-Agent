@@ -8,7 +8,12 @@ from pydantic import BaseModel
 from openai import OpenAI
 
 from memory import memory
-import rag
+
+try:
+    import rag
+except ImportError:
+    rag = None
+
 from tools import (
     TOOLS_METADATA, AVAILABLE_TOOLS,
     get_current_time, calculator,
