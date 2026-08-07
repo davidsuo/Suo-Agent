@@ -24,6 +24,17 @@ class ConversationMemory:
             self.sessions[key] = []
         self.sessions[key].append({"role": "user", "content": user_msg})
         self.sessions[key].append({"role": "assistant", "content": assistant_msg})
+    
+    def set_history(self, session_id: str, history: list):
+        """直接设置某个会话的历史记录（用于切换租户时保存当前窗口）"""
+        if history:
+            key = self._get_session_key(session_id)
+            self.sessions[key] = history.copy()
+
+    def get_history(self, session_id: str) -> list:
+        """获取完整历史记录，若不存在则返回空列表"""
+        key = self._get_session_key(session_id)
+        return self.sessions.get(key, [])
 
 # 模块级单例，供其他模块导入
 memory = ConversationMemory()
