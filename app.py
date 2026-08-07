@@ -145,7 +145,7 @@ def on_tenant_change(new_tenant):
             return [], new_tenant
     return gr.update(), gr.update()
 
-with gr.Blocks(title="AI 智能体", theme=gr.themes.Soft()) as demo:
+with gr.Blocks(title="AI 智能体") as demo:
     with gr.Tab("聊天"):
         gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具）")
 
@@ -177,7 +177,7 @@ with gr.Blocks(title="AI 智能体", theme=gr.themes.Soft()) as demo:
             )
             audio_input_btn = gr.Audio(
                 label="🎤 语音输入",
-                source="microphone",
+                sources=["microphone"],
                 type="filepath",
                 scale=1
             )
@@ -242,4 +242,4 @@ if __name__ == "__main__":
     loop.create_task(query_worker.run_loop())
     loop.create_task(command_worker.run_loop())
     port = int(os.environ.get("PORT", 7860))
-    demo.launch(server_name="0.0.0.0", server_port=port)
+    demo.launch(server_name="0.0.0.0", server_port=port, theme=gr.themes.Soft())
