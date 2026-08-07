@@ -184,8 +184,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                 label="🎤 语音输入",
                 sources=["microphone"],
                 type="filepath",
-                show_download_button=False,
-                scale=0
+                scale=1
             )
 
         # 事件绑定
