@@ -66,10 +66,19 @@ class WorkerAgent(Agent):
         result = await loop.run_in_executor(None, partial(func, **arguments))
         return {"result": result}
 
+import time
+
 class QueryWorker(WorkerAgent):
     def __init__(self, name: str, tools: Dict[str, Callable], event_bus: 'EventBus'):
         super().__init__(name, tools, event_bus)
-        self.cache = {}
+        self.cache = {}          # {cache_key: (result, expiry_time)}
+        # 工具 -> TTL (秒)
+        self.ttl_map = {
+            "get_current_time": 1,
+            "query_database": 30,
+            "list_events": 30,
+            # 其他工具默认 10 秒
+        }
 
     def _get_cache_key(self, tool_name, arguments):
         return f"{tool_name}:{json.dumps(arguments, sort_keys=True)}"
@@ -79,15 +88,18 @@ class QueryWorker(WorkerAgent):
         arguments = task.get("arguments", {})
 
         if tool_name == "get_current_time":
-            return await super().handle_task(task)
+            return await super().handle_task(task)   # 不使用缓存
 
         cache_key = self._get_cache_key(tool_name, arguments)
-        if cache_key in self.cache:
+        now = time.time()
+        cached = self.cache.get(cache_key)
+        if cached and cached[1] > now:
             print(f"[QueryWorker] 缓存命中: {cache_key}", flush=True)
-            return {"result": self.cache[cache_key]}
+            return {"result": cached[0]}
 
         result = await super().handle_task(task)
         if "result" in result and "error" not in result:
-            self.cache[cache_key] = result["result"]
-            print(f"[QueryWorker] 缓存写入: {cache_key}", flush=True)
+            ttl = self.ttl_map.get(tool_name, 10)
+            self.cache[cache_key] = (result["result"], now + ttl)
+            print(f"[QueryWorker] 缓存写入 (TTL={ttl}s): {cache_key}", flush=True)
         return result

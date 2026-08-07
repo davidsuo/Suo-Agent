@@ -441,20 +441,51 @@ def list_events(date: str = "") -> str:
         
 # ---------- 删除事件 ----------
 def delete_event(event_id: int) -> str:
-    """删除指定 ID 的日程"""
+    """删除日程，返回删除前的日程信息用于补偿"""
     init_calendar()
     try:
         conn = sqlite3.connect("calendar.db")
         c = conn.cursor()
+        # 先查询该日程的完整信息
+        c.execute("SELECT id, title, start_time, end_time, description FROM events WHERE id=?", (event_id,))
+        row = c.fetchone()
+        if not row:
+            return f"日程 {event_id} 不存在"
+        # 保存原始数据用于补偿
+        deleted_event = {
+            "id": row[0],
+            "title": row[1],
+            "start_time": row[2],
+            "end_time": row[3],
+            "description": row[4]
+        }
+        # 执行删除
         c.execute("DELETE FROM events WHERE id=?", (event_id,))
         conn.commit()
         conn.close()
-        return f"日程 {event_id} 已删除"
+        # 返回包含原始数据的消息
+        return f"日程 {event_id} 已删除。原始数据: {json.dumps(deleted_event)}"
     except Exception as e:
         return f"删除失败: {e}"
+
+def compensate_delete_event(event_id: int, **kwargs):
+    """补偿删除日程：重新插入被删除的日程"""
+    result = kwargs.get("result", "")
+    try:
+        # 从结果中提取原始日程数据
+        import re
+        match = re.search(r'原始数据: ({.*})', result)
+        if match:
+            data = json.loads(match.group(1))
+            # 重新添加日程
+            return add_event(data["title"], data["start_time"], data["end_time"], data["description"])
+        else:
+            return f"补偿：无法恢复日程 {event_id}，原始数据丢失"
+    except Exception as e:
+        return f"补偿失败: {e}"
         
         
-# ---------- 新增表格识别 ----------
+# ---------- 图片表格识别 ----------
 # 获取 OCR Token
 def get_ocr_token():
     api_key = os.getenv("BAIDU_OCR_API_KEY") or os.getenv("BAIDU_ASR_API_KEY")
@@ -802,10 +833,22 @@ def compensate_execute_python(code: str, **kwargs):
     except Exception as e:
         return f"补偿记录失败: {e}"
 
+def compensate_generate_image(prompt: str, **kwargs):
+    """图像生成失败补偿：记录日志（生成操作无真正副作用）"""
+    import datetime
+    try:
+        with open("image_failures.log", "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.datetime.now()}] 图像生成失败: {prompt}\n")
+        return "补偿：图像生成失败已记录。"
+    except Exception as e:
+        return f"补偿记录失败: {e}"
+
 COMPENSATIONS = {
     "send_email": compensate_send_email,
     "add_event": compensate_add_event,
     "execute_python": compensate_execute_python,
+    "delete_event": compensate_delete_event,   # 新增
+    "generate_image": compensate_generate_image,
 }
 
 

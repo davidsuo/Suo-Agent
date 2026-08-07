@@ -45,6 +45,12 @@ async def handle_text_input(text, history):
     """只处理文本输入，忽略音频"""
     if not text or not text.strip():
         return history, ""
+    
+    # 在 /logs 命令处理之前
+    if text.strip().startswith("#tenant "):
+        tenant = text.strip()[8:].strip()
+        memory.set_tenant(SESSION_ID, tenant)   # 需要 memory 支持
+        return history, f"已切换到租户: {tenant}"
 
     # 特殊命令：查看日志
     if text.strip().lower() == "/logs":
