@@ -5,6 +5,8 @@ import traceback
 import json
 from functools import partial
 from typing import Any, Dict, Callable
+import time
+
 
 class Agent:
     def __init__(self, name: str, event_bus: 'EventBus'):
@@ -66,7 +68,6 @@ class WorkerAgent(Agent):
         result = await loop.run_in_executor(None, partial(func, **arguments))
         return {"result": result}
 
-import time
 
 class QueryWorker(WorkerAgent):
     def __init__(self, name: str, tools: Dict[str, Callable], event_bus: 'EventBus'):

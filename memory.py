@@ -1,3 +1,4 @@
+# memory.py
 class ConversationMemory:
     def __init__(self):
         self.sessions = {}
@@ -20,3 +21,6 @@ class ConversationMemory:
             self.sessions[key] = []
         self.sessions[key].append({"role": "user", "content": user_msg})
         self.sessions[key].append({"role": "assistant", "content": assistant_msg})
+
+# 模块级单例，供其他模块导入
+memory = ConversationMemory()
