@@ -116,9 +116,9 @@ async def unified_handler(message, history, file, tenant_dropdown):
         # 关键修改：将识别结果作为用户消息，显示在右侧用户气泡中
         history = history or []
         history.append({"role": "user", "content": file_result})
-        # 暂存在记忆里，供后续对话使用（注意这里不调用智能体核心）
+        # 暂存到记忆（供后续对话使用）
         memory.append(SESSION_ID, file_result, "")
-        return history, "", None   # 返回空字符串清空文本框，文件组件自动清空
+        return history, "", None
 
     # ========== 普通文本处理 ==========
     if not message or not message.strip():
@@ -166,9 +166,9 @@ with gr.Blocks(title="AI 智能体") as demo:
             )
 
         # 底部按钮行：左对齐
-        with gr.Row(elem_classes="button-row"):
+        with gr.Row():
             file_upload_btn = gr.UploadButton(
-                "📁 上传文件（图片/表格/CSV/Excel/音频）",
+                "📁 上传文件",
                 file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
                 scale=0
             )
