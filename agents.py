@@ -61,6 +61,7 @@ class WorkerAgent(Agent):
     async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         tool_name = task.get("tool")
         arguments = task.get("arguments", {})
+        arguments.pop("_tenant", None)
         if tool_name not in self.tools:
             return {"error": f"工具 {tool_name} 不存在"}
         func = self.tools[tool_name]

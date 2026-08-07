@@ -158,6 +158,7 @@ def home():
 
 @app.post("/chat")
 async def chat(request: ChatRequest):
+    current_tenant = memory.get_tenant(session_id)
     answer = await chat_core(request.session_id, request.query)
     return {"answer": answer}
 
@@ -284,6 +285,7 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
         tool_info = pending.pop(session_id)
         tool_name = tool_info["tool_name"]
         arguments = tool_info["arguments"]
+        arguments["_tenant"] = memory.get_tenant(session_id)        
         if tool_name in AVAILABLE_TOOLS:
             try:
                 result = AVAILABLE_TOOLS[tool_name](**arguments)
@@ -339,6 +341,7 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
             step_id = step["id"]
             tool_name = step["tool"]
             arguments = step["arguments"]
+            arguments["_tenant"] = memory.get_tenant(session_id)
 
             # 处理参数中的占位符替换（{step_X_result}）
             for dep_id in step.get("depends_on", []):
@@ -474,6 +477,7 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                 for tool_call in msg.tool_calls:
                     func_name = tool_call.function.name
                     arguments = json.loads(tool_call.function.arguments)
+                    arguments["_tenant"] = memory.get_tenant(session_id)                    
 
                     if func_name == "send_email":
                         if tool_call_guard(func_name):

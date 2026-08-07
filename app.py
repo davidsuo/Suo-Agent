@@ -84,17 +84,14 @@ async def handle_text_input(text, history):
     if text.strip().startswith("#tenant"):
         parts = text.strip().split(maxsplit=1)
         if len(parts) == 1:
-            # 没有参数，显示当前租户
             current_tenant = memory.get_tenant(SESSION_ID)
             answer = f"当前租户：{current_tenant}"
         else:
             new_tenant = parts[1].strip()
             memory.set_tenant(SESSION_ID, new_tenant)
-            answer = f"已切换到租户：{new_tenant}"
-        history = history or []
-        history.append({"role": "user", "content": text})
-        history.append({"role": "assistant", "content": answer})
-        return history, ""
+            answer = f"已切换到租户：{new_tenant}。会话已清空。"
+        # 返回空历史，清空聊天窗口
+        return [], ""
 
     # 构建用户消息
     display_msg = text
