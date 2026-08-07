@@ -17,43 +17,30 @@ class Agent:
         self.error_count = 0
         # 不再需要 self.queue
 
-    # send_task 已废弃，不再使用
+    # send_task
+    async def send_task(self, task: dict) -> dict:
+        future = asyncio.get_event_loop().create_future()
+        self.queue.put_nowait((task, future))
+        return await future
 
     async def handle_task(self, task: dict) -> dict:
         raise NotImplementedError
 
     async def run_loop(self):
-        task_queue = f"task:{self.name}"
-        result_queue = f"result:{self.name}"
-        print(f"[{self.name}] Redis Worker 启动，监听队列: {task_queue}", flush=True)
+        print(f"[{self.name}] Worker 启动（内存总线），等待任务...")
         self.is_running = True
         while True:
+            task, future = await self.queue.get()
+            print(f"[{self.name}] 收到任务: {task.get('tool', 'unknown')}")
             try:
-                # 阻塞式弹出任务，超时 5 秒
-                result = await self.bus.redis.brpop(task_queue, timeout=5)
-                if result is None:
-                    continue
-                _, task_data = result
-                task = json.loads(task_data)
-                task_id = task.get("task_id")
-                print(f"[{self.name}] 收到任务: {task.get('tool', 'unknown')} (ID: {task_id})", flush=True)
-                try:
-                    res = await self.handle_task(task)
-                    self.task_count += 1
-                except Exception as e:
-                    self.error_count += 1
-                    res = {"error": str(e), "traceback": traceback.format_exc()}
-                result_payload = {"task_id": task_id, "result": res}
-                await self.bus.redis.lpush(result_queue, json.dumps(result_payload))
-                print(f"[{self.name}] 任务完成 (成功: {self.task_count}, 失败: {self.error_count})", flush=True)
-            except redis.exceptions.ConnectionError as e:
-                print(f"[{self.name}] Redis 连接错误，10秒后重试: {e}", flush=True)
-                await asyncio.sleep(10)
-                # 可选：重新初始化 Redis 连接
-                # self.bus.redis = redis.from_url(...)
+                result = await self.handle_task(task)
+                self.task_count += 1
             except Exception as e:
-                print(f"[{self.name}] 循环异常: {type(e).__name__}: {e}", flush=True)
-                await asyncio.sleep(1)
+                self.error_count += 1
+                result = {"error": str(e), "traceback": traceback.format_exc()}
+                print(f"[{self.name}] 任务执行失败: {e}")
+            future.set_result(result)
+            print(f"[{self.name}] 任务完成 (成功: {self.task_count}, 失败: {self.error_count})")
 
     def get_stats(self):
         return {
