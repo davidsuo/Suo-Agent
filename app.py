@@ -1,22 +1,20 @@
+# app.py
 import gradio as gr
-import pandas as pd
 import os
-import sqlite3
-from main import chat_core
-from tools import speech_to_text   # 从 tools 导入百度语音转写函数
-from memory import memory   # 确保与 main.py 使用的同一个实例
-import tools
 import asyncio
 import json
-from tools import ocr_image
-
+import pandas as pd
+from main import chat_core, init_database, bus, query_worker, command_worker
+from memory import memory
+import tools
+from tools import speech_to_text, ocr_image, recognize_table, analyze_file
 
 SESSION_ID = "render_user"
 
-def init_database():
-    """自动创建 sample.db 如果不存在"""
+def init_db():
     db_path = "sample.db"
     if not os.path.exists(db_path):
+        import sqlite3
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         cursor.execute('''
@@ -37,13 +35,24 @@ def init_database():
         conn.commit()
         conn.close()
         print("✅ 数据库 sample.db 已自动创建并插入示例数据。")
-    else:
-        print("✅ 数据库 sample.db 已存在，无需初始化。")
 
-# ========== 纯文本处理 ==========
-async def handle_text_input(text, history):
-    # 处理 /logs 命令
-    if text.strip().lower() == "/logs":
+# 获取可用租户列表（从记忆中的tenant_map）
+def get_available_tenants():
+    tenants = set(memory.tenant_map.values())
+    tenants.add("default")
+    return sorted(list(tenants))
+
+# 统一的消息处理函数
+async def unified_handler(message, history, file, tenant_dropdown):
+    """
+    处理文本和文件输入。
+    message: 文本输入
+    history: 聊天历史
+    file: 上传的文件路径（单个文件）或 None
+    tenant_dropdown: 当前租户下拉框的值（暂未在此使用，但保留接口）
+    """
+    # 处理特殊命令 /logs
+    if message and message.strip().lower() == "/logs":
         try:
             with open("plan_log.json", "r", encoding="utf-8") as f:
                 lines = f.readlines()
@@ -68,219 +77,196 @@ async def handle_text_input(text, history):
         history = history or []
         history.append({"role": "user", "content": "/logs"})
         history.append({"role": "assistant", "content": answer})
-        return history, ""
+        return history, "", None
 
     # 处理 #tenant 命令
-    if text.strip().startswith("#tenant"):
-        parts = text.strip().split(maxsplit=1)
+    if message and message.strip().startswith("#tenant"):
+        parts = message.strip().split(maxsplit=1)
         if len(parts) == 1:
-            # 查询当前租户
             current_tenant = memory.get_tenant(SESSION_ID)
             answer = f"当前租户：{current_tenant}"
             history = history or []
-            history.append({"role": "user", "content": text})
+            history.append({"role": "user", "content": message})
             history.append({"role": "assistant", "content": answer})
-            return history, ""
+            return history, "", None
         else:
             new_tenant = parts[1].strip()
-            # 1. 保存当前窗口的历史到当前租户
             current_tenant = memory.get_tenant(SESSION_ID)
             if history:
                 memory.set_tenant(SESSION_ID, current_tenant)
                 memory.set_history(SESSION_ID, history)
-            # 2. 切换租户
             memory.set_tenant(SESSION_ID, new_tenant)
-            # 3. 加载新租户的历史
             loaded_history = memory.get_history(SESSION_ID)
-            # 构建提示消息
             answer = f"已切换到租户：{new_tenant}。"
             if loaded_history:
-                # 在历史前面加上切换提示
+                answer += " 已恢复上次会话。"
                 new_history = [{"role": "assistant", "content": answer}] + loaded_history
             else:
-                answer += " 会话已清空，您可以开始新的对话。"
+                answer += " 会话已清空。"
                 new_history = [{"role": "assistant", "content": answer}]
-            return new_history, ""
+            return new_history, "", None
+
+    # 处理文件上传
+    if file is not None:
+        file_path = file.name if hasattr(file, 'name') else file
+        # 根据文件扩展名判断类型，调用对应工具
+        ext = os.path.splitext(file_path)[1].lower()
+        file_result = ""
+        description = ""
+        if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif'):
+            # 默认调用通用文字识别，但也可以通过文本指定“表格识别”
+            # 这里简单处理：如果message包含“表格”，则调用表格识别，否则通用识别
+            if message and "表格" in message:
+                file_result = recognize_table(file_path)
+                description = "（表格图片上传）请识别表格"
+            else:
+                file_result = ocr_image(file_path)
+                description = "（图片上传）请识别文字"
+        elif ext in ('.csv', '.xlsx', '.xls'):
+            file_result = analyze_file(file_path)
+            description = "（文件上传）请分析该文件"
+        elif ext in ('.wav', '.mp3', '.m4a', '.ogg'):
+            file_result = speech_to_text(file_path)
+            description = "（音频上传）语音转文字"
+        else:
+            file_result = "不支持的文件类型"
+            description = "（文件上传）"
+
+        # 将识别/分析结果添加到聊天记录，同时保存到记忆
+        history = history or []
+        history.append({"role": "user", "content": description})
+        history.append({"role": "assistant", "content": file_result})
+        memory.append(SESSION_ID, description, file_result)
+        # 返回清除文件输入框，保留文本输入框内容（以便用户追加问题）
+        return history, "", None
 
     # 普通文本处理
-    if not text or not text.strip():
-        return history, ""
+    if not message or not message.strip():
+        return history, "", None
 
-    display_msg = text
+    display_msg = message
     history = history or []
     history.append({"role": "user", "content": display_msg})
 
-    answer = await chat_core(SESSION_ID, text, None)
-    history.append({"role": "assistant", "content": answer})
-    return history, ""
-
-
-# ========== 音频处理 ==========
-async def handle_audio_input(audio, history):
-    """处理音频输入，转写文字后自动发送"""
-    if audio is None:
-        return history, "", None
-
-    from tools import speech_to_text
-    transcribed = speech_to_text(audio)
-    if transcribed.startswith("语音识别失败"):
-        history = history or []
-        history.append({"role": "user", "content": "🎤 音频输入"})
-        history.append({"role": "assistant", "content": transcribed})
-        return history, "", None
-
-    # 转写成功，作为文本提交
-    user_text = transcribed
-    display_msg = user_text + " 🎤"
-    history = history or []
-    history.append({"role": "user", "content": display_msg})
-
-    answer = await chat_core(SESSION_ID, user_text, None)
+    answer = await chat_core(SESSION_ID, message, None)
     history.append({"role": "assistant", "content": answer})
     return history, "", None
 
+# 租户切换处理（下拉框改变时）
+def on_tenant_change(new_tenant):
+    if new_tenant:
+        current = memory.get_tenant(SESSION_ID)
+        if new_tenant != current:
+            # 保存当前历史？
+            # 由于下拉框改变时无法获取当前history，这里简化处理：只切换租户，清屏由前端完成
+            memory.set_tenant(SESSION_ID, new_tenant)
+            # 返回空历史以清屏
+            return [], new_tenant
+    return gr.update(), gr.update()
+
 # 构建界面
-with gr.Blocks(title="AI 智能体") as demo:
+with gr.Blocks(title="AI 智能体", theme=gr.themes.Soft()) as demo:
     with gr.Tab("聊天"):
-        gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具 + 语音 + 文件分析）")
-        gr.Markdown("上传 CSV/Excel 文件、打字或上传音频，我会调用所有能力回答你。")
+        gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具）")
+        
+        # 顶部租户切换下拉框
+        with gr.Row():
+            tenant_dropdown = gr.Dropdown(
+                choices=get_available_tenants(),
+                value="default",
+                label="租户切换",
+                interactive=True,
+                scale=1
+            )
+            # 刷新按钮，用于更新租户列表
+            refresh_btn = gr.Button("刷新租户列表", size="sm", scale=0)
 
         chatbot = gr.Chatbot(label="对话", height=500)
 
-        # ... 其他组件 ...
-        general_image_input = gr.Image(label="🖼️ 上传图片识别文字", type="filepath")
-        table_image_input = gr.Image(label="📊 上传表格图片进行识别（CSV）", type="filepath")
-        file_input = gr.File(label="📁 上传 CSV 或 Excel 文件", file_types=[".csv", ".xlsx", ".xls"])
-        # ...
-
+        # 底部输入区：文本 + 文件上传 + 音频
         with gr.Row():
-            text_input = gr.Textbox(label="输入文字（可选）", placeholder="在这里打字...", scale=2)
-            audio_input = gr.Audio(label="🎤 上传音频", type="filepath", scale=1)
-        
-        async def handle_general_image_upload(image_path, history):
-            """上传普通图片，调用通用文字识别"""
-            if image_path is None:
-                return history
-            ocr_result = tools.ocr_image(image_path)
-            history = history or []
-            history.append({"role": "user", "content": "（图片上传）请识别文字"})
-            history.append({"role": "assistant", "content": f"识别结果：\n{ocr_result}"})
-            memory.append(SESSION_ID, "（图片上传）请识别文字", ocr_result)
-            return history
-        general_image_input.upload(
-            handle_general_image_upload,
-            [general_image_input, chatbot],
-            [chatbot]
-        )
-    
-        async def handle_table_image_upload(image_path, history):
-            """上传表格图片，自动调用表格识别并返回 CSV"""
-            if image_path is None:
-                return history
-            ocr_result = tools.recognize_table(image_path)
-            history = history or []
-            history.append({"role": "user", "content": "（表格图片上传）请识别表格"})
-            history.append({"role": "assistant", "content": f"表格识别结果（CSV）：\n{ocr_result}"})
-            memory.append(SESSION_ID, "（表格图片上传）请识别表格", ocr_result)
-            return history
-        table_image_input.upload(
-            handle_table_image_upload,
-            [table_image_input, chatbot],
-            [chatbot]
-        )
-        async def handle_file_upload(file, history):
-            if file is None:
-                return history, "", gr.update(value=None)
+            text_input = gr.Textbox(
+                label="输入文字（可用 /logs 查看日志，#tenant 切换租户）",
+                placeholder="在这里输入问题或指令...",
+                scale=4
+            )
+            # 统一文件上传组件
+            file_upload = gr.File(
+                label="上传文件（图片/表格/CSV/Excel/音频）",
+                file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
+                scale=1
+            )
+            # 音频录音按钮（保留直接录音功能）
+            audio_recorder = gr.Audio(
+                label="录音",
+                type="filepath",
+                scale=1
+            )
 
-            try:
-                # 尝试分析文件
-                analysis_result = tools.analyze_file(file.name)
-                # 记录最近文件路径
-                tools.last_uploaded_file = file.name
-                # 构建用户消息
-                history = history or []
-                history.append({"role": "user", "content": "（文件上传）请分析该文件"})
-                history.append({"role": "assistant", "content": analysis_result})
-                # 写入记忆
-                memory.append(SESSION_ID, "（文件上传）请分析该文件", analysis_result)
-            except Exception as e:
-                # 如果分析失败，返回错误信息
-                history = history or []
-                history.append({"role": "user", "content": "（文件上传）"})
-                history.append({"role": "assistant", "content": f"文件分析失败：{str(e)}"})
-                # 即使失败也尝试清空文件组件
-                return history, "", gr.update(value=None)
-
-            return history, "", gr.update(value=None)
-
-        # 在界面构建部分
-        file_input.upload(
-            handle_file_upload,
-            [file_input, chatbot],
-            [chatbot, text_input, file_input]
+        # 事件绑定
+        # 文本输入回车
+        text_input.submit(
+            unified_handler,
+            [text_input, chatbot, file_upload, tenant_dropdown],
+            [chatbot, text_input, file_upload]
         )
 
-        # 原有的文本和音频处理保持不变（注意需要适配多输入）
-        async def handle_user_input(text, audio, history):
-            transcribed = ""
-            if text and text.strip():
-                audio = None
-            user_text = text or ""
-            if audio is not None:
-                from tools import speech_to_text
-                transcribed = speech_to_text(audio)
-                if not transcribed.startswith("语音识别失败"):
-                    user_text = transcribed
-            else:
-                history = history or []
-                history.append({"role": "user", "content": "🎤 音频输入"})
-                history.append({"role": "assistant", "content": transcribed})
-                return history, "", None
+        # 文件上传后自动处理
+        file_upload.upload(
+            unified_handler,
+            [text_input, chatbot, file_upload, tenant_dropdown],
+            [chatbot, text_input, file_upload]
+        )
 
-            if not user_text.strip():
-                return history, "", None
+        # 音频录制完成自动处理
+        audio_recorder.stop_recording(
+            unified_handler,
+            [text_input, chatbot, audio_recorder, tenant_dropdown],
+            [chatbot, text_input, audio_recorder]
+        )
+        audio_recorder.upload(
+            unified_handler,
+            [text_input, chatbot, audio_recorder, tenant_dropdown],
+            [chatbot, text_input, audio_recorder]
+        )
 
-            display_msg = user_text
-            if audio is not None:
-                display_msg += " 🎤"
-            history = history or []
-            history.append({"role": "user", "content": display_msg})
+        # 租户下拉框改变事件
+        tenant_dropdown.change(
+            on_tenant_change,
+            [tenant_dropdown],
+            [chatbot, tenant_dropdown]
+        )
 
-            answer = await chat_core(SESSION_ID, user_text, None)
-            history.append({"role": "assistant", "content": answer})
-            return history, "", None
-            
+        # 刷新租户列表
+        def refresh_tenants():
+            tenants = get_available_tenants()
+            return gr.Dropdown(choices=tenants, value=memory.get_tenant(SESSION_ID))
+        refresh_btn.click(refresh_tenants, None, tenant_dropdown)
+
     with gr.Tab("Worker 监控"):
         gr.Markdown("## 实时 Worker 状态")
-        refresh_btn = gr.Button("刷新")
-        status_table = gr.Dataframe(headers=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度"], interactive=False)
+        refresh_btn2 = gr.Button("刷新")
+        status_table = gr.Dataframe(
+            headers=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度"],
+            interactive=False
+        )
 
         def refresh_status():
-            from main import get_workers_status
-            stats = get_workers_status()
+            workers = [query_worker, command_worker]
             data = []
-            for s in stats:
-                data.append([s["name"], str(s["is_running"]), s["task_count"], s["error_count"], s["queue_size"]])
+            for w in workers:
+                stats = w.get_stats()
+                data.append([stats["name"], str(stats["is_running"]), stats["task_count"], stats["error_count"], stats["queue_size"]])
             return pd.DataFrame(data, columns=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度"])
 
-        refresh_btn.click(fn=refresh_status, outputs=status_table)
-        # 页面加载时自动刷新一次
+        refresh_btn2.click(fn=refresh_status, outputs=status_table)
         status_table.value = refresh_status()
 
-    # 绑定事件
-    text_input.submit(
-        handle_text_input,
-        [text_input, chatbot],
-        [chatbot, text_input]
-    )
-
-    audio_input.change(
-        handle_audio_input,
-        [audio_input, chatbot],
-        [chatbot, text_input, audio_input]
-    )
-
 if __name__ == "__main__":
-    init_database()   # 启动前检查数据库
+    init_db()
+    # 启动Worker后台循环（它们会在run_loop中监听Redis队列）
+    loop = asyncio.get_event_loop()
+    loop.create_task(query_worker.run_loop())
+    loop.create_task(command_worker.run_loop())
     port = int(os.environ.get("PORT", 7860))
     demo.launch(server_name="0.0.0.0", server_port=port)
