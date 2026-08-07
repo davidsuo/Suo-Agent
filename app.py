@@ -1,4 +1,3 @@
-# app.py
 import gradio as gr
 import os
 import asyncio
@@ -36,22 +35,13 @@ def init_db():
         conn.close()
         print("✅ 数据库 sample.db 已自动创建并插入示例数据。")
 
-# 获取可用租户列表（从记忆中的tenant_map）
 def get_available_tenants():
     tenants = set(memory.tenant_map.values())
     tenants.add("default")
     return sorted(list(tenants))
 
-# 统一的消息处理函数
 async def unified_handler(message, history, file, tenant_dropdown):
-    """
-    处理文本和文件输入。
-    message: 文本输入
-    history: 聊天历史
-    file: 上传的文件路径（单个文件）或 None
-    tenant_dropdown: 当前租户下拉框的值（暂未在此使用，但保留接口）
-    """
-    # 处理特殊命令 /logs
+    # 处理 /logs 命令
     if message and message.strip().lower() == "/logs":
         try:
             with open("plan_log.json", "r", encoding="utf-8") as f:
@@ -106,16 +96,13 @@ async def unified_handler(message, history, file, tenant_dropdown):
                 new_history = [{"role": "assistant", "content": answer}]
             return new_history, "", None
 
-    # 处理文件上传
+    # 处理文件上传（按钮上传或录音按钮）
     if file is not None:
-        file_path = file.name if hasattr(file, 'name') else file
-        # 根据文件扩展名判断类型，调用对应工具
+        file_path = file if isinstance(file, str) else (file.name if hasattr(file, 'name') else str(file))
         ext = os.path.splitext(file_path)[1].lower()
         file_result = ""
         description = ""
         if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif'):
-            # 默认调用通用文字识别，但也可以通过文本指定“表格识别”
-            # 这里简单处理：如果message包含“表格”，则调用表格识别，否则通用识别
             if message and "表格" in message:
                 file_result = recognize_table(file_path)
                 description = "（表格图片上传）请识别表格"
@@ -132,15 +119,13 @@ async def unified_handler(message, history, file, tenant_dropdown):
             file_result = "不支持的文件类型"
             description = "（文件上传）"
 
-        # 将识别/分析结果添加到聊天记录，同时保存到记忆
         history = history or []
         history.append({"role": "user", "content": description})
         history.append({"role": "assistant", "content": file_result})
         memory.append(SESSION_ID, description, file_result)
-        # 返回清除文件输入框，保留文本输入框内容（以便用户追加问题）
         return history, "", None
 
-    # 普通文本处理
+    # 普通文本
     if not message or not message.strip():
         return history, "", None
 
@@ -152,24 +137,18 @@ async def unified_handler(message, history, file, tenant_dropdown):
     history.append({"role": "assistant", "content": answer})
     return history, "", None
 
-# 租户切换处理（下拉框改变时）
 def on_tenant_change(new_tenant):
     if new_tenant:
         current = memory.get_tenant(SESSION_ID)
         if new_tenant != current:
-            # 保存当前历史？
-            # 由于下拉框改变时无法获取当前history，这里简化处理：只切换租户，清屏由前端完成
             memory.set_tenant(SESSION_ID, new_tenant)
-            # 返回空历史以清屏
             return [], new_tenant
     return gr.update(), gr.update()
 
-# 构建界面
 with gr.Blocks(title="AI 智能体", theme=gr.themes.Soft()) as demo:
     with gr.Tab("聊天"):
         gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具）")
-        
-        # 顶部租户切换下拉框
+
         with gr.Row():
             tenant_dropdown = gr.Dropdown(
                 choices=get_available_tenants(),
@@ -178,66 +157,61 @@ with gr.Blocks(title="AI 智能体", theme=gr.themes.Soft()) as demo:
                 interactive=True,
                 scale=1
             )
-            # 刷新按钮，用于更新租户列表
             refresh_btn = gr.Button("刷新租户列表", size="sm", scale=0)
 
         chatbot = gr.Chatbot(label="对话", height=500)
 
-        # 底部输入区：文本 + 文件上传 + 音频
         with gr.Row():
             text_input = gr.Textbox(
                 label="输入文字（可用 /logs 查看日志，#tenant 切换租户）",
                 placeholder="在这里输入问题或指令...",
                 scale=4
             )
-            # 统一文件上传组件
-            file_upload = gr.File(
-                label="上传文件（图片/表格/CSV/Excel/音频）",
+
+        # 底部按钮行：上传文件 + 语音输入
+        with gr.Row():
+            file_upload_btn = gr.UploadButton(
+                label="📁 上传文件（图片/表格/CSV/Excel/音频）",
                 file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
                 scale=1
             )
-            # 音频录音按钮（保留直接录音功能）
-            audio_recorder = gr.Audio(
-                label="录音",
+            audio_input_btn = gr.Audio(
+                label="🎤 语音输入",
+                source="microphone",
                 type="filepath",
                 scale=1
             )
 
         # 事件绑定
-        # 文本输入回车
         text_input.submit(
             unified_handler,
-            [text_input, chatbot, file_upload, tenant_dropdown],
-            [chatbot, text_input, file_upload]
+            [text_input, chatbot, file_upload_btn, tenant_dropdown],
+            [chatbot, text_input, file_upload_btn]
         )
 
-        # 文件上传后自动处理
-        file_upload.upload(
+        file_upload_btn.upload(
             unified_handler,
-            [text_input, chatbot, file_upload, tenant_dropdown],
-            [chatbot, text_input, file_upload]
+            [text_input, chatbot, file_upload_btn, tenant_dropdown],
+            [chatbot, text_input, file_upload_btn]
         )
 
-        # 音频录制完成自动处理
-        audio_recorder.stop_recording(
+        audio_input_btn.stop_recording(
             unified_handler,
-            [text_input, chatbot, audio_recorder, tenant_dropdown],
-            [chatbot, text_input, audio_recorder]
+            [text_input, chatbot, audio_input_btn, tenant_dropdown],
+            [chatbot, text_input, audio_input_btn]
         )
-        audio_recorder.upload(
+        audio_input_btn.upload(
             unified_handler,
-            [text_input, chatbot, audio_recorder, tenant_dropdown],
-            [chatbot, text_input, audio_recorder]
+            [text_input, chatbot, audio_input_btn, tenant_dropdown],
+            [chatbot, text_input, audio_input_btn]
         )
 
-        # 租户下拉框改变事件
         tenant_dropdown.change(
             on_tenant_change,
             [tenant_dropdown],
             [chatbot, tenant_dropdown]
         )
 
-        # 刷新租户列表
         def refresh_tenants():
             tenants = get_available_tenants()
             return gr.Dropdown(choices=tenants, value=memory.get_tenant(SESSION_ID))
@@ -264,7 +238,6 @@ with gr.Blocks(title="AI 智能体", theme=gr.themes.Soft()) as demo:
 
 if __name__ == "__main__":
     init_db()
-    # 启动Worker后台循环（它们会在run_loop中监听Redis队列）
     loop = asyncio.get_event_loop()
     loop.create_task(query_worker.run_loop())
     loop.create_task(command_worker.run_loop())
