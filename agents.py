@@ -6,7 +6,7 @@ import json
 from functools import partial
 from typing import Any, Dict, Callable
 import time
-
+from redis.exceptions import ConnectionError 
 
 class Agent:
     def __init__(self, name: str, event_bus: 'RedisEventBus'):
@@ -23,7 +23,6 @@ class Agent:
         raise NotImplementedError
 
     async def run_loop(self):
-        """Worker 主循环：从 Redis 任务队列拉取任务，执行后放入结果队列"""
         task_queue = f"task:{self.name}"
         result_queue = f"result:{self.name}"
         print(f"[{self.name}] Redis Worker 启动，监听队列: {task_queue}", flush=True)
@@ -37,19 +36,23 @@ class Agent:
                 _, task_data = result
                 task = json.loads(task_data)
                 task_id = task.get("task_id")
-                print(f"[{self.name}] 收到任务: {task.get('tool', 'unknown')} (ID: {task_id})")
+                print(f"[{self.name}] 收到任务: {task.get('tool', 'unknown')} (ID: {task_id})", flush=True)
                 try:
                     res = await self.handle_task(task)
                     self.task_count += 1
                 except Exception as e:
                     self.error_count += 1
                     res = {"error": str(e), "traceback": traceback.format_exc()}
-                # 将结果放入结果队列
                 result_payload = {"task_id": task_id, "result": res}
                 await self.bus.redis.lpush(result_queue, json.dumps(result_payload))
-                print(f"[{self.name}] 任务完成 (成功: {self.task_count}, 失败: {self.error_count})")
+                print(f"[{self.name}] 任务完成 (成功: {self.task_count}, 失败: {self.error_count})", flush=True)
+            except redis.exceptions.ConnectionError as e:
+                print(f"[{self.name}] Redis 连接错误，10秒后重试: {e}", flush=True)
+                await asyncio.sleep(10)
+                # 可选：重新初始化 Redis 连接
+                # self.bus.redis = redis.from_url(...)
             except Exception as e:
-                print(f"[{self.name}] 循环异常: {e}", flush=True)
+                print(f"[{self.name}] 循环异常: {type(e).__name__}: {e}", flush=True)
                 await asyncio.sleep(1)
 
     def get_stats(self):

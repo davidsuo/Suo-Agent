@@ -290,6 +290,7 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
 
     # 1. 检查是否为二次确认的确认回复
     if session_id in pending and "确认" in query.strip():
+        print(f"[确认] 执行待处理工具 for session {session_id}", flush=True)
         print(f"[确认] 执行待处理工具 for session {session_id}")
         tool_info = pending.pop(session_id)
         tool_name = tool_info["tool_name"]
@@ -426,6 +427,8 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
 
         # ========== 步骤执行完毕，处理邮件确认或结果整合 ==========
         if email_args:
+            print("[规划引擎] 进入邮件确认分支", flush=True)
+            # 原有替换占位符和 pending 填充代码...
             # 邮件需要二次确认，生成确认提示
             body = email_args.get("body", "")
             for step_id, result_text in results.items():
@@ -436,7 +439,7 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                 "tool_name": "send_email",
                 "arguments": email_args
             }
-
+            print(f"[规划引擎] 已缓存邮件待确认项 for session {session_id}", flush=True)
             confirm_msg = (
                 f"⚠️ 危险操作确认\n"
                 f"工具：send_email\n"
