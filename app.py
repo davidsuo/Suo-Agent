@@ -101,15 +101,16 @@ async def unified_handler(message, history, file, tenant_dropdown):
         file_path = file if isinstance(file, str) else (file.name if hasattr(file, 'name') else str(file))
         ext = os.path.splitext(file_path)[1].lower()
         file_result = ""
+        loop = asyncio.get_event_loop()
         if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif'):
             if message and "表格" in message:
-                file_result = recognize_table(file_path)
+                file_result = await loop.run_in_executor(None, recognize_table, file_path)
             else:
-                file_result = ocr_image(file_path)
+                file_result = await loop.run_in_executor(None, ocr_image, file_path)
         elif ext in ('.csv', '.xlsx', '.xls'):
-            file_result = analyze_file(file_path)
+            file_result = await loop.run_in_executor(None, analyze_file, file_path)
         elif ext in ('.wav', '.mp3', '.m4a', '.ogg'):
-            file_result = speech_to_text(file_path)
+            file_result = await loop.run_in_executor(None, speech_to_text, file_path)
         else:
             file_result = "不支持的文件类型"
 
@@ -117,7 +118,6 @@ async def unified_handler(message, history, file, tenant_dropdown):
         if message and message.strip():
             # 有文字输入：暂存文件内容到记忆，不直接显示在聊天中
             memory.append(SESSION_ID, f"[文件内容] {file_result}", "")
-            # 保留文本框内容，不清空，让用户继续编辑
             return history, message, None
         else:
             # 仅有文件：直接作为用户问题，显示在右侧，并触发智能体回答
