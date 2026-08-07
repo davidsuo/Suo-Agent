@@ -4,7 +4,7 @@ import os
 import asyncio
 import json
 import pandas as pd
-from main import chat_core, init_database, bus, query_worker, command_worker
+from main import chat_core, bus, query_worker, command_worker
 from memory import memory
 import tools
 from tools import speech_to_text, ocr_image, recognize_table, analyze_file
