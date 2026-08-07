@@ -113,12 +113,20 @@ async def unified_handler(message, history, file, tenant_dropdown):
         else:
             file_result = "不支持的文件类型"
 
-        # 关键修改：将识别结果作为用户消息，显示在右侧用户气泡中
         history = history or []
-        history.append({"role": "user", "content": file_result})
-        # 暂存到记忆（供后续对话使用）
-        memory.append(SESSION_ID, file_result, "")
-        return history, "", None
+        # 如果同时输入了文字，暂存文件结果，不触发智能体
+        if message and message.strip():
+            history.append({"role": "user", "content": file_result})
+            memory.append(SESSION_ID, file_result, "")
+            # 保留文本框内容，不清空，让用户继续编辑
+            return history, message, None
+        else:
+            # 仅有音频/文件，直接作为问题调用智能体
+            history.append({"role": "user", "content": file_result})
+            answer = await chat_core(SESSION_ID, file_result, None)
+            history.append({"role": "assistant", "content": answer})
+            memory.append(SESSION_ID, file_result, answer)
+            return history, "", None
 
     # ========== 普通文本处理 ==========
     if not message or not message.strip():
@@ -176,6 +184,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                 label="🎤 语音输入",
                 sources=["microphone"],
                 type="filepath",
+                show_download_button=False,
                 scale=0
             )
 
