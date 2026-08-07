@@ -96,36 +96,31 @@ async def unified_handler(message, history, file, tenant_dropdown):
                 new_history = [{"role": "assistant", "content": answer}]
             return new_history, "", None
 
-    # 处理文件上传（按钮上传或录音按钮）
+    # ========== 文件上传处理 ==========
     if file is not None:
         file_path = file if isinstance(file, str) else (file.name if hasattr(file, 'name') else str(file))
         ext = os.path.splitext(file_path)[1].lower()
         file_result = ""
-        description = ""
         if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif'):
             if message and "表格" in message:
                 file_result = recognize_table(file_path)
-                description = "（表格图片上传）请识别表格"
             else:
                 file_result = ocr_image(file_path)
-                description = "（图片上传）请识别文字"
         elif ext in ('.csv', '.xlsx', '.xls'):
             file_result = analyze_file(file_path)
-            description = "（文件上传）请分析该文件"
         elif ext in ('.wav', '.mp3', '.m4a', '.ogg'):
             file_result = speech_to_text(file_path)
-            description = "（音频上传）语音转文字"
         else:
             file_result = "不支持的文件类型"
-            description = "（文件上传）"
 
+        # 关键修改：将识别结果作为用户消息，显示在右侧用户气泡中
         history = history or []
-        history.append({"role": "user", "content": description})
-        history.append({"role": "assistant", "content": file_result})
-        memory.append(SESSION_ID, description, file_result)
-        return history, "", None
+        history.append({"role": "user", "content": file_result})
+        # 暂存在记忆里，供后续对话使用（注意这里不调用智能体核心）
+        memory.append(SESSION_ID, file_result, "")
+        return history, "", None   # 返回空字符串清空文本框，文件组件自动清空
 
-    # 普通文本
+    # ========== 普通文本处理 ==========
     if not message or not message.strip():
         return history, "", None
 
@@ -137,6 +132,7 @@ async def unified_handler(message, history, file, tenant_dropdown):
     history.append({"role": "assistant", "content": answer})
     return history, "", None
 
+
 def on_tenant_change(new_tenant):
     if new_tenant:
         current = memory.get_tenant(SESSION_ID)
@@ -144,6 +140,7 @@ def on_tenant_change(new_tenant):
             memory.set_tenant(SESSION_ID, new_tenant)
             return [], new_tenant
     return gr.update(), gr.update()
+
 
 with gr.Blocks(title="AI 智能体") as demo:
     with gr.Tab("聊天"):
@@ -168,18 +165,18 @@ with gr.Blocks(title="AI 智能体") as demo:
                 scale=4
             )
 
-        # 底部按钮行：上传文件 + 语音输入
-        with gr.Row():
+        # 底部按钮行：左对齐
+        with gr.Row(elem_classes="button-row"):
             file_upload_btn = gr.UploadButton(
-                label="📁 上传文件（图片/表格/CSV/Excel/音频）",
+                "📁 上传文件（图片/表格/CSV/Excel/音频）",
                 file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
-                scale=1
+                scale=0
             )
             audio_input_btn = gr.Audio(
                 label="🎤 语音输入",
                 sources=["microphone"],
                 type="filepath",
-                scale=1
+                scale=0
             )
 
         # 事件绑定
