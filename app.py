@@ -74,6 +74,7 @@ async def handle_text_input(text, history):
     if text.strip().startswith("#tenant"):
         parts = text.strip().split(maxsplit=1)
         if len(parts) == 1:
+            # 查询当前租户
             current_tenant = memory.get_tenant(SESSION_ID)
             answer = f"当前租户：{current_tenant}"
             history = history or []
@@ -85,19 +86,21 @@ async def handle_text_input(text, history):
             # 1. 保存当前窗口的历史到当前租户
             current_tenant = memory.get_tenant(SESSION_ID)
             if history:
-                # 将当前聊天记录保存到当前租户下
-                memory.set_tenant(SESSION_ID, current_tenant)  # 确保键正确
+                memory.set_tenant(SESSION_ID, current_tenant)
                 memory.set_history(SESSION_ID, history)
             # 2. 切换租户
             memory.set_tenant(SESSION_ID, new_tenant)
             # 3. 加载新租户的历史
             loaded_history = memory.get_history(SESSION_ID)
+            # 构建提示消息
             answer = f"已切换到租户：{new_tenant}。"
             if loaded_history:
-                answer += " 已恢复上次会话。"
+                # 在历史前面加上切换提示
+                new_history = [{"role": "assistant", "content": answer}] + loaded_history
             else:
                 answer += " 会话已清空，您可以开始新的对话。"
-            return loaded_history, ""
+                new_history = [{"role": "assistant", "content": answer}]
+            return new_history, ""
 
     # 普通文本处理
     if not text or not text.strip():
