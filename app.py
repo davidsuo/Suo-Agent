@@ -86,22 +86,20 @@ async def handle_text_input(text, history):
         if len(parts) == 1:
             current_tenant = memory.get_tenant(SESSION_ID)
             answer = f"当前租户：{current_tenant}"
+            # 不切换，不清屏，返回原历史
+            history = history or []
+            history.append({"role": "user", "content": text})
+            history.append({"role": "assistant", "content": answer})
+            return history, ""
         else:
             new_tenant = parts[1].strip()
             memory.set_tenant(SESSION_ID, new_tenant)
-            answer = f"已切换到租户：{new_tenant}。会话已清空。"
-        # 返回空历史，清空聊天窗口
-        return [], ""
-
-    # 构建用户消息
-    display_msg = text
-    history = history or []
-    history.append({"role": "user", "content": display_msg})
-
-    # 调用智能体
-    answer = await chat_core(SESSION_ID, text, None)
-    history.append({"role": "assistant", "content": answer})
-    return history, ""
+            answer = f"已切换到租户：{new_tenant}。会话已清空，您可以开始新的对话。"
+            # 返回一个全新的历史，仅包含本次切换消息，实现清屏
+            new_history = [
+                {"role": "assistant", "content": answer}
+            ]
+            return new_history, ""
 
 
 # ========== 音频处理 ==========
