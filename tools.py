@@ -67,7 +67,7 @@ def query_database(sql: str):
         return f"数据库查询错误: {e}"
         
 # ---------- 发送邮件  (send_email) ----------
-def send_email(to_email: str, subject: str, body: str):
+def send_email(to_email: str, subject: str, body: str, **kwargs):
     api_key = os.getenv("MAILGUN_API_KEY")
     domain = os.getenv("MAILGUN_DOMAIN")
     from_email = os.getenv("EMAIL_FROM")
