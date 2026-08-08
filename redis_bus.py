@@ -61,7 +61,7 @@ class RedisEventBus:
                     future.set_result({"error": "任务超时"})
                 break
             try:
-                result = await self.bus.redis.brpop(result_queue, timeout=5)
+                result = await self.redis.brpop(result_queue, timeout=5)
                 if result is not None:
                     _, data = result
                     res_data = json.loads(data)
