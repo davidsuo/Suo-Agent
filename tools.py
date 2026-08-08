@@ -419,7 +419,6 @@ def add_event(title: str, start_time: str, end_time: str = "", description: str 
         
 # ---------- 列举事件 ----------
 def list_events(date: str = "") -> str:
-    """列出指定日期的所有日程，日期格式 YYYY-MM-DD，不填则列出所有"""
     init_calendar()
     try:
         conn = sqlite3.connect("calendar.db")
@@ -430,6 +429,7 @@ def list_events(date: str = "") -> str:
             c.execute("SELECT id, title, start_time, end_time, description FROM events ORDER BY start_time")
         rows = c.fetchall()
         conn.close()
+        print(f"[list_events] 查询日期: {date or '全部'}, 结果数量: {len(rows)}")  # 增加日志
         if not rows:
             return "暂无日程。"
         result = "日程列表：\n"
@@ -437,6 +437,7 @@ def list_events(date: str = "") -> str:
             result += f"ID:{row[0]} | {row[1]} | 开始:{row[2]} | 结束:{row[3]} | {row[4]}\n"
         return result
     except Exception as e:
+        print(f"[list_events] 异常: {e}")
         return f"查询日程失败: {e}"
         
 # ---------- 删除事件 ----------

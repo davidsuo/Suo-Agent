@@ -459,6 +459,7 @@ async def generate_plan(user_query, history, client):
 4. 只返回 JSON 数组，不要有任何额外文字。
 5. **严禁将数据库查询结果直接填入 calculator 表达式**，calculator 的参数必须是单行纯数字与运算符，如 "60000+75000+55000+68000"。若要进行求和、求平均等聚合操作，必须使用 query_database 的 SQL 聚合函数（如 SELECT SUM(salary) FROM employees）。
 6. 所有工具参数（特别是 calculator 的 expression）不得包含换行符、表格符号或任何非数字非运算符字符。
+7. 当用户提到相对日期（如“明天”“后天”），必须将 add_event 或 list_events 的日期参数转换为 YYYY-MM-DD 格式（例如“2026-08-09”），严禁直接使用中文描述。
 
 正确示例（查询所有工资并计算总和，必须使用 SQL 聚合）：
 [

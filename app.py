@@ -123,15 +123,15 @@ async def unified_handler(message, history, file, tenant_dropdown):
             history.append({"role": "assistant", "content": f"📁 文件已分析，内容已暂存。您现在可以基于它提问。"})
             return history, message, None
         else:
-            # 仅文件/音频：直接作为对话内容
+            # 仅文件/音频：先加用户消息，再显示结果，形成对话分隔
             if ext in ('.wav', '.mp3', '.m4a', '.ogg'):
-                # 语音：将识别文本作为用户消息，自动回复
-                history.append({"role": "user", "content": file_result})
+                history.append({"role": "user", "content": "🎤 语音输入"})
+                history.append({"role": "assistant", "content": file_result})
                 answer = await chat_core(SESSION_ID, file_result, None)
                 history.append({"role": "assistant", "content": answer})
                 memory.append(SESSION_ID, file_result, answer)
             else:
-                # 其他文件：显示分析结果，不触发智能体
+                history.append({"role": "user", "content": "📎 文件上传"})
                 history.append({"role": "assistant", "content": f"📁 文件分析结果：\n{file_result}"})
                 memory.append(SESSION_ID, f"[文件内容] {file_result}", "")
             return history, "", None
