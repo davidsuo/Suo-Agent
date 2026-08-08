@@ -30,8 +30,16 @@ from guardrails import input_guard, tool_call_guard, output_guard
 from pending_tools import pending, save_pending
 
 # 恢复内存总线
-from event_bus import EventBus
-bus = EventBus()
+#from event_bus import EventBus
+#bus = EventBus
+
+# Redis消息总线
+from redis_bus import RedisEventBus
+REDIS_URL = os.getenv("REDIS_URL")
+if not REDIS_URL:
+    raise ValueError("REDIS_URL 环境变量未设置")
+
+bus = RedisEventBus(REDIS_URL)
 
 from agents import WorkerAgent, QueryWorker
 
@@ -144,6 +152,16 @@ ALL_WORKERS = [query_worker, command_worker]
 
 def get_workers_status():
     return [w.get_stats() for w in ALL_WORKERS]
+    
+async def send_task_via_bus(worker_name: str, task: dict, timeout: int = 60):
+    """通过 Redis 总线发送任务并等待结果"""
+    future = asyncio.get_event_loop().create_future()
+    event_data = {"task": task, "future": future}
+    await bus.publish(f"ToolRequested.{worker_name}", event_data)
+    try:
+        return await asyncio.wait_for(future, timeout=timeout)
+    except asyncio.TimeoutError:
+        return {"error": "任务超时"}
 
 # ========== 核心聊天逻辑 ==========
 async def chat_core(session_id: str, query: str, image_base64: str = None):
@@ -244,7 +262,7 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                 target_worker = TOOL_ROUTER[tool_name]
                 task = {"tool": tool_name, "arguments": arguments}
                 try:
-                    res = await asyncio.wait_for(target_worker.send_task(task), timeout=60)
+                    res = await send_task_via_bus(target_worker.name, task, timeout=60)
                     raw_result = res.get("result", res.get("error")) if res else "未知错误"
 
                     if "error" in res or "失败" in str(raw_result) or "错误" in str(raw_result):
@@ -370,7 +388,7 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                         target_worker = TOOL_ROUTER[func_name]
                         task = {"tool": func_name, "arguments": arguments}
                         try:
-                            res = await asyncio.wait_for(target_worker.send_task(task), timeout=60)
+                            res = await send_task_via_bus(target_worker.name, task, timeout=60)
                             raw_result = res.get("result", res.get("error")) if res else "未知错误"
                         except asyncio.TimeoutError:
                             raw_result = "工具执行超时，请稍后重试。"
