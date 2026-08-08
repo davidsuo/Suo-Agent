@@ -393,11 +393,9 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                         if tool_call_guard(func_name):
                             pending[session_id] = {"tool_name": func_name, "arguments": arguments}
                             save_pending(pending)
-                            # 构建安全的确认消息，忽略内部参数
-                            to = email_args.get('to_email', '未知')
-                            subject = email_args.get('subject', '无主题')
-                            body = email_args.get('body', '无内容')
-                            # 将 \n 替换为实际换行，并去掉可能的内部字段
+                            to = arguments.get("to_email", "未知")
+                            subject = arguments.get("subject", "无主题")
+                            body = arguments.get("body", "无内容")
                             body_display = body.replace('\\n', '\n')
                             confirm_msg = (
                                 f"### ⚠️ 危险操作确认\n"
@@ -479,7 +477,9 @@ async def generate_plan(user_query, history, client):
 - add_event: 添加日程（参数必须为 "title", "start_time"）
 - list_events: 列出日程（可选参数 "date"）
 - delete_event: 删除日程（参数必须为 "event_id"）
-- ocr_image: 识别图片文字（参数必须为 "image_path"，值为图片的本地路径）如：“识别图片中的文字” -> 生成 {"tool": "ocr_image", "arguments": {"image_path": "..."}}
+- ocr_image: 识别图片文字（参数必须为 "image_path"）
+- speech_to_text: 语音转文字（参数必须为 "audio_file_path"）
+- recognize_table: 识别图片中的表格（参数必须为 "image_path"）
 
 计划是一个步骤列表，每个步骤包含：
 - id: 步骤唯一编号（从1开始）
@@ -493,17 +493,18 @@ async def generate_plan(user_query, history, client):
 2. 如果步骤需要用到前一步的结果，请在 arguments 中使用占位符 {{step_X_result}}。
 3. send_email 必须放在最后一个步骤，且需要用户确认。
 4. 只返回 JSON 数组，不要有任何额外文字。
-5. **严禁将数据库查询结果直接填入 calculator 表达式**，calculator 的参数必须是单行纯数字与运算符，如 "60000+75000+55000+68000"。若要进行求和、求平均等聚合操作，必须使用 query_database 的 SQL 聚合函数（如 SELECT SUM(salary) FROM employees）。
-6. 所有工具参数（特别是 calculator 的 expression）不得包含换行符、表格符号或任何非数字非运算符字符。
-7. 当用户提到相对日期（如“明天”“后天”），必须将 add_event 或 list_events 的日期参数转换为 YYYY-MM-DD 格式（例如“2026-08-09”），严禁直接使用中文描述。
+5. 严禁将数据库查询结果直接填入 calculator 表达式，calculator 的参数必须是单行纯数字与运算符，如 "60000+75000+55000+68000"。
+6. 所有工具参数不得包含换行符或表格符号。
+7. 当用户提到相对日期（如“明天”），必须将 add_event 或 list_events 的日期参数转换为 YYYY-MM-DD 格式。
 
-正确示例（查询所有工资并计算总和，必须使用 SQL 聚合）：
+正确示例（查询所有工资并计算总和）：
 [
   {{{{ "id": 1, "tool": "query_database", "arguments": {{{{ "sql": "SELECT SUM(salary) FROM employees" }}}}, "depends_on": [], "description": "计算工资总和" }}}}
 ]
 
 用户需求：{user_query}
 """
+
         messages = history + [{"role": "user", "content": prompt}]
         resp = client.chat.completions.create(model="deepseek-chat", messages=messages, temperature=0)
         plan_text = resp.choices[0].message.content
