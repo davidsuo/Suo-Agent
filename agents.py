@@ -26,7 +26,7 @@ class Agent:
         while True:
             try:
                 # 阻塞式弹出任务，超时 5 秒
-                result = await self.bus.redis.brpop(task_queue, timeout=5)
+                result = await self.bus.redis.brpop(task_queue, timeout=30)
                 if result is None:
                     continue
                 _, task_data = result
@@ -48,7 +48,7 @@ class Agent:
                 await asyncio.sleep(10)
             except Exception as e:
                 print(f"[{self.name}] 循环异常: {type(e).__name__}: {e}", flush=True)
-                await asyncio.sleep(5)
+                await asyncio.sleep(30)
 
     def get_stats(self):
         return {
