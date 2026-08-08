@@ -258,20 +258,16 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                         if isinstance(val, str):
                             arguments[key] = val.replace(f"{{step_{dep_id}_result}}", replacement)
 
+            # 参数完整性检查（使用正确的变量 tool_name）
+            if tool_name in ("ocr_image", "speech_to_text", "recognize_table"):
+                required_param = "image_path" if tool_name != "speech_to_text" else "audio_file_path"
+                if required_param not in arguments:
+                    results[step_id] = f"错误：工具 {tool_name} 缺少 {required_param} 参数。请先上传文件。"
+                    continue   # 跳过该步骤，不触发 Saga 补偿           
+
             if tool_name == "send_email":
                 email_args = arguments
-                continue
-
-            if func_name in ("ocr_image", "speech_to_text", "recognize_table"):
-                required_param = "image_path" if func_name != "speech_to_text" else "audio_file_path"
-                if required_param not in arguments:
-                    result = f"错误：工具 {func_name} 缺少 {required_param} 参数。请先上传文件。"
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": result
-                    })
-                    continue            
+                continue        
 
             elif tool_name in TOOL_ROUTER:
                 target_worker = TOOL_ROUTER[tool_name]
