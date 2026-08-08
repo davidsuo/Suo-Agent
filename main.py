@@ -74,8 +74,9 @@ SYSTEM_PROMPT = """
 当用户要求计算或数据分析时，可调用 execute_python 执行代码。
 如果 web_search 返回的结果包含“(实时搜索暂时不可用)”，请在回答中首先说明搜索服务暂时受限，然后根据提供的模拟信息给出参考。
 所有工具调用结果会返回给你，你据此生成最终回答。
+如果对话历史中出现了以“【上传文件：...】”开头的用户消息，说明用户已上传文件并附带了内容，你必须直接基于这些内容回答用户的问题，不得调用 web_search、query_database 或其他工具去查找外部信息。
+
 【参考文档】：
-如果你看到对话历史中有“文件内容：”开头的用户消息，说明用户已上传文件，你必须基于该文件内容回答用户的问题，不要使用 web_search 或捏造数据。
 {context}
 """
 
@@ -261,6 +262,17 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                 email_args = arguments
                 continue
 
+            if func_name in ("ocr_image", "speech_to_text", "recognize_table"):
+                required_param = "image_path" if func_name != "speech_to_text" else "audio_file_path"
+                if required_param not in arguments:
+                    result = f"错误：工具 {func_name} 缺少 {required_param} 参数。请先上传文件。"
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": result
+                    })
+                    continue            
+
             elif tool_name in TOOL_ROUTER:
                 target_worker = TOOL_ROUTER[tool_name]
                 task = {"tool": tool_name, "arguments": arguments}
@@ -387,6 +399,16 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                             result = AVAILABLE_TOOLS[func_name](**arguments)
                         except Exception as e:
                             result = f"工具执行错误: {e}"
+                    if func_name in ("ocr_image", "speech_to_text", "recognize_table"):
+                        required_param = "image_path" if func_name != "speech_to_text" else "audio_file_path"
+                        if required_param not in arguments:
+                            result = f"错误：工具 {func_name} 缺少 {required_param} 参数。请先上传文件。"
+                            messages.append({
+                                "role": "tool",
+                                "tool_call_id": tool_call.id,
+                                "content": result
+                            })
+                            continue                    
                     elif func_name in TOOL_ROUTER:
                         target_worker = TOOL_ROUTER[func_name]
                         task = {"tool": func_name, "arguments": arguments}
@@ -445,6 +467,7 @@ async def generate_plan(user_query, history, client):
 - add_event: 添加日程（参数必须为 "title", "start_time"）
 - list_events: 列出日程（可选参数 "date"）
 - delete_event: 删除日程（参数必须为 "event_id"）
+- ocr_image: 识别图片文字（参数必须为 "image_path"，值为图片的本地路径）如：“识别图片中的文字” -> 生成 {"tool": "ocr_image", "arguments": {"image_path": "..."}}
 
 计划是一个步骤列表，每个步骤包含：
 - id: 步骤唯一编号（从1开始）

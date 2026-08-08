@@ -65,8 +65,9 @@ async def unified_handler(message, history, file, tenant_dropdown):
         except Exception as e:
             answer = f"读取日志失败: {e}"
         history = history or []
-        history.append({"role": "user", "content": "/logs"})
+        history.append({"role": "user", "content": f"【上传文件：{file_name}】\n{file_result}"})
         history.append({"role": "assistant", "content": answer})
+        memory.append(SESSION_ID, f"【上传文件：{file_name}】\n{file_result}", "")
         return history, "", None
 
     # 处理 #tenant 命令
