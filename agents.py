@@ -59,7 +59,7 @@ class Agent:
             "is_running": self.is_running,
             "task_count": self.task_count,
             "error_count": self.error_count,
-            "queue_size": self.queue.qsize()
+          # "queue_size": self.queue.qsize()
         }
 
 class WorkerAgent(Agent):
