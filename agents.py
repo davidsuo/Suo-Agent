@@ -26,7 +26,7 @@ class Agent:
         while True:
             try:
                 # 阻塞式弹出任务，超时 5 秒
-                result = await self.bus.redis.brpop(task_queue, timeout=30)
+                result = await self.bus.redis.brpop(task_queue, timeout=60)
                 if result is None:
                     continue
                 _, task_data = result

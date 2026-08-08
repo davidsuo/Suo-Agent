@@ -393,9 +393,13 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                             res = await send_task_via_bus(target_worker.name, task, timeout=60)
                             raw_result = res.get("result", res.get("error")) if res else "未知错误"
                         except asyncio.TimeoutError:
+                            print(f"[规划引擎] 步骤{step_id}超时，正在重试...")
+                            try:
+                                res = await send_task_via_bus(target_worker.name, task, timeout=60)
+                            except asyncio.TimeoutError:
                             raw_result = "工具执行超时，请稍后重试。"
                         except Exception as e:
-                            raw_result = f"工具调用失败: {e}"
+                            raw_result = f"任务调用失败: {e}"
                         if func_name == "generate_image" and not str(raw_result).startswith("图像生成"):
                             image_output = raw_result
                             result = "图片已生成，将在最终回答中展示。"
@@ -453,6 +457,13 @@ async def generate_plan(user_query, history, client):
 2. 如果步骤需要用到前一步的结果，请在 arguments 中使用占位符 {{step_X_result}}。
 3. send_email 必须放在最后一个步骤，且需要用户确认。
 4. 只返回 JSON 数组，不要有任何额外文字。
+5. **严禁将数据库查询结果直接填入 calculator 表达式**，calculator 的参数必须是单行纯数字与运算符，如 "60000+75000+55000+68000"。若要进行求和、求平均等聚合操作，必须使用 query_database 的 SQL 聚合函数（如 SELECT SUM(salary) FROM employees）。
+6. 所有工具参数（特别是 calculator 的 expression）不得包含换行符、表格符号或任何非数字非运算符字符。
+
+正确示例（查询所有工资并计算总和，必须使用 SQL 聚合）：
+[
+  {{{{ "id": 1, "tool": "query_database", "arguments": {{{{ "sql": "SELECT SUM(salary) FROM employees" }}}}, "depends_on": [], "description": "计算工资总和" }}}}
+]
 
 用户需求：{user_query}
 """
