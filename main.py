@@ -397,7 +397,7 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                             try:
                                 res = await send_task_via_bus(target_worker.name, task, timeout=60)
                             except asyncio.TimeoutError:
-                            raw_result = "工具执行超时，请稍后重试。"
+                                raw_result = "任务执行超时，请稍后重试。"
                         except Exception as e:
                             raw_result = f"任务调用失败: {e}"
                         if func_name == "generate_image" and not str(raw_result).startswith("图像生成"):
