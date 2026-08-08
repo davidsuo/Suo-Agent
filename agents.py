@@ -43,9 +43,12 @@ class Agent:
                 result_payload = {"task_id": task_id, "result": res}
                 await self.bus.redis.lpush(result_queue, json.dumps(result_payload))
                 print(f"[{self.name}] 任务完成 (成功: {self.task_count}, 失败: {self.error_count})")
+            except asyncio.TimeoutError:
+                print(f"[{self.name}] Redis 读取超时，10秒后重试...", flush=True)
+                await asyncio.sleep(10)
             except Exception as e:
                 print(f"[{self.name}] 循环异常: {type(e).__name__}: {e}", flush=True)
-                await asyncio.sleep(1)
+                await asyncio.sleep(5)
 
     def get_stats(self):
         return {
