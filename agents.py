@@ -53,7 +53,7 @@ class Agent:
             "is_running": self.is_running,
             "task_count": self.task_count,
             "error_count": self.error_count,
-            "queue_size": N/A"   # Redis 队列长度暂不查询
+            "queue_size":"N/A"   # Redis 队列长度暂不查询
         }
 
 class WorkerAgent(Agent):
