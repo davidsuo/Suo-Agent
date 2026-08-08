@@ -158,14 +158,18 @@ def get_workers_status():
     return [w.get_stats() for w in ALL_WORKERS]
     
 async def send_task_via_bus(worker_name: str, task: dict, timeout: int = 60):
-    """通过 Redis 总线发送任务并等待结果"""
-    future = asyncio.get_event_loop().create_future()
-    event_data = {"task": task, "future": future}
-    await bus.publish(f"ToolRequested.{worker_name}", event_data)
-    try:
-        return await asyncio.wait_for(future, timeout=timeout)
-    except asyncio.TimeoutError:
-        return {"error": "任务超时"}
+    """通过 Redis 总线发送任务并等待结果，失败时自动重试一次"""
+    for attempt in range(2):
+        future = asyncio.get_event_loop().create_future()
+        event_data = {"task": task, "future": future}
+        await bus.publish(f"ToolRequested.{worker_name}", event_data)
+        try:
+            return await asyncio.wait_for(future, timeout=timeout)
+        except asyncio.TimeoutError:
+            if attempt == 0:
+                print(f"[任务] {worker_name} 超时，正在重试...")
+                continue
+            return {"error": "任务超时"}
 
 # ========== 核心聊天逻辑 ==========
 async def chat_core(session_id: str, query: str, image_base64: str = None):

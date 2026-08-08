@@ -7,11 +7,17 @@ import redis.asyncio as redis
 
 class RedisEventBus:
     def __init__(self, redis_url: str):
+        import socket
         self.redis = redis.from_url(
             redis_url,
             decode_responses=True,
-            ssl_cert_reqs=None,       # Upstash 免费层建议
+            ssl_cert_reqs=None,
             socket_keepalive=True,
+            socket_keepalive_options={
+                socket.TCP_KEEPIDLE: 30,   # 30秒无数据发送探测包
+                socket.TCP_KEEPINTVL: 10,  # 探测间隔10秒
+                socket.TCP_KEEPCNT: 3      # 最多3次探测失败则断开
+            },
             socket_connect_timeout=10,
             retry_on_timeout=True,
             health_check_interval=30
