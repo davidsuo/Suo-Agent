@@ -103,7 +103,7 @@ async def unified_handler(message, history, file, tenant_dropdown):
         loop = asyncio.get_event_loop()
         file_result = ""
 
-        # 异步执行工具，避免阻塞
+        # 先异步执行分析（只为了暂存结果，不直接展示）
         if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif'):
             if message and "表格" in message:
                 file_result = await loop.run_in_executor(None, recognize_table, file_path)
@@ -117,24 +117,13 @@ async def unified_handler(message, history, file, tenant_dropdown):
             file_result = "不支持的文件类型"
 
         history = history or []
-        if message and message.strip():
-            # 有文字：暂存文件内容到记忆，显示文件分析摘要
-            memory.append(SESSION_ID, f"[文件内容] {file_result}", "")
-            history.append({"role": "assistant", "content": f"📁 文件已分析，内容已暂存。您现在可以基于它提问。"})
-            return history, message, None
-        else:
-            # 仅文件/音频：先加用户消息，再显示结果，形成对话分隔
-            if ext in ('.wav', '.mp3', '.m4a', '.ogg'):
-                history.append({"role": "user", "content": "🎤 语音输入"})
-                history.append({"role": "assistant", "content": file_result})
-                answer = await chat_core(SESSION_ID, file_result, None)
-                history.append({"role": "assistant", "content": answer})
-                memory.append(SESSION_ID, file_result, answer)
-            else:
-                history.append({"role": "user", "content": "📎 文件上传"})
-                history.append({"role": "assistant", "content": f"📁 文件分析结果：\n{file_result}"})
-                memory.append(SESSION_ID, f"[文件内容] {file_result}", "")
-            return history, "", None
+        # 始终暂存文件内容到记忆，供后续对话使用
+        memory.append(SESSION_ID, f"[文件内容] {file_result}", "")
+
+        # 在聊天窗口显示简短的就绪提示（不显示具体内容）
+        history.append({"role": "assistant", "content": "📁 文件已就绪，请告诉我您要执行的任务。"})
+        # 清空文件上传框，保留文本输入框以便用户输入任务
+        return history, "", None
 
     # ========== 普通文本处理 ==========
     if not message or not message.strip():
