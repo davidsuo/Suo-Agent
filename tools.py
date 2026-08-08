@@ -22,14 +22,32 @@ last_uploaded_file = None
 
 # ---------- 计算器  (calculator) ----------
 def calculator(expression: str):
-    """安全计算数学表达式，支持带逗号的数字"""
+    """安全计算数学表达式，支持单行纯数字或包含换行的数字列表（自动求和）"""
     try:
-        expression = expression.replace(",", "")  # 允许逗号分隔数字
-        allowed_chars = set("0123456789+-*/().% ^")
-        if not all(c in allowed_chars for c in expression.replace(" ", "")):
-            return "错误：表达式包含不允许的字符"
-        result = eval(expression, {"__builtins__": {}})
-        return str(result)
+        # 如果表达式包含换行，尝试提取每行中的数字并求和
+        if '\n' in expression:
+            lines = expression.strip().split('\n')
+            numbers = []
+            for line in lines:
+                # 提取行中的数字（忽略字母、符号等）
+                cleaned = ''.join(c for c in line if c.isdigit() or c in '.-')
+                if cleaned:
+                    try:
+                        numbers.append(float(cleaned))
+                    except ValueError:
+                        continue
+            if not numbers:
+                return "错误：表达式中未找到有效数字"
+            total = sum(numbers)
+            return str(total)
+        else:
+            # 单行表达式，移除逗号后计算
+            expression = expression.replace(",", "")
+            allowed_chars = set("0123456789+-*/().% ^")
+            if not all(c in allowed_chars for c in expression.replace(" ", "")):
+                return "错误：表达式包含不允许的字符，请只使用数字和运算符。"
+            result = eval(expression, {"__builtins__": {}})
+            return str(result)
     except Exception as e:
         return f"计算出错: {e}"
         
