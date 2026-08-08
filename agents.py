@@ -26,7 +26,7 @@ class Agent:
         while True:
             try:
                 # 阻塞式弹出任务，超时 5 秒
-                result = await self.bus.redis.brpop(task_queue, timeout=10)
+                result = await self.bus.redis.brpop(task_queue, timeout=5)
                 if result is None:
                     continue
                 _, task_data = result
@@ -44,6 +44,11 @@ class Agent:
                 await self.bus.redis.lpush(result_queue, json.dumps(result_payload))
                 print(f"[{self.name}] 任务完成 (成功: {self.task_count}, 失败: {self.error_count})")
             except asyncio.TimeoutError:
+                # 主动 ping 以保持连接，并快速重试
+                try:
+                    await self.bus.redis.ping()
+                except Exception:
+                    pass
                 continue
                 #print(f"[{self.name}] Redis 读取超时，10秒后重试...", flush=True)
                 #await asyncio.sleep(10)

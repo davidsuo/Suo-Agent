@@ -50,11 +50,8 @@ class RedisEventBus:
         asyncio.create_task(self._wait_for_result(task_id, worker_name))
 
     async def _wait_for_result(self, task_id: str, worker_name: str):
-        """
-        轮询结果队列，直到获取对应 task_id 的结果或超时。
-        """
         result_queue = f"result:{worker_name}"
-        timeout = 60  # 秒
+        timeout = 60  # 总等待时间
         start = asyncio.get_event_loop().time()
         while True:
             elapsed = asyncio.get_event_loop().time() - start
@@ -64,8 +61,7 @@ class RedisEventBus:
                     future.set_result({"error": "任务超时"})
                 break
             try:
-                # 使用 BRPOP 阻塞等待，但设置 1 秒超时以便检查总超时
-                result = await self.redis.brpop(result_queue, timeout=1)
+                result = await self.bus.redis.brpop(result_queue, timeout=5)
                 if result is not None:
                     _, data = result
                     res_data = json.loads(data)
@@ -74,8 +70,10 @@ class RedisEventBus:
                         if future and not future.done():
                             future.set_result(res_data.get("result", {}))
                         break
+            except (asyncio.TimeoutError, ConnectionError):
+                # 超时后继续循环，不放弃
+                continue
             except Exception as e:
-                # 连接异常等，记录日志并继续尝试
                 print(f"[RedisBus] 等待结果异常: {e}", flush=True)
                 await asyncio.sleep(1)
 

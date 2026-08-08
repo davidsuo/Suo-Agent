@@ -157,17 +157,17 @@ ALL_WORKERS = [query_worker, command_worker]
 def get_workers_status():
     return [w.get_stats() for w in ALL_WORKERS]
     
-async def send_task_via_bus(worker_name: str, task: dict, timeout: int = 60):
-    """通过 Redis 总线发送任务并等待结果，失败时自动重试一次"""
-    for attempt in range(2):
+async def send_task_via_bus(worker_name: str, task: dict, timeout: int = 90):
+    """通过 Redis 总线发送任务并等待结果，失败时自动重试两次"""
+    for attempt in range(3):
         future = asyncio.get_event_loop().create_future()
         event_data = {"task": task, "future": future}
         await bus.publish(f"ToolRequested.{worker_name}", event_data)
         try:
             return await asyncio.wait_for(future, timeout=timeout)
         except asyncio.TimeoutError:
-            if attempt == 0:
-                print(f"[任务] {worker_name} 超时，正在重试...")
+            if attempt < 2:
+                print(f"[任务] {worker_name} 超时，正在重试 ({attempt+1}/2)...")
                 continue
             return {"error": "任务超时"}
 
