@@ -336,13 +336,18 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
             email_args["body"] = body
             pending[session_id] = {"tool_name": "send_email", "arguments": email_args}
             save_pending(pending)
+            # 构建安全的确认消息，忽略内部参数
+            to = email_args.get('to_email', '未知')
+            subject = email_args.get('subject', '无主题')
+            body = email_args.get('body', '无内容')
+            # 将 \n 替换为实际换行，并去掉可能的内部字段
+            body_display = body.replace('\\n', '\n')
             confirm_msg = (
-                f"⚠️ 危险操作确认\n"
-                f"工具：send_email\n"
-                f"收件人：{email_args.get('to_email')}\n"
-                f"主题：{email_args.get('subject')}\n"
-                f"内容：{email_args.get('body')}\n\n"
-                f"请回复 **“确认”** 以执行，或回复其他内容取消。"
+                f"### ⚠️ 危险操作确认\n"
+                f"**收件人**：{to}\n\n"
+                f"**主题**：{subject}\n\n"
+                f"**内容预览**：\n{body_display[:500]}\n\n"
+                f"> 请回复 **“确认”** 以执行，或回复其他内容取消。"
             )
             return confirm_msg
         else:
@@ -388,11 +393,18 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                         if tool_call_guard(func_name):
                             pending[session_id] = {"tool_name": func_name, "arguments": arguments}
                             save_pending(pending)
+                            # 构建安全的确认消息，忽略内部参数
+                            to = email_args.get('to_email', '未知')
+                            subject = email_args.get('subject', '无主题')
+                            body = email_args.get('body', '无内容')
+                            # 将 \n 替换为实际换行，并去掉可能的内部字段
+                            body_display = body.replace('\\n', '\n')
                             confirm_msg = (
-                                f"⚠️ 危险操作确认\n"
-                                f"工具：{func_name}\n"
-                                f"参数：{arguments}\n\n"
-                                f"请回复 **“确认”** 以执行，或回复其他内容取消。"
+                                f"### ⚠️ 危险操作确认\n"
+                                f"**收件人**：{to}\n\n"
+                                f"**主题**：{subject}\n\n"
+                                f"**内容预览**：\n{body_display[:500]}\n\n"
+                                f"> 请回复 **“确认”** 以执行，或回复其他内容取消。"
                             )
                             return confirm_msg
                         try:
