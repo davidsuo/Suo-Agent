@@ -100,10 +100,11 @@ async def unified_handler(message, history, file, tenant_dropdown):
     if file is not None:
         file_path = file if isinstance(file, str) else (file.name if hasattr(file, 'name') else str(file))
         ext = os.path.splitext(file_path)[1].lower()
+        file_name = os.path.basename(file_path)   # 提取文件名
         loop = asyncio.get_event_loop()
         file_result = ""
 
-        # 先异步执行分析（只为了暂存结果，不直接展示）
+        # 异步分析文件
         if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif'):
             if message and "表格" in message:
                 file_result = await loop.run_in_executor(None, recognize_table, file_path)
@@ -117,12 +118,11 @@ async def unified_handler(message, history, file, tenant_dropdown):
             file_result = "不支持的文件类型"
 
         history = history or []
-        # 始终暂存文件内容到记忆，供后续对话使用
-        memory.append(SESSION_ID, f"[文件内容] {file_result}", "")
-
-        # 在聊天窗口显示简短的就绪提示（不显示具体内容）
-        history.append({"role": "assistant", "content": "📁 文件已就绪，请告诉我您要执行的任务。"})
-        # 清空文件上传框，保留文本输入框以便用户输入任务
+        # 将文件内容作为一条用户消息存入记忆（模型能看到）
+        memory.append(SESSION_ID, f"文件内容：\n{file_result}", "")
+        # 在聊天窗口显示用户侧消息，仅显示文件名
+        history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
+        # 清空文件上传框，保留文本输入框，等待用户输入任务
         return history, "", None
 
     # ========== 普通文本处理 ==========
