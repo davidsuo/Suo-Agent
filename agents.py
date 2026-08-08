@@ -14,12 +14,6 @@ class Agent:
         self.task_count = 0
         self.error_count = 0
 
-    async def send_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """发送任务到该智能体，并等待结果返回"""
-        future = asyncio.get_event_loop().create_future()
-        self.queue.put_nowait((task, future))
-        return await future
-
     async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         raise NotImplementedError
 
@@ -59,7 +53,7 @@ class Agent:
             "is_running": self.is_running,
             "task_count": self.task_count,
             "error_count": self.error_count,
-          # "queue_size": self.queue.qsize()
+            "queue_size": N/A"   # Redis 队列长度暂不查询
         }
 
 class WorkerAgent(Agent):
