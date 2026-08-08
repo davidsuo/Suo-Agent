@@ -389,6 +389,18 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                     arguments = json.loads(tool_call.function.arguments)
                     arguments["_tenant"] = memory.get_tenant(session_id)
 
+                    # 参数完整性检查（必须放在 func_name 赋值之后）
+                    if func_name in ("ocr_image", "speech_to_text", "recognize_table"):
+                        required_param = "image_path" if func_name != "speech_to_text" else "audio_file_path"
+                        if required_param not in arguments:
+                            result = f"错误：工具 {func_name} 缺少 {required_param} 参数。请先上传文件。"
+                            messages.append({
+                                "role": "tool",
+                                "tool_call_id": tool_call.id,
+                                "content": result
+                            })
+                            continue
+
                     if func_name == "send_email":
                         if tool_call_guard(func_name):
                             pending[session_id] = {"tool_name": func_name, "arguments": arguments}
@@ -409,16 +421,6 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                             result = AVAILABLE_TOOLS[func_name](**arguments)
                         except Exception as e:
                             result = f"工具执行错误: {e}"
-                    if func_name in ("ocr_image", "speech_to_text", "recognize_table"):
-                        required_param = "image_path" if func_name != "speech_to_text" else "audio_file_path"
-                        if required_param not in arguments:
-                            result = f"错误：工具 {func_name} 缺少 {required_param} 参数。请先上传文件。"
-                            messages.append({
-                                "role": "tool",
-                                "tool_call_id": tool_call.id,
-                                "content": result
-                            })
-                            continue                    
                     elif func_name in TOOL_ROUTER:
                         target_worker = TOOL_ROUTER[func_name]
                         task = {"tool": func_name, "arguments": arguments}
@@ -426,13 +428,9 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                             res = await send_task_via_bus(target_worker.name, task, timeout=60)
                             raw_result = res.get("result", res.get("error")) if res else "未知错误"
                         except asyncio.TimeoutError:
-                            print(f"[规划引擎] 步骤{step_id}超时，正在重试...")
-                            try:
-                                res = await send_task_via_bus(target_worker.name, task, timeout=60)
-                            except asyncio.TimeoutError:
-                                raw_result = "任务执行超时，请稍后重试。"
+                            raw_result = "工具执行超时，请稍后重试。"
                         except Exception as e:
-                            raw_result = f"任务调用失败: {e}"
+                            raw_result = f"工具调用失败: {e}"
                         if func_name == "generate_image" and not str(raw_result).startswith("图像生成"):
                             image_output = raw_result
                             result = "图片已生成，将在最终回答中展示。"
