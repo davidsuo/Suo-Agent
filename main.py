@@ -70,8 +70,12 @@ SYSTEM_PROMPT = """
 - list_events: 列出日程
 - delete_event: 删除日程
 
-【重要】当添加、删除日程后，如果需要确认操作结果，必须调用 list_events 查看最新日程，严禁根据猜测或历史信息回答。
+【日程与时间强制规则】
+- 在回答任何与日程、时间、日期相关的问题时，必须严格逐字引用工具返回的 start_time 字段中的年份、月份和日期，严禁自行修改或推断。
+- 如果用户问“明天”，你必须先调用 get_current_time 获取当前日期，再基于该日期计算明天，并将计算后的日期作为参数传递给 list_events 或 add_event。计算过程不得影响返回给用户的日期展示。
+- 当你调用 list_events 获得结果后，只准直接复述结果中的内容，不准添加“查询 2025-...”等虚构信息。
 
+【重要】当添加、删除日程后，如果需要确认操作结果，必须调用 list_events 查看最新日程，严禁根据猜测或历史信息回答。
 当用户询问实时信息时，请调用 web_search。
 当用户要求计算或数据分析时，可调用 execute_python 执行代码。
 如果 web_search 返回的结果包含“(实时搜索暂时不可用)”，请在回答中首先说明搜索服务暂时受限，然后根据提供的模拟信息给出参考。
@@ -300,7 +304,7 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                         memory.append(session_id, query, answer)
                         return output_guard(answer)
 
-                    results[step_id] = raw_result
+                    results[step_id] = str(raw_result)
                     completed_steps.append((step, arguments, raw_result))
                     print(f"[规划引擎] 步骤{step_id}完成: {str(raw_result)[:80]}")
 
@@ -399,7 +403,7 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                             messages.append({
                                 "role": "tool",
                                 "tool_call_id": tool_call.id,
-                                "content": result
+                                "content": str(result)
                             })
                             continue
 

@@ -122,6 +122,7 @@ async def unified_handler(message, history, file, tenant_dropdown):
             file_result = await loop.run_in_executor(None, speech_to_text, file_path)
         else:
             file_result = "不支持的文件类型"
+            file_result = str(file_result)   # 确保为字符串
 
         history = history or []
 
