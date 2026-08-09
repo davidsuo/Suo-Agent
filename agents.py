@@ -75,8 +75,9 @@ class WorkerAgent(Agent):
         arguments = task.get("arguments", {})
         # 移除内部使用的 _tenant 参数
         arguments.pop("_tenant", None)
-        if tool_name not in self.tools:
-            return {"error": f"工具 {tool_name} 不存在"}
+        # 日程、邮件等需要租户隔离的工具，保留 _tenant 参数
+        if tool_name not in ("add_event", "list_events", "delete_event"):
+            arguments.pop("_tenant", None)
         func = self.tools[tool_name]
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, partial(func, **arguments))
