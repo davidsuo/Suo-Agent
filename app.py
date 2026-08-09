@@ -267,3 +267,5 @@ if __name__ == "__main__":
     loop.create_task(command_worker.run_loop())
     port = int(os.environ.get("PORT", 7860))
     demo.launch(server_name="0.0.0.0", server_port=port, theme=gr.themes.Soft())
+    from tools import init_calendar
+    init_calendar()
