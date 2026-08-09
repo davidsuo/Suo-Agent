@@ -90,7 +90,7 @@ class QueryWorker(WorkerAgent):
         self.ttl_map = {
             "get_current_time": 1,
             "query_database": 30,
-            "list_events": 30,
+            "list_events": 1,
         }
 
     def _get_cache_key(self, tool_name, arguments):
