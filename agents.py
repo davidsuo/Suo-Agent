@@ -73,11 +73,11 @@ class WorkerAgent(Agent):
     async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         tool_name = task.get("tool")
         arguments = task.get("arguments", {})
-        # 移除内部使用的 _tenant 参数
-        arguments.pop("_tenant", None)
-        # 日程、邮件等需要租户隔离的工具，保留 _tenant 参数
+        # 仅对非日程工具移除 _tenant，日程工具需要该参数进行租户隔离
         if tool_name not in ("add_event", "list_events", "delete_event"):
             arguments.pop("_tenant", None)
+        if tool_name not in self.tools:
+            return {"error": f"工具 {tool_name} 不存在"}
         func = self.tools[tool_name]
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(None, partial(func, **arguments))
