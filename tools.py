@@ -446,8 +446,19 @@ def list_events(date: str = "") -> str:
         else:
             c.execute("SELECT id, title, start_time, end_time, description FROM events ORDER BY start_time")
         rows = c.fetchall()
-        conn.close()
-        print(f"[list_events] 查询日期: {date or '全部'}, 结果数量: {len(rows)}")  # 增加日志
+        print(f"[list_events] 查询日期: {date or '全部'}, 结果数量: {len(rows)}")
+        if not rows and date:
+            # 指定日期为空，列出最近5条所有日程，帮助用户确认
+            conn2 = sqlite3.connect("calendar.db")
+            c2 = conn2.cursor()
+            c2.execute("SELECT id, title, start_time FROM events ORDER BY start_time DESC LIMIT 5")
+            recent = c2.fetchall()
+            conn2.close()
+            if recent:
+                recent_text = "\n".join([f"ID:{r[0]} {r[1]} @ {r[2]}" for r in recent])
+                return f"查询日期 {date} 暂无日程。但系统中有以下最近日程：\n{recent_text}"
+            else:
+                return "暂无任何日程。"
         if not rows:
             return "暂无日程。"
         result = "日程列表：\n"

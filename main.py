@@ -473,6 +473,7 @@ async def generate_plan(user_query, history, client):
 - send_email: 发送邮件（参数必须为 "to_email", "subject", "body"）
 - generate_image: 根据文字描述生成图片（参数必须为 "prompt"）
 - add_event: 添加日程（参数必须为 "title", "start_time"）
+- add_event: 添加日程（参数必须为 "title" 和 "start_time"，start_time 格式必须为 "YYYY-MM-DD HH:MM"，例如 "2026-08-10 09:00"）
 - list_events: 列出日程（可选参数 "date"）
 - delete_event: 删除日程（参数必须为 "event_id"）
 - ocr_image: 识别图片文字（参数必须为 "image_path"）
@@ -494,6 +495,7 @@ async def generate_plan(user_query, history, client):
 5. 严禁将数据库查询结果直接填入 calculator 表达式，calculator 的参数必须是单行纯数字与运算符，如 "60000+75000+55000+68000"。
 6. 所有工具参数不得包含换行符或表格符号。
 7. 当用户提到相对日期（如“明天”），必须将 add_event 或 list_events 的日期参数转换为 YYYY-MM-DD 格式。
+8. 添加日程时，start_time 必须精确到分钟，格式为 "YYYY-MM-DD HH:MM"，不得添加秒或时区信息。
 
 正确示例（查询所有工资并计算总和）：
 [
