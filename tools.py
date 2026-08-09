@@ -464,9 +464,26 @@ def list_events(date: str = "", _tenant: str = "default") -> str:
         rows = c.fetchall()
         conn.close()
         print(f"[list_events] 租户:{_tenant} 查询日期:{date or '全部'} 结果数:{len(rows)}")
-        # ... 后续格式化逻辑与之前相同（最近日程回退也需加租户过滤）
+        if not rows and date:
+            # 回退显示最近日程（也需按租户过滤）
+            conn2 = sqlite3.connect("calendar.db")
+            c2 = conn2.cursor()
+            c2.execute("SELECT id, title, start_time FROM events WHERE tenant=? ORDER BY start_time DESC LIMIT 5", (_tenant,))
+            recent = c2.fetchall()
+            conn2.close()
+            if recent:
+                recent_text = "\n".join([f"ID:{r[0]} {r[1]} @ {r[2]}" for r in recent])
+                return f"查询日期 {date} 暂无日程。但系统中有以下最近日程：\n{recent_text}"
+            else:
+                return "暂无任何日程。"
+        if not rows:
+            return "暂无日程。"
+        result = "日程列表：\n"
+        for row in rows:
+            result += f"ID:{row[0]} | {row[1]} | 开始:{row[2]} | 结束:{row[3]} | {row[4]}\n"
+        return result
     except Exception as e:
-        print(f"[list_events] 异常: {e}")
+        print(f"[list_events] 异常: {e}", flush=True)
         return f"查询日程失败: {e}"
         
 # ---------- 删除事件 ----------
