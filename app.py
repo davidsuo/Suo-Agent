@@ -73,30 +73,34 @@ async def unified_handler(message, history, file, tenant_dropdown):
         return history, "", None
 
     if message and message.strip().startswith("#tenant"):
-        parts = message.strip().split(maxsplit=1)
-        if len(parts) == 1:
-            current_tenant = memory.get_tenant(SESSION_ID)
-            answer = f"当前租户：{current_tenant}"
-            history = history or []
-            history.append({"role": "user", "content": message})
-            history.append({"role": "assistant", "content": answer})
-            return history, "", None
-        else:
-            new_tenant = parts[1].strip()
-            current_tenant = memory.get_tenant(SESSION_ID)
-            if history:
-                memory.set_tenant(SESSION_ID, current_tenant)
-                memory.set_history(SESSION_ID, history)
-            memory.set_tenant(SESSION_ID, new_tenant)
-            loaded_history = memory.get_history(SESSION_ID)
-            answer = f"已切换到租户：{new_tenant}。"
-            if loaded_history:
-                answer += " 已恢复上次会话。"
-                new_history = [{"role": "assistant", "content": answer}] + loaded_history
+        try:
+            parts = message.strip().split(maxsplit=1)
+            if len(parts) == 1:
+                current_tenant = memory.get_tenant(SESSION_ID)
+                answer = f"当前租户：{current_tenant}"
+                history = history or []
+                history.append({"role": "user", "content": message})
+                history.append({"role": "assistant", "content": answer})
+                return history, "", None
             else:
-                answer += " 会话已清空。"
-                new_history = [{"role": "assistant", "content": answer}]
-            return new_history, "", None
+                new_tenant = parts[1].strip()
+                current_tenant = memory.get_tenant(SESSION_ID)
+                if history:
+                    memory.set_tenant(SESSION_ID, current_tenant)
+                    memory.set_history(SESSION_ID, history)
+                memory.set_tenant(SESSION_ID, new_tenant)
+                loaded_history = memory.get_history(SESSION_ID)
+                answer = f"已切换到租户：{new_tenant}。"
+                if loaded_history:
+                    answer += " 已恢复上次会话。"
+                    new_history = [{"role": "assistant", "content": answer}] + loaded_history
+                else:
+                    answer += " 会话已清空。"
+                    new_history = [{"role": "assistant", "content": answer}]
+                return new_history, "", None
+        except Exception as e:
+            print(f"[#tenant 处理异常] {e}", flush=True)
+            return history or [], f"租户切换失败: {e}", None
 
     # ===== 文件处理（此时 file 可能不为 None） =====
     if file is not None:
@@ -148,18 +152,25 @@ async def unified_handler(message, history, file, tenant_dropdown):
 
 
 def on_tenant_change(new_tenant):
-    if new_tenant:
-        current = memory.get_tenant(SESSION_ID)
-        if new_tenant != current:
-            # 保存当前历史（如果下拉菜单切换时无法获取历史，则跳过保存，直接加载新租户历史）
-            memory.set_tenant(SESSION_ID, new_tenant)
-            loaded_history = memory.get_history(SESSION_ID)
-            tenants = get_available_tenants()
-            if loaded_history:
-                return loaded_history, gr.Dropdown(choices=tenants, value=new_tenant)
-            else:
-                return [], gr.Dropdown(choices=tenants, value=new_tenant)
-    return gr.update(), gr.update()
+    try:
+        if new_tenant:
+            current = memory.get_tenant(SESSION_ID)
+            if new_tenant != current:
+                # 保存当前历史
+                memory.set_tenant(SESSION_ID, current)
+                # 这里无法获取当前 history，所以只能直接切换
+                memory.set_tenant(SESSION_ID, new_tenant)
+                loaded_history = memory.get_history(SESSION_ID)
+                tenants = get_available_tenants()
+                if loaded_history:
+                    return loaded_history, gr.Dropdown(choices=tenants, value=new_tenant)
+                else:
+                    return [], gr.Dropdown(choices=tenants, value=new_tenant)
+        return gr.update(), gr.update()
+    except Exception as e:
+        print(f"[租户切换异常] {e}", flush=True)
+        tenants = get_available_tenants()
+        return [], gr.Dropdown(choices=tenants, value="default")
 
 
 with gr.Blocks(title="AI 智能体") as demo:

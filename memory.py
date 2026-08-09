@@ -3,14 +3,17 @@ class ConversationMemory:
     def __init__(self):
         self.sessions = {}
         self.tenant_map = {}
-        self.all_tenants = {"default"}   # 至少包含默认租户
+        self.all_tenants = set()          # 确保为集合
+        self.all_tenants.add("default")   # 默认包含 default
 
     def set_tenant(self, session_id, tenant_id):
         self.tenant_map[session_id] = tenant_id
-        self.all_tenants.add(tenant_id)
-        
-    def get_tenant(self, session_id: str) -> str:
-        return self.tenant_map.get(session_id, "default")    
+        self.all_tenants.add(str(tenant_id))   # 转为字符串存储
+
+    def get_tenant(self, session_id):
+        return self.tenant_map.get(session_id, "default")
+
+    # 其他方法保持不变...  
 
     def _get_session_key(self, session_id):
         tenant = self.tenant_map.get(session_id, "default")
