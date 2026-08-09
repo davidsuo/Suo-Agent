@@ -266,7 +266,20 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                     replacement = str(results[dep_id])
                     for key, val in arguments.items():
                         if isinstance(val, str):
-                            arguments[key] = val.replace(f"{{step_{dep_id}_result}}", replacement)
+                            # 处理需要加一天的日期占位符，例如 {step_1_result_date_plus_1}
+                            pattern = f"{{{{step_{dep_id}_result_date_plus_1}}}}"
+                            if pattern in val:
+                                # 从 replacement 中提取日期
+                                import re
+                                date_match = re.search(r'(\d{4}-\d{2}-\d{2})', replacement)
+                                if date_match:
+                                    current_date = date_match.group(1)
+                                    from datetime import datetime, timedelta
+                                    next_day = (datetime.strptime(current_date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+                                    val = val.replace(pattern, next_day)
+                            # 标准占位符替换
+                            val = val.replace(f"{{{{step_{dep_id}_result}}}}", replacement)
+                        arguments[key] = val
 
             # 参数完整性检查（使用正确的变量 tool_name）
             if tool_name in ("ocr_image", "speech_to_text", "recognize_table"):
@@ -478,8 +491,7 @@ async def generate_plan(user_query, history, client):
 - analyze_file: 分析 CSV/Excel 文件（参数必须为 "file_path"）
 - send_email: 发送邮件（参数必须为 "to_email", "subject", "body"）
 - generate_image: 根据文字描述生成图片（参数必须为 "prompt"）
-- add_event: 添加日程（参数必须为 "title", "start_time"）
-- add_event: 添加日程（参数必须为 "title" 和 "start_time"，start_time 格式必须为 "YYYY-MM-DD HH:MM"，例如 "2026-08-10 09:00"）
+- add_event: 添加日程（参数必须为 "title" 和 "start_time"，start_time 必须是绝对日期时间，格式为 "YYYY-MM-DD HH:MM"，例如 "2026-08-10 09:00"，严禁使用相对描述或需要计算的占位符）
 - list_events: 列出日程（可选参数 "date"）
 - delete_event: 删除日程（参数必须为 "event_id"）
 - ocr_image: 识别图片文字（参数必须为 "image_path"）
@@ -502,6 +514,7 @@ async def generate_plan(user_query, history, client):
 6. 所有工具参数不得包含换行符或表格符号。
 7. 当用户提到相对日期（如“明天”），必须将 add_event 或 list_events 的日期参数转换为 YYYY-MM-DD 格式。
 8. 添加日程时，start_time 必须精确到分钟，格式为 "YYYY-MM-DD HH:MM"，不得添加秒或时区信息。
+9. 当需要使用相对日期（如“明天9点”）时，必须直接计算出绝对日期时间并写入 arguments，严禁使用占位符进行计算。例如，如果第一步获取了当前日期，第二步需要加一天，则应直接生成 "YYYY-MM-DD HH:MM" 格式的字符串，而不是 {step_1_result_date_plus_1} 之类的占位符。
 
 正确示例（查询所有工资并计算总和）：
 [
