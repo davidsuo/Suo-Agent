@@ -41,10 +41,20 @@ def get_available_tenants():
     return sorted(list(tenants))
 
 async def unified_handler(message, history, file, tenant_dropdown):
+    # 如果用户输入了特殊命令，忽略可能残留的文件上传状态
+    if message and (message.strip().lower() == "/logs" or message.strip().startswith("#tenant")):
+        file = None
     # 处理 /logs 命令
     file_name = ""   # 防止未定义
     if message and message.strip().lower() == "/logs":
         try:
+            file_size = os.path.getsize("plan_log.json")
+            if file_size > 2 * 1024 * 1024:  # 超过2MB则截断读取最后500行
+                with open("plan_log.json", "r", encoding="utf-8") as f:
+                    lines = f.readlines()[-500:]
+            else:
+                with open("plan_log.json", "r", encoding="utf-8") as f:
+                    lines = f.readlines()
             with open("plan_log.json", "r", encoding="utf-8") as f:
                 lines = f.readlines()
             if not lines:
@@ -152,10 +162,14 @@ def on_tenant_change(new_tenant):
     if new_tenant:
         current = memory.get_tenant(SESSION_ID)
         if new_tenant != current:
+            # 保存当前历史（如果下拉菜单切换时无法获取历史，则跳过保存，直接加载新租户历史）
             memory.set_tenant(SESSION_ID, new_tenant)
-            # 更新下拉菜单的选项和值
+            loaded_history = memory.get_history(SESSION_ID)
             tenants = get_available_tenants()
-            return [], gr.Dropdown(choices=tenants, value=new_tenant)
+            if loaded_history:
+                return loaded_history, gr.Dropdown(choices=tenants, value=new_tenant)
+            else:
+                return [], gr.Dropdown(choices=tenants, value=new_tenant)
     return gr.update(), gr.update()
 
 
