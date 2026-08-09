@@ -439,6 +439,9 @@ def add_event(title: str, start_time: str, end_time: str = "", description: str 
 def list_events(date: str = "") -> str:
     init_calendar()
     try:
+        # 如果传入的日期包含时间，截取前10位
+        if date and len(date) > 10:
+            date = date[:10]
         conn = sqlite3.connect("calendar.db")
         c = conn.cursor()
         if date:
@@ -448,7 +451,7 @@ def list_events(date: str = "") -> str:
         rows = c.fetchall()
         print(f"[list_events] 查询日期: {date or '全部'}, 结果数量: {len(rows)}")
         if not rows and date:
-            # 指定日期为空，列出最近5条所有日程，帮助用户确认
+            # 若指定日期为空，列出最近5条所有日程
             conn2 = sqlite3.connect("calendar.db")
             c2 = conn2.cursor()
             c2.execute("SELECT id, title, start_time FROM events ORDER BY start_time DESC LIMIT 5")

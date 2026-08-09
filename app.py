@@ -36,27 +36,19 @@ def init_db():
         print("✅ 数据库 sample.db 已自动创建并插入示例数据。")
 
 def get_available_tenants():
-    tenants = set(memory.tenant_map.values())
-    tenants.add("default")
-    return sorted(list(tenants))
+    return sorted(list(memory.all_tenants))
 
 async def unified_handler(message, history, file, tenant_dropdown):
-    # 如果用户输入了特殊命令，忽略可能残留的文件上传状态
-    if message and (message.strip().lower() == "/logs" or message.strip().startswith("#tenant")):
-        file = None
-    # 处理 /logs 命令
-    file_name = ""   # 防止未定义
+    # ===== 特殊命令优先处理，忽略任何文件 =====
     if message and message.strip().lower() == "/logs":
         try:
-            file_size = os.path.getsize("plan_log.json")
-            if file_size > 2 * 1024 * 1024:  # 超过2MB则截断读取最后500行
+            # 安全读取日志文件（限制大小）
+            if os.path.exists("plan_log.json") and os.path.getsize("plan_log.json") > 2 * 1024 * 1024:
                 with open("plan_log.json", "r", encoding="utf-8") as f:
                     lines = f.readlines()[-500:]
             else:
                 with open("plan_log.json", "r", encoding="utf-8") as f:
                     lines = f.readlines()
-            with open("plan_log.json", "r", encoding="utf-8") as f:
-                lines = f.readlines()
             if not lines:
                 answer = "暂无规划日志。"
             else:
@@ -76,12 +68,10 @@ async def unified_handler(message, history, file, tenant_dropdown):
         except Exception as e:
             answer = f"读取日志失败: {e}"
         history = history or []
-        history.append({"role": "user", "content": f"【上传文件：{file_name}】\n{file_result}"})
+        history.append({"role": "user", "content": "/logs"})
         history.append({"role": "assistant", "content": answer})
-        memory.append(SESSION_ID, f"【上传文件：{file_name}】\n{file_result}", "")
         return history, "", None
 
-    # 处理 #tenant 命令
     if message and message.strip().startswith("#tenant"):
         parts = message.strip().split(maxsplit=1)
         if len(parts) == 1:
@@ -108,15 +98,15 @@ async def unified_handler(message, history, file, tenant_dropdown):
                 new_history = [{"role": "assistant", "content": answer}]
             return new_history, "", None
 
-    # ========== 文件/音频上传处理 ==========
+    # ===== 文件处理（此时 file 可能不为 None） =====
     if file is not None:
         file_path = file if isinstance(file, str) else (file.name if hasattr(file, 'name') else str(file))
         ext = os.path.splitext(file_path)[1].lower()
-        file_name = os.path.basename(file_path)   # 提取文件名
+        file_name = os.path.basename(file_path)
         loop = asyncio.get_event_loop()
-        file_result = ""
+        file_result = ""   # 初始化
 
-        # 异步分析文件
+        # 异步分析
         if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif'):
             if message and "表格" in message:
                 file_result = await loop.run_in_executor(None, recognize_table, file_path)
@@ -131,7 +121,7 @@ async def unified_handler(message, history, file, tenant_dropdown):
 
         history = history or []
 
-        # 音频：立即识别并回复
+        # 音频：立即回复
         if ext in ('.wav', '.mp3', '.m4a', '.ogg'):
             history.append({"role": "user", "content": f"🎤 语音输入：{file_result}"})
             answer = await chat_core(SESSION_ID, file_result, None)
@@ -139,13 +129,12 @@ async def unified_handler(message, history, file, tenant_dropdown):
             memory.append(SESSION_ID, file_result, answer)
             return history, "", None
         else:
-            # 其他文件：暂存，等待用户指令
-            file_name = os.path.basename(file_path)
+            # 其他文件：暂存，等待指令
             history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
             memory.append(SESSION_ID, f"文件内容：\n{file_result}", "")
             return history, "", None
 
-    # ========== 普通文本处理 ==========
+    # ===== 纯文本处理 =====
     if not message or not message.strip():
         return history, "", None
 

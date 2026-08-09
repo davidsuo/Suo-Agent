@@ -2,10 +2,12 @@
 class ConversationMemory:
     def __init__(self):
         self.sessions = {}
-        self.tenant_map = {}  # session_id -> tenant_id
+        self.tenant_map = {}
+        self.all_tenants = {"default"}   # 至少包含默认租户
 
     def set_tenant(self, session_id, tenant_id):
         self.tenant_map[session_id] = tenant_id
+        self.all_tenants.add(tenant_id)
         
     def get_tenant(self, session_id: str) -> str:
         return self.tenant_map.get(session_id, "default")    
