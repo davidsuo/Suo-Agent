@@ -26,7 +26,7 @@ class Agent:
         while True:
             try:
                 # 阻塞式弹出任务，超时 5 秒
-                result = await self.bus.redis.brpop(task_queue, timeout=30)
+                result = await self.bus.redis.brpop(task_queue, timeout=10)
                 if result is None:
                     continue
                 _, task_data = result
@@ -44,8 +44,8 @@ class Agent:
                 await self.bus.redis.lpush(result_queue, json.dumps(result_payload))
                 print(f"[{self.name}] 任务完成 (成功: {self.task_count}, 失败: {self.error_count})")
             except asyncio.TimeoutError:
-                # 空闲超时，静默继续
-                continue
+                # 空闲超时，休眠 1 秒后重试（避免日志泛滥）
+                await asyncio.sleep(1)
             except Exception as e:
                 print(f"[{self.name}] 循环异常: {type(e).__name__}: {e}", flush=True)
                 await asyncio.sleep(5)

@@ -261,32 +261,13 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
             arguments = step["arguments"]
             arguments["_tenant"] = memory.get_tenant(session_id)
 
+            # 处理参数中的占位符替换（{step_X_result}）
             for dep_id in step.get("depends_on", []):
                 if dep_id in results:
                     replacement = str(results[dep_id])
                     for key, val in arguments.items():
                         if isinstance(val, str):
-                            # 处理需要加一天的日期占位符，例如 {step_1_result_date_plus_1}
-                            pattern = f"{{{{step_{dep_id}_result_date_plus_1}}}}"
-                            if pattern in val:
-                                # 从 replacement 中提取日期
-                                import re
-                                date_match = re.search(r'(\d{4}-\d{2}-\d{2})', replacement)
-                                if date_match:
-                                    current_date = date_match.group(1)
-                                    from datetime import datetime, timedelta
-                                    next_day = (datetime.strptime(current_date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
-                                    val = val.replace(pattern, next_day)
-                            # 标准占位符替换
-                            val = val.replace(f"{{{{step_{dep_id}_result}}}}", replacement)
-                        arguments[key] = val
-
-            # 参数完整性检查（使用正确的变量 tool_name）
-            if tool_name in ("ocr_image", "speech_to_text", "recognize_table"):
-                required_param = "image_path" if tool_name != "speech_to_text" else "audio_file_path"
-                if required_param not in arguments:
-                    results[step_id] = f"错误：工具 {tool_name} 缺少 {required_param} 参数。请先上传文件。"
-                    continue   # 跳过该步骤，不触发 Saga 补偿           
+                            arguments[key] = val.replace(f"{{step_{dep_id}_result}}", replacement)        
 
             if tool_name == "send_email":
                 email_args = arguments
@@ -515,6 +496,7 @@ async def generate_plan(user_query, history, client):
 7. 当用户提到相对日期（如“明天”），必须将 add_event 或 list_events 的日期参数转换为 YYYY-MM-DD 格式。
 8. 添加日程时，start_time 必须精确到分钟，格式为 "YYYY-MM-DD HH:MM"，不得添加秒或时区信息。
 9. 当需要使用相对日期（如“明天9点”）时，必须直接计算出绝对日期时间并写入 arguments，严禁使用占位符进行计算。例如，如果第一步获取了当前日期，第二步需要加一天，则应直接生成 "YYYY-MM-DD HH:MM" 格式的字符串，而不是 {step_1_result_date_plus_1} 之类的占位符。
+10. 禁止使用任何需要计算的占位符（如 {step_1_result_date_plus_1}），必须直接计算并写入绝对日期时间。
 
 正确示例（查询所有工资并计算总和）：
 [
