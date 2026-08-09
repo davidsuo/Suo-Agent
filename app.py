@@ -42,6 +42,7 @@ def get_available_tenants():
 
 async def unified_handler(message, history, file, tenant_dropdown):
     # 处理 /logs 命令
+    file_name = ""   # 防止未定义
     if message and message.strip().lower() == "/logs":
         try:
             with open("plan_log.json", "r", encoding="utf-8") as f:
@@ -119,12 +120,20 @@ async def unified_handler(message, history, file, tenant_dropdown):
             file_result = "不支持的文件类型"
 
         history = history or []
-        # 将文件内容作为一条用户消息存入记忆（模型能看到）
-        memory.append(SESSION_ID, f"文件内容：\n{file_result}", "")
-        # 在聊天窗口显示用户侧消息，仅显示文件名
-        history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
-        # 清空文件上传框，保留文本输入框，等待用户输入任务
-        return history, "", None
+
+        # 音频：立即识别并回复
+        if ext in ('.wav', '.mp3', '.m4a', '.ogg'):
+            history.append({"role": "user", "content": f"🎤 语音输入：{file_result}"})
+            answer = await chat_core(SESSION_ID, file_result, None)
+            history.append({"role": "assistant", "content": answer})
+            memory.append(SESSION_ID, file_result, answer)
+            return history, "", None
+        else:
+            # 其他文件：暂存，等待用户指令
+            file_name = os.path.basename(file_path)
+            history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
+            memory.append(SESSION_ID, f"文件内容：\n{file_result}", "")
+            return history, "", None
 
     # ========== 普通文本处理 ==========
     if not message or not message.strip():
@@ -144,7 +153,9 @@ def on_tenant_change(new_tenant):
         current = memory.get_tenant(SESSION_ID)
         if new_tenant != current:
             memory.set_tenant(SESSION_ID, new_tenant)
-            return [], new_tenant
+            # 更新下拉菜单的选项和值
+            tenants = get_available_tenants()
+            return [], gr.Dropdown(choices=tenants, value=new_tenant)
     return gr.update(), gr.update()
 
 
