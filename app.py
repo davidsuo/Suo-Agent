@@ -134,9 +134,11 @@ async def unified_handler(message, history, file, tenant_dropdown):
             memory.append(SESSION_ID, file_result, answer)
             return history, "", None
         else:
-            # 其他文件：暂存，等待指令
-            history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
-            memory.append(SESSION_ID, f"文件内容：\n{file_result}", "")
+            # 其他文件：将文件内容作为用户消息加入对话历史（带明确前缀）
+            history.append({"role": "user", "content": f"【上传文件：{file_name}】\n{file_result[:2000]}"})  # 限制长度避免超出上下文
+            memory.append(SESSION_ID, f"【上传文件：{file_name}】\n{file_result}", "")
+            # 同时提示用户文件已就绪
+            history.append({"role": "assistant", "content": "文件已就绪，您可以基于该内容提问。"})
             return history, "", None
 
     # ===== 纯文本处理 =====

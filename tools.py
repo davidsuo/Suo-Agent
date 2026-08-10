@@ -13,6 +13,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from ddgs import DDGS
 from bs4 import BeautifulSoup
+from zoneinfo import ZoneInfo  # Python 3.9+ 内置
 
 
 # 最近上传的文件路径（用于 analyze_file 自动使用）
@@ -54,14 +55,9 @@ def calculator(expression: str):
 # ---------- 获取当前的日期和时间  (get_current_time) ----------
 def get_current_time():
     """返回当前东八区（北京时间）日期和时间"""
-    try:
-        from datetime import datetime, timezone, timedelta
-        tz = timezone(timedelta(hours=8))
-        now = datetime.now(tz)
-        return now.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]  # 保留毫秒，例如 19:31:20.123
-    except Exception as e:
-        print(f"[get_current_time] 执行异常: {e}", flush=True)
-        return f"获取时间失败: {e}"
+    from datetime import datetime
+    now = datetime.now(ZoneInfo("Asia/Shanghai"))
+    return now.strftime("%Y-%m-%d %H:%M:%S")
         
 # ---------- 查询数据库  (query_database) ----------
 def query_database(sql: str):
@@ -450,8 +446,14 @@ def add_event(title: str, start_time: str, end_time: str = "", description: str 
 # ---------- 列举事件 ----------
 def list_events(date: str = "", _tenant: str = "default") -> str:
     init_calendar()
-    if date and len(date) > 10:
-        date = date[:10]
+    # 提取标准日期（YYYY-MM-DD），若无法提取则查询全部
+    import re
+    if date:
+        match = re.match(r'(\d{4}-\d{2}-\d{2})', date)
+        if match:
+            date = match.group(1)   # 提取到的标准日期
+        else:
+            date = ""                # 无效格式，查询全部
     try:
         conn = sqlite3.connect("calendar.db")
         c = conn.cursor()
@@ -465,7 +467,7 @@ def list_events(date: str = "", _tenant: str = "default") -> str:
         conn.close()
         print(f"[list_events] 租户:{_tenant} 查询日期:{date or '全部'} 结果数:{len(rows)}")
         if not rows and date:
-            # 回退显示最近日程（也需按租户过滤）
+            # 指定日期为空，列出最近5条所有日程（按租户过滤）
             conn2 = sqlite3.connect("calendar.db")
             c2 = conn2.cursor()
             c2.execute("SELECT id, title, start_time FROM events WHERE tenant=? ORDER BY start_time DESC LIMIT 5", (_tenant,))
@@ -483,7 +485,7 @@ def list_events(date: str = "", _tenant: str = "default") -> str:
             result += f"ID:{row[0]} | {row[1]} | 开始:{row[2]} | 结束:{row[3]} | {row[4]}\n"
         return result
     except Exception as e:
-        print(f"[list_events] 异常: {e}", flush=True)
+        print(f"[list_events] 异常: {e}")
         return f"查询日程失败: {e}"
         
 # ---------- 删除事件 ----------
