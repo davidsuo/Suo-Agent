@@ -1,6 +1,8 @@
-import os, json, asyncio, time, uuid, traceback
-import re
+# common/main.py
+import sys, os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+import json, asyncio, time, uuid, traceback, re
 from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
@@ -9,14 +11,13 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from openai import OpenAI
 
-from memory import memory
-
+from common.memory import memory
 try:
-    import rag
+    from common import rag
 except ImportError:
     rag = None
 
-from tools import (
+from common.tools import (
     TOOLS_METADATA, AVAILABLE_TOOLS,
     get_current_time, calculator,
     query_database, web_search, execute_python,
@@ -28,22 +29,8 @@ from tools import (
     send_email,
     COMPENSATIONS,
 )
-from guardrails import input_guard, tool_call_guard, output_guard
-from pending_tools import pending, save_pending
-
-# 恢复内存总线
-#from event_bus import EventBus
-#bus = EventBus
-
-# Redis消息总线
-from redis_bus import RedisEventBus
-REDIS_URL = os.getenv("REDIS_URL")
-if not REDIS_URL:
-    raise ValueError("REDIS_URL 环境变量未设置")
-
-bus = RedisEventBus(REDIS_URL)
-
-from agents import WorkerAgent, QueryWorker
+from common.guardrails import input_guard, tool_call_guard, output_guard
+from common.pending_tools import pending, save_pending
 
 app = FastAPI()
 
@@ -82,7 +69,6 @@ SYSTEM_PROMPT = """
 所有工具调用结果会返回给你，你据此生成最终回答。
 如果对话历史中出现了以“【上传文件：...】”开头的用户消息，说明用户已上传文件并附带了内容，你必须直接基于这些内容回答用户的问题，不得调用 web_search、query_database 或其他工具去查找外部信息。
 【文件处理规则】当用户上传文件后，对话历史中会出现以“【上传文件：...】”开头的消息，该消息包含文件内容。如果用户要求提取文字、分析表格、识别内容等，你必须直接使用该消息中的文件内容回答，严禁调用 ocr_image、recognize_table 或 analyze_file 等工具。仅在对话历史中不存在文件内容时才调用工具。
-
 
 【参考文档】：
 {context}
@@ -124,63 +110,25 @@ def home():
 
 @app.post("/chat")
 async def chat(request: ChatRequest):
-    answer = await chat_core(request.session_id, request.query)
+    # 这里需要传入 query_worker, command_worker, TOOL_ROUTER，将在 app.py 中注入全局变量或通过依赖注入
+    # 简便起见，我们使用全局变量 _query_worker, _command_worker, _tool_router，它们在 app.py 中被赋值
+    global _query_worker, _command_worker, _tool_router
+    answer = await chat_core(request.session_id, request.query, _query_worker, _command_worker, _tool_router)
     return {"answer": answer}
 
-# ========== 查询类 Worker（带缓存） ==========
-query_worker_tools = {
-    "get_current_time": get_current_time,
-    "calculator": calculator,
-    "query_database": query_database,
-    "list_events": list_events,
-    "web_search": web_search,
-    "fetch_webpage": fetch_webpage,
-    "ocr_image": ocr_image,
-    "recognize_table": recognize_table,
-    "analyze_file": analyze_file,
-    "speech_to_text": speech_to_text,
-}
-query_worker = QueryWorker("QueryWorker", query_worker_tools, bus)
+# 全局占位，将由 app.py 设置
+_query_worker = None
+_command_worker = None
+_tool_router = None
 
-# ========== 命令类 Worker ==========
-command_worker_tools = {
-    "send_email": send_email,
-    "add_event": add_event,
-    "delete_event": delete_event,
-    "execute_python": execute_python,
-    "generate_image": generate_image,
-}
-command_worker = WorkerAgent("CommandWorker", command_worker_tools, bus)
-
-# 工具路由表（直接映射到 Worker 实例）
-TOOL_ROUTER = {}
-for name in query_worker.tools:
-    TOOL_ROUTER[name] = query_worker
-for name in command_worker.tools:
-    TOOL_ROUTER[name] = command_worker
-
-# 监控用列表
-ALL_WORKERS = [query_worker, command_worker]
-
-def get_workers_status():
-    return [w.get_stats() for w in ALL_WORKERS]
-    
-async def send_task_via_bus(worker_name: str, task: dict, timeout: int = 90):
-    """通过 Redis 总线发送任务并等待结果，失败时自动重试两次"""
-    for attempt in range(3):
-        future = asyncio.get_event_loop().create_future()
-        event_data = {"task": task, "future": future}
-        await bus.publish(f"ToolRequested.{worker_name}", event_data)
-        try:
-            return await asyncio.wait_for(future, timeout=timeout)
-        except asyncio.TimeoutError:
-            if attempt < 2:
-                print(f"[任务] {worker_name} 超时，正在重试 ({attempt+1}/2)...")
-                continue
-            return {"error": "任务超时"}
+def set_workers(query_worker, command_worker, tool_router):
+    global _query_worker, _command_worker, _tool_router
+    _query_worker = query_worker
+    _command_worker = command_worker
+    _tool_router = tool_router
 
 # ========== 核心聊天逻辑 ==========
-async def chat_core(session_id: str, query: str, image_base64: str = None):
+async def chat_core(session_id: str, query: str, query_worker, command_worker, TOOL_ROUTER, image_base64: str = None):
     print(f"[DEBUG] 收到请求: session_id={session_id}, query={query[:50]}...")
     print(f"[DEBUG] 当前 pending keys: {list(pending.keys())}")
 
@@ -189,7 +137,7 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
     if not is_safe:
         return err_msg
 
-    # 惰性启动所有专业 Worker（仅首次调用时执行）
+    # 惰性启动 Worker
     if not query_worker.is_running:
         asyncio.create_task(query_worker.run_loop())
         query_worker.is_running = True
@@ -198,7 +146,7 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
         command_worker.is_running = True
     print("Workers ready: QueryWorker, CommandWorker")
 
-    # 1. 检查是否为二次确认的确认回复
+    # 1. 确认回复
     if session_id in pending and "确认" in query.strip():
         print(f"[确认] 执行待处理工具 for session {session_id}")
         tool_info = pending.pop(session_id)
@@ -252,7 +200,7 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
     image_output = None
 
     if plan:
-        # ========== 规划引擎执行模式（Saga 补偿版） ==========
+        # ========== 规划模式 ==========
         results = {}
         email_args = None
         completed_steps = []
@@ -263,26 +211,26 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
             arguments = step["arguments"]
             arguments["_tenant"] = memory.get_tenant(session_id)
 
-            # 处理参数中的占位符替换（{step_X_result}）
             for dep_id in step.get("depends_on", []):
                 if dep_id in results:
                     replacement = str(results[dep_id])
                     for key, val in arguments.items():
                         if isinstance(val, str):
-                            arguments[key] = val.replace(f"{{step_{dep_id}_result}}", replacement)        
+                            arguments[key] = val.replace(f"{{step_{dep_id}_result}}", replacement)
 
             if tool_name == "send_email":
                 email_args = arguments
-                continue        
+                continue
 
             elif tool_name in TOOL_ROUTER:
                 target_worker = TOOL_ROUTER[tool_name]
                 task = {"tool": tool_name, "arguments": arguments}
                 try:
-                    res = await send_task_via_bus(target_worker.name, task, timeout=60)
+                    res = await target_worker.send_task(task)
                     raw_result = res.get("result", res.get("error")) if res else "未知错误"
 
                     if "error" in res or "失败" in str(raw_result) or "错误" in str(raw_result):
+                        # Saga 补偿
                         print(f"[Saga] 步骤{step_id}失败，开始补偿...")
                         compensation_msgs = []
                         for comp_step, comp_args, comp_result in reversed(completed_steps):
@@ -291,7 +239,6 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                                 try:
                                     comp_msg = COMPENSATIONS[comp_func_name](**comp_args, result=comp_result)
                                     compensation_msgs.append(comp_msg)
-                                    print(f"[Saga] 补偿 {comp_func_name}: {comp_msg}")
                                 except Exception as comp_exc:
                                     compensation_msgs.append(f"补偿失败: {comp_exc}")
                         answer = f"任务执行失败（步骤{step_id}），已自动回滚。\n错误: {raw_result}"
@@ -304,20 +251,9 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                     completed_steps.append((step, arguments, raw_result))
                     print(f"[规划引擎] 步骤{step_id}完成: {str(raw_result)[:80]}")
 
-                except asyncio.TimeoutError:
-                    print(f"[Saga] 步骤{step_id}超时，开始补偿...")
-                    for comp_step, comp_args, comp_result in reversed(completed_steps):
-                        comp_func_name = comp_step.get("tool")
-                        if comp_func_name in COMPENSATIONS:
-                            try:
-                                COMPENSATIONS[comp_func_name](**comp_args, result=comp_result)
-                            except Exception:
-                                pass
-                    answer = f"任务执行超时（步骤{step_id}），已自动回滚。"
-                    memory.append(session_id, query, answer)
-                    return output_guard(answer)
                 except Exception as e:
                     print(f"[Saga] 步骤{step_id}异常，开始补偿: {e}")
+                    # 补偿逻辑
                     for comp_step, comp_args, comp_result in reversed(completed_steps):
                         comp_func_name = comp_step.get("tool")
                         if comp_func_name in COMPENSATIONS:
@@ -338,11 +274,9 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
             email_args["body"] = body
             pending[session_id] = {"tool_name": "send_email", "arguments": email_args}
             save_pending(pending)
-            # 构建安全的确认消息，忽略内部参数
             to = email_args.get('to_email', '未知')
             subject = email_args.get('subject', '无主题')
             body = email_args.get('body', '无内容')
-            # 将 \n 替换为实际换行，并去掉可能的内部字段
             body_display = body.replace('\\n', '\n')
             confirm_msg = (
                 f"### ⚠️ 危险操作确认\n"
@@ -369,7 +303,7 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
             memory.append(session_id, query, answer)
             return answer
     else:
-        # ========== 常规单步/多工具调用模式 ==========
+        # ========== 常规模式 ==========
         for _ in range(8):
             try:
                 response = client.chat.completions.create(
@@ -391,16 +325,11 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                     arguments = json.loads(tool_call.function.arguments)
                     arguments["_tenant"] = memory.get_tenant(session_id)
 
-                    # 参数完整性检查（必须放在 func_name 赋值之后）
                     if func_name in ("ocr_image", "speech_to_text", "recognize_table"):
                         required_param = "image_path" if func_name != "speech_to_text" else "audio_file_path"
                         if required_param not in arguments:
                             result = f"错误：工具 {func_name} 缺少 {required_param} 参数。请先上传文件。"
-                            messages.append({
-                                "role": "tool",
-                                "tool_call_id": tool_call.id,
-                                "content": str(result)
-                            })
+                            messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": str(result)})
                             continue
 
                     if func_name == "send_email":
@@ -427,10 +356,8 @@ async def chat_core(session_id: str, query: str, image_base64: str = None):
                         target_worker = TOOL_ROUTER[func_name]
                         task = {"tool": func_name, "arguments": arguments}
                         try:
-                            res = await send_task_via_bus(target_worker.name, task, timeout=60)
+                            res = await target_worker.send_task(task)
                             raw_result = res.get("result", res.get("error")) if res else "未知错误"
-                        except asyncio.TimeoutError:
-                            raw_result = "工具执行超时，请稍后重试。"
                         except Exception as e:
                             raw_result = f"工具调用失败: {e}"
                         if func_name == "generate_image" and not str(raw_result).startswith("图像生成"):
@@ -497,8 +424,7 @@ async def generate_plan(user_query, history, client):
 6. 所有工具参数不得包含换行符或表格符号。
 7. 当用户提到相对日期（如“明天”），必须将 add_event 或 list_events 的日期参数转换为 YYYY-MM-DD 格式。
 8. 添加日程时，start_time 必须精确到分钟，格式为 "YYYY-MM-DD HH:MM"，不得添加秒或时区信息。
-9. 当需要使用相对日期（如“明天9点”）时，必须直接计算出绝对日期时间并写入 arguments，严禁使用占位符进行计算。例如，如果第一步获取了当前日期，第二步需要加一天，则应直接生成 "YYYY-MM-DD HH:MM" 格式的字符串，而不是 {step_1_result_date_plus_1} 之类的占位符。
-10. 禁止使用任何需要计算的占位符（如 {step_1_result_date_plus_1}），必须直接计算并写入绝对日期时间。
+9. 禁止使用任何需要计算的占位符，必须直接计算并写入绝对日期时间。
 
 正确示例（查询所有工资并计算总和）：
 [
@@ -518,7 +444,3 @@ async def generate_plan(user_query, history, client):
     except Exception as e:
         print(f"[规划引擎] 生成计划失败: {e}")
         return None
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)

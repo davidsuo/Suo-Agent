@@ -1,5 +1,10 @@
 # 环境变量（包含密钥）
 .env
+测试音频
+设计一个AI-Native架构路径
+任务计划
+设计一个AI-Native架构路径--多智能体协同
+
 
 # 向量数据库本地文件（通常很大，且每次构建会重新生成）
 chroma_db/
@@ -17,3 +22,6 @@ sample.db
 pending.json
 
 main_backup.py
+
+coffee_sales
+coffee_sales1
