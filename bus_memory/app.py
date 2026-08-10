@@ -189,7 +189,9 @@ async def unified_handler(message, history, file, tenant_dropdown):
             memory.append(SESSION_ID, file_result, answer)
             return history, "", None
         else:
+            # 其他文件：暂存内容，显示用户侧上传提示 + 助手就绪回复
             memory.append(SESSION_ID, f"【上传文件：{file_name}】\n{file_result}", "")
+            history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
             history.append({"role": "assistant", "content": "文件已就绪，您可以基于该内容提问。"})
             return history, "", None
 
