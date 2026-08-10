@@ -1,57 +1,43 @@
-# agents_memory.py
-import sys, os
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# common/agents_memory.py
 import asyncio
 import json
 import traceback
 import time
 from functools import partial
 from typing import Any, Dict, Callable
-from bus_memory.event_bus import EventBus
 
 class Agent:
-    def __init__(self, name: str, event_bus: 'RedisEventBus'):
+    def __init__(self, name: str, event_bus: 'EventBus'):
         self.name = name
         self.bus = event_bus
+        self.queue = asyncio.Queue()
         self.is_running = False
         self.task_count = 0
         self.error_count = 0
+
+    async def send_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        future = asyncio.get_event_loop().create_future()
+        self.queue.put_nowait((task, future))
+        return await future
 
     async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         raise NotImplementedError
 
     async def run_loop(self):
-        """Worker 主循环：从 Redis 任务队列拉取任务，执行后放入结果队列"""
-        task_queue = f"task:{self.name}"
-        result_queue = f"result:{self.name}"
-        print(f"[{self.name}] Redis Worker 启动，监听队列: {task_queue}", flush=True)
+        print(f"[{self.name}] Worker 启动（内存总线），等待任务...")
         self.is_running = True
         while True:
+            task, future = await self.queue.get()
+            print(f"[{self.name}] 收到任务: {task.get('tool', 'unknown')}")
             try:
-                # 阻塞式弹出任务，超时 5 秒
-                result = await self.bus.redis.brpop(task_queue, timeout=10)
-                if result is None:
-                    continue
-                _, task_data = result
-                task = json.loads(task_data)
-                task_id = task.get("task_id")
-                print(f"[{self.name}] 收到任务: {task.get('tool', 'unknown')} (ID: {task_id})")
-                try:
-                    res = await self.handle_task(task)
-                    self.task_count += 1
-                except Exception as e:
-                    self.error_count += 1
-                    res = {"error": str(e), "traceback": traceback.format_exc()}
-                # 将结果放入结果队列
-                result_payload = {"task_id": task_id, "result": res}
-                await self.bus.redis.lpush(result_queue, json.dumps(result_payload))
-                print(f"[{self.name}] 任务完成 (成功: {self.task_count}, 失败: {self.error_count})")
-            except asyncio.TimeoutError:
-                # 空闲超时，休眠 1 秒后重试（避免日志泛滥）
-                await asyncio.sleep(1)
+                result = await self.handle_task(task)
+                self.task_count += 1
             except Exception as e:
-                print(f"[{self.name}] 循环异常: {type(e).__name__}: {e}", flush=True)
-                await asyncio.sleep(5)
+                self.error_count += 1
+                result = {"error": str(e), "traceback": traceback.format_exc()}
+                print(f"[{self.name}] 任务执行失败: {e}")
+            future.set_result(result)
+            print(f"[{self.name}] 任务完成 (成功: {self.task_count}, 失败: {self.error_count})")
 
     def get_stats(self):
         return {
@@ -59,7 +45,7 @@ class Agent:
             "is_running": self.is_running,
             "task_count": self.task_count,
             "error_count": self.error_count,
-            "queue_size":"N/A"   # Redis 队列长度暂不查询
+            "queue_size": self.queue.qsize()
         }
 
 class WorkerAgent(Agent):
@@ -70,7 +56,7 @@ class WorkerAgent(Agent):
     async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         tool_name = task.get("tool")
         arguments = task.get("arguments", {})
-        # 仅对非日程工具移除 _tenant，日程工具需要该参数进行租户隔离
+        # 保留日程等工具的 _tenant 参数
         if tool_name not in ("add_event", "list_events", "delete_event"):
             arguments.pop("_tenant", None)
         if tool_name not in self.tools:
@@ -81,7 +67,6 @@ class WorkerAgent(Agent):
         return {"result": result}
 
 class QueryWorker(WorkerAgent):
-    """带缓存的查询 Worker，时间查询禁用缓存"""
     def __init__(self, name: str, tools: Dict[str, Callable], event_bus: 'EventBus'):
         super().__init__(name, tools, event_bus)
         self.cache = {}
@@ -98,7 +83,6 @@ class QueryWorker(WorkerAgent):
         tool_name = task.get("tool")
         arguments = task.get("arguments", {})
 
-        # 时间查询：跳过缓存，直接执行
         if tool_name == "get_current_time":
             return await super().handle_task(task)
 
