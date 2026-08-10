@@ -53,10 +53,16 @@ def calculator(expression: str):
         return f"计算出错: {e}"
         
 # ---------- 获取当前的日期和时间  (get_current_time) ----------
+from zoneinfo import ZoneInfo
+from datetime import datetime
+
 def get_current_time():
     """返回当前东八区（北京时间）日期和时间"""
-    from datetime import datetime
-    now = datetime.now(ZoneInfo("Asia/Shanghai"))
+    try:
+        now = datetime.now(ZoneInfo("Asia/Shanghai"))
+    except Exception:
+        # 如果 zoneinfo 失败，手动计算 UTC+8
+        now = datetime.utcnow() + timedelta(hours=8)
     return now.strftime("%Y-%m-%d %H:%M:%S")
         
 # ---------- 查询数据库  (query_database) ----------
