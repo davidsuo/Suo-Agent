@@ -115,19 +115,17 @@ def home():
     </html>
     """
     
-def enhanced_log_plan(session_id, user_query, plan, results, step_times, final_status, completed_steps=None):
-    """记录详细的规划执行日志到 plan_log.json"""
+def enhanced_log_plan(session_id, user_query, plan, results, step_times, final_status, total_time, completed_steps=None):
     entry = {
         "timestamp": datetime.datetime.now().isoformat(),
         "session_id": session_id,
         "tenant": memory.get_tenant(session_id),
         "user_query": user_query,
         "plan": plan,
-        "results": results,
+        "results": {str(k): str(v)[:300] for k, v in results.items()},
         "step_times": step_times,
         "final_status": final_status,
-        "total_time": round(total_time, 3)
-        #"total_time": round(time.monotonic() - start_total, 3)  # 需要外部传入 start_total，可以改为在调用处计算
+        "total_time": round(total_time, 3),
     }
     if completed_steps is not None:
         entry["completed_steps"] = [{"tool": s[0]["tool"], "description": s[0].get("description"), "result": str(s[2])[:200]} for s in completed_steps]
@@ -135,10 +133,32 @@ def enhanced_log_plan(session_id, user_query, plan, results, step_times, final_s
     try:
         with open("plan_log.json", "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        print("[规划日志] 已写入增强日志", flush=True)
+        print("[规划日志] 增强日志已写入", flush=True)
     except Exception as e:
-        print(f"[规划日志] 写入失败: {e}", flush=True)   
-    
+        print(f"[规划日志] 写入失败: {e}", flush=True)
+        import traceback
+        traceback.print_exc()  
+
+
+def simple_log_tool(session_id, user_query, tool_name, arguments, result):
+    """记录非规划模式的工具调用"""
+    entry = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "session_id": session_id,
+        "tenant": memory.get_tenant(session_id),
+        "user_query": user_query,
+        "tool": tool_name,
+        "arguments": {k: v for k, v in arguments.items() if k != "_tenant"},  # 隐藏内部参数
+        "result": str(result)[:300],
+        "mode": "regular"
+    }
+    try:
+        with open("plan_log.json", "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        print("[日志] 常规工具调用已记录", flush=True)
+    except Exception as e:
+        print(f"[日志] 记录失败: {e}", flush=True)
+
 
 @app.post("/chat")
 async def chat(request: ChatRequest):
@@ -385,7 +405,8 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                 f"> 请回复 **“确认”** 以执行，或回复其他内容取消。"
             )
             total_time = round(time.monotonic() - start_total, 3)
-            enhanced_log_plan(session_id, query, plan, results, step_times, "pending_email_confirmation", total_time, completed_steps)            
+            enhanced_log_plan(session_id, query, plan, results, step_times, "pending_email_confirmation", total_time, completed_steps) 
+            simple_log_tool(session_id, query, func_name, arguments, "pending_confirmation")            
             return confirm_msg
         else:
             raw_info = "\n".join([f"{step['description']}: {str(results[step['id']])[:500]}" for step in plan if step['tool'] != 'send_email'])
@@ -437,6 +458,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                             "tool_call_id": tool_call.id,
                             "content": result
                         })
+                        simple_log_tool(session_id, query, func_name, arguments, result)                        
                         continue                   
 
                     if func_name in ("ocr_image", "speech_to_text", "recognize_table"):
@@ -444,6 +466,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                         if required_param not in arguments:
                             result = f"错误：工具 {func_name} 缺少 {required_param} 参数。请先上传文件。"
                             messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": str(result)})
+                            simple_log_tool(session_id, query, func_name, arguments, result)                            
                             continue
 
                     if func_name == "send_email":
@@ -461,6 +484,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                                 f"**内容预览**：\n{body_display[:500]}\n\n"
                                 f"> 请回复 **“确认”** 以执行，或回复其他内容取消。"
                             )
+                            simple_log_tool(session_id, query, func_name, arguments, "pending_confirmation")
                             return confirm_msg
                         try:
                             result = AVAILABLE_TOOLS[func_name](**arguments)
@@ -487,6 +511,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                         "tool_call_id": tool_call.id,
                         "content": result
                     })
+                simple_log_tool(session_id, query, func_name, arguments, result)                    
                 continue
             else:
                 answer = msg.content
