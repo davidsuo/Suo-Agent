@@ -97,7 +97,13 @@ def get_available_tenants():
     return sorted(list(memory.all_tenants))
 
 async def unified_handler(message, history, file, tenant_dropdown):
-    # 特殊命令处理
+    # 页面刷新或新连接时，加载持久化历史（排除文件上传的情况）
+    if (history is None or len(history) == 0) and (message is None or message.strip() == "") and file is None:
+        loaded = memory.get_history(SESSION_ID)
+        if loaded:
+            return loaded, "", None
+            
+    # 处理 /logs 命令
     if message and message.strip().lower() == "/logs":
         try:
             if os.path.exists("plan_log.json") and os.path.getsize("plan_log.json") > 2 * 1024 * 1024:
