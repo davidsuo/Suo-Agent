@@ -184,12 +184,10 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
     print(f"[DEBUG] 收到请求: session_id={session_id}, query={query[:50]}...")
     print(f"[DEBUG] 当前 pending keys: {list(pending.keys())}")
 
-    # 0. 输入护栏
     is_safe, err_msg = input_guard(query)
     if not is_safe:
         return err_msg
 
-    # 惰性启动 Worker
     if not query_worker.is_running:
         asyncio.create_task(query_worker.run_loop())
         query_worker.is_running = True
@@ -198,7 +196,6 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
         command_worker.is_running = True
     print("Workers ready: QueryWorker, CommandWorker")
 
-    # 1. 确认回复
     if session_id in pending and "确认" in query.strip():
         print(f"[确认] 执行待处理工具 for session {session_id}")
         tool_info = pending.pop(session_id)
@@ -215,12 +212,10 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
         memory.append(session_id, "确认执行工具", result)
         return output_guard(result)
 
-    # 2. 获取历史与知识库上下文
     history = memory.get(session_id)
     context = rag.search_similar(query, k=3) if rag is not None else "暂无相关文档（知识库未加载）"
     system_content = SYSTEM_PROMPT.format(context=context if context else "暂无相关文档")
 
-    # 3. 构建初始消息
     messages = [{"role": "system", "content": system_content}]
     messages.extend(history)
 
@@ -236,7 +231,6 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
         user_message = {"role": "user", "content": query}
     messages.append(user_message)
 
-    # 4. 尝试生成任务计划
     plan = None
     try:
         plan = await generate_plan(query, messages[:5], client)
@@ -252,18 +246,16 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
     image_output = None
 
     if plan:
-        # ========== 规划模式 ==========
         results = {}
-        step_times = {}   # 记录每个步骤的耗时（秒）
-        start_total = time.monotonic()  # 总计时开始
         email_args = None
         completed_steps = []
+        step_times = {}
+        start_total = time.monotonic()
 
         for step in plan:
             step_id = step["id"]
-            step_desc = step.get("description", f"步骤{step_id}")
             tool_name = step["tool"]
-            step_start = time.monotonic()            
+            step_desc = step.get("description", f"步骤{step_id}")
             arguments = step["arguments"]
             arguments["_tenant"] = memory.get_tenant(session_id)
 
@@ -278,7 +270,8 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                 email_args = arguments
                 continue
 
-            elif tool_name in TOOL_ROUTER:
+            step_start = time.monotonic()
+            if tool_name in TOOL_ROUTER:
                 target_worker = TOOL_ROUTER[tool_name]
                 task = {"tool": tool_name, "arguments": arguments}
                 try:
@@ -286,102 +279,74 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                     raw_result = res.get("result", res.get("error")) if res else "未知错误"
 
                     if "error" in res or "失败" in str(raw_result) or "错误" in str(raw_result):
-                        # -------- Saga 补偿回滚（简洁流程提示） --------
                         print(f"[Saga] 步骤{step_id}失败，开始补偿...")
-                        # 构建流程步骤状态
                         steps_summary = []
                         for comp_step, comp_args, comp_result in completed_steps:
                             comp_desc = comp_step.get("description", f"步骤{comp_step['id']}")
                             steps_summary.append(f"✅ {comp_desc}")
                         steps_summary.append(f"❌ {step_desc}（遇到问题）")
 
-                        # 执行补偿
                         compensation_msgs = []
                         for comp_step, comp_args, comp_result in reversed(completed_steps):
                             comp_func_name = comp_step.get("tool")
                             if comp_func_name in COMPENSATIONS:
                                 try:
                                     comp_msg = COMPENSATIONS[comp_func_name](**comp_args, result=comp_result)
-                                    # 提取补偿的友好描述（去掉原始JSON）
-                                    if "已删除" in comp_msg or "已取消" in comp_msg:
-                                        compensation_msgs.append(f"🔄 {comp_step.get('description', '未知步骤')} 已回滚")
-                                    else:
-                                        compensation_msgs.append(f"🔄 {comp_msg}")
+                                    compensation_msgs.append(f"🔄 {comp_step.get('description', '未知步骤')} 已回滚")
                                     print(f"[Saga] 补偿 {comp_func_name}: {comp_msg}")
                                 except Exception as comp_exc:
                                     compensation_msgs.append(f"🔄 回滚失败: {comp_exc}")
                                     print(f"[Saga] 补偿失败: {comp_exc}")
 
-                        # 构建简洁回答
                         answer = "任务执行情况：\n" + "\n".join(steps_summary)
                         if compensation_msgs:
                             answer += "\n\n" + "\n".join(compensation_msgs)
                         else:
                             answer += "\n\n没有需要回滚的操作。"
-                        memory.append(session_id, query, answer)
+
+                        step_times[step_id] = round(time.monotonic() - step_start, 3)
                         total_time = round(time.monotonic() - start_total, 3)
-                        enhanced_log_plan(session_id, query, plan, results, step_times, "failed_with_compensation", total_time, completed_steps)                        
+                        enhanced_log_plan(session_id, query, plan, results, step_times, "failed_with_compensation", total_time, completed_steps)
+                        memory.append(session_id, query, answer)
                         return output_guard(answer)
 
-                    # 成功
                     results[step_id] = str(raw_result)
-                    step_times[step_id] = round(time.monotonic() - step_start, 3)                    
+                    step_times[step_id] = round(time.monotonic() - step_start, 3)
                     completed_steps.append((step, arguments, raw_result))
                     print(f"[规划引擎] 步骤{step_id}完成: {str(raw_result)[:80]}")
 
                 except asyncio.TimeoutError:
                     print(f"[Saga] 步骤{step_id}超时，开始补偿...")
-                    # 类似构建步骤状态和补偿
-                    steps_summary = []
-                    for comp_step, comp_args, comp_result in completed_steps:
-                        comp_desc = comp_step.get("description", f"步骤{comp_step['id']}")
-                        steps_summary.append(f"✅ {comp_desc}")
+                    steps_summary = [f"✅ {comp_step.get('description', f'步骤{comp_step[\"id\"]}')}" for comp_step, _, _ in completed_steps]
                     steps_summary.append(f"⏱️ {step_desc}（超时）")
-
-                    compensation_msgs = []
-                    for comp_step, comp_args, comp_result in reversed(completed_steps):
-                        comp_func_name = comp_step.get("tool")
-                        if comp_func_name in COMPENSATIONS:
-                            try:
-                                COMPENSATIONS[comp_func_name](**comp_args, result=comp_result)
-                                compensation_msgs.append(f"🔄 {comp_step.get('description', '未知步骤')} 已回滚")
-                            except Exception:
-                                pass
+                    compensation_msgs = [f"🔄 {comp_step.get('description', '未知步骤')} 已回滚" for comp_step, comp_args, comp_result in reversed(completed_steps) if comp_step.get("tool") in COMPENSATIONS]
                     answer = "任务执行情况：\n" + "\n".join(steps_summary)
                     if compensation_msgs:
                         answer += "\n\n" + "\n".join(compensation_msgs)
                     else:
                         answer += "\n\n没有需要回滚的操作。"
-                    memory.append(session_id, query, answer)
+
+                    step_times[step_id] = round(time.monotonic() - step_start, 3)
                     total_time = round(time.monotonic() - start_total, 3)
-                    enhanced_log_plan(session_id, query, plan, results, step_times, "failed_with_compensation", total_time, completed_steps)                    
+                    enhanced_log_plan(session_id, query, plan, results, step_times, "timeout", total_time, completed_steps)
+                    memory.append(session_id, query, answer)
                     return output_guard(answer)
 
                 except Exception as e:
                     print(f"[Saga] 步骤{step_id}异常，开始补偿: {e}")
-                    steps_summary = []
-                    for comp_step, comp_args, comp_result in completed_steps:
-                        comp_desc = comp_step.get("description", f"步骤{comp_step['id']}")
-                        steps_summary.append(f"✅ {comp_desc}")
+                    steps_summary = [f"✅ {comp_step.get('description', f'步骤{comp_step[\"id\"]}')}" for comp_step, _, _ in completed_steps]
                     steps_summary.append(f"❌ {step_desc}（系统异常）")
-
-                    compensation_msgs = []
-                    for comp_step, comp_args, comp_result in reversed(completed_steps):
-                        comp_func_name = comp_step.get("tool")
-                        if comp_func_name in COMPENSATIONS:
-                            try:
-                                COMPENSATIONS[comp_func_name](**comp_args, result=comp_result)
-                                compensation_msgs.append(f"🔄 {comp_step.get('description', '未知步骤')} 已回滚")
-                            except Exception:
-                                pass
+                    compensation_msgs = [f"🔄 {comp_step.get('description', '未知步骤')} 已回滚" for comp_step, comp_args, comp_result in reversed(completed_steps) if comp_step.get("tool") in COMPENSATIONS]
                     answer = "任务执行情况：\n" + "\n".join(steps_summary)
                     if compensation_msgs:
                         answer += "\n\n" + "\n".join(compensation_msgs)
                     else:
                         answer += "\n\n没有需要回滚的操作。"
-                    memory.append(session_id, query, answer)
+
+                    step_times[step_id] = round(time.monotonic() - step_start, 3)
                     total_time = round(time.monotonic() - start_total, 3)
-                    enhanced_log_plan(session_id, query, plan, results, step_times, "failed_with_compensation", total_time, completed_steps)                    
+                    enhanced_log_plan(session_id, query, plan, results, step_times, "error", total_time, completed_steps)
+                    memory.append(session_id, query, answer)
                     return output_guard(answer)
             else:
                 results[step_id] = f"工具 {tool_name} 未配置"
@@ -405,8 +370,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                 f"> 请回复 **“确认”** 以执行，或回复其他内容取消。"
             )
             total_time = round(time.monotonic() - start_total, 3)
-            enhanced_log_plan(session_id, query, plan, results, step_times, "pending_email_confirmation", total_time, completed_steps) 
-            simple_log_tool(session_id, query, func_name, arguments, "pending_confirmation")            
+            enhanced_log_plan(session_id, query, plan, results, step_times, "pending_email_confirmation", total_time, completed_steps)
             return confirm_msg
         else:
             raw_info = "\n".join([f"{step['description']}: {str(results[step['id']])[:500]}" for step in plan if step['tool'] != 'send_email'])
@@ -422,12 +386,11 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
             answer = output_guard(answer)
             if image_output:
                 answer = answer + "\n\n" + image_output
-            memory.append(session_id, query, answer)
             total_time = round(time.monotonic() - start_total, 3)
-            enhanced_log_plan(session_id, query, plan, results, step_times, "success", total_time, completed_steps)            
+            enhanced_log_plan(session_id, query, plan, results, step_times, "success", total_time, completed_steps)
+            memory.append(session_id, query, answer)
             return answer
     else:
-        # ========== 常规模式 ==========
         for _ in range(8):
             try:
                 response = client.chat.completions.create(
@@ -439,8 +402,6 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
             except Exception as e:
                 answer = f"模型调用失败: {e}"
                 memory.append(session_id, query, answer)
-                total_time = round(time.monotonic() - start_total, 3)
-                enhanced_log_plan(session_id, query, plan, results, step_times, "failed_with_compensation", total_time, completed_steps)                
                 return output_guard(answer)
 
             msg = response.choices[0].message
@@ -450,24 +411,18 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                     func_name = tool_call.function.name
                     arguments = json.loads(tool_call.function.arguments)
                     arguments["_tenant"] = memory.get_tenant(session_id)
-                     # 如果用户已上传文件，禁止调用文件分析工具
-                    if func_name in ("ocr_image", "recognize_table", "analyze_file") and any("【上传文件：" in msg.get("content", "") for msg in messages if msg["role"] == "user"):
-                        result = "文件内容已在对话历史中，请直接基于该内容回答，不要调用工具。"
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "content": result
-                        })
-                        simple_log_tool(session_id, query, func_name, arguments, result)                        
-                        continue                   
 
                     if func_name in ("ocr_image", "speech_to_text", "recognize_table"):
                         required_param = "image_path" if func_name != "speech_to_text" else "audio_file_path"
                         if required_param not in arguments:
                             result = f"错误：工具 {func_name} 缺少 {required_param} 参数。请先上传文件。"
                             messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": str(result)})
-                            simple_log_tool(session_id, query, func_name, arguments, result)                            
                             continue
+
+                    if func_name in ("ocr_image", "recognize_table", "analyze_file") and any("【上传文件：" in (msg.get("content", "") if isinstance(msg.get("content", ""), str) else "") for msg in messages if msg["role"] == "user"):
+                        result = "文件内容已在对话历史中，请直接基于该内容回答，不要调用工具。"
+                        messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": result})
+                        continue
 
                     if func_name == "send_email":
                         if tool_call_guard(func_name):
@@ -484,7 +439,6 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                                 f"**内容预览**：\n{body_display[:500]}\n\n"
                                 f"> 请回复 **“确认”** 以执行，或回复其他内容取消。"
                             )
-                            simple_log_tool(session_id, query, func_name, arguments, "pending_confirmation")
                             return confirm_msg
                         try:
                             result = AVAILABLE_TOOLS[func_name](**arguments)
@@ -496,6 +450,8 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                         try:
                             res = await target_worker.send_task(task)
                             raw_result = res.get("result", res.get("error")) if res else "未知错误"
+                        except asyncio.TimeoutError:
+                            raw_result = "工具执行超时，请稍后重试。"
                         except Exception as e:
                             raw_result = f"工具调用失败: {e}"
                         if func_name == "generate_image" and not str(raw_result).startswith("图像生成"):
@@ -503,6 +459,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                             result = "图片已生成，将在最终回答中展示。"
                         else:
                             result = raw_result
+                        simple_log_tool(session_id, query, func_name, arguments, result)
                     else:
                         result = f"未找到工具 {func_name}"
 
@@ -511,7 +468,6 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                         "tool_call_id": tool_call.id,
                         "content": result
                     })
-                simple_log_tool(session_id, query, func_name, arguments, result)                    
                 continue
             else:
                 answer = msg.content
@@ -559,8 +515,8 @@ async def generate_plan(user_query, history, client):
 2. 如果步骤需要用到前一步的结果，请在 arguments 中使用占位符 {{step_X_result}}。
 3. send_email 必须放在最后一个步骤，且需要用户确认。
 4. 只返回 JSON 数组，不要有任何额外文字。
-5. **文件已上传时禁止调用文件工具**：如果对话历史中包含以“【上传文件：...】”开头的消息，说明文件内容已提供，**绝对禁止**使用 ocr_image、recognize_table、analyze_file 等需要文件路径的工具。用户要求提取文字、分析表格时，直接让模型基于历史内容回答，不要生成任何工具步骤。
-6. 禁止使用任何需要计算的占位符（如 {{step_1_result_date_plus_1}}必须直接计算并写入绝对日期时间。
+5. **严禁使用任何需要文件路径的工具**：如果对话历史中包含以“【上传文件：...】”开头的消息，说明文件内容已提供，**绝对禁止**生成 ocr_image、recognize_table、analyze_file 等工具调用。用户要求提取文字、分析表格时，直接让模型总结历史内容即可，不要生成任何工具步骤。
+6. 禁止使用任何需要计算的占位符（如 {{{{step_1_result_date_plus_1}}}}），必须直接计算并写入绝对日期时间。
 7. 严禁将数据库查询结果直接填入 calculator 表达式，calculator 的参数必须是单行纯数字与运算符，如 "60000+75000+55000+68000"。
 8. 所有工具参数不得包含换行符或表格符号。
 9. 当用户提到相对日期（如“明天”），必须将 add_event 或 list_events 的日期参数转换为 YYYY-MM-DD 格式。
@@ -573,7 +529,6 @@ async def generate_plan(user_query, history, client):
 
 用户需求：{user_query}
 """
-
         messages = history + [{"role": "user", "content": prompt}]
         resp = client.chat.completions.create(model="deepseek-chat", messages=messages, temperature=0)
         plan_text = resp.choices[0].message.content
