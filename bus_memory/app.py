@@ -188,6 +188,7 @@ async def unified_handler(message, history, file, tenant_dropdown):
         file_result = ""
 
         if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif'):
+            # 判断用户是否明确要求表格识别
             if message and "表格" in message:
                 file_result = await asyncio.to_thread(recognize_table, file_path)
                 file_result = str(file_result)
@@ -197,10 +198,8 @@ async def unified_handler(message, history, file, tenant_dropdown):
                 return history, "", None
             else:
                 # 普通图片：暂不自动描述，返回友好提示
-                description = "视觉理解服务暂时不可用，您可以稍后重试或使用 OCR 提取文字。"
                 history.append({"role": "user", "content": f"🖼️ 上传图片：{file_name}"})
-                history.append({"role": "assistant", "content": description})
-                # 不保存图片内容到记忆，避免过期数据
+                history.append({"role": "assistant", "content": "视觉理解服务暂时不可用，您可以稍后重试或输入“提取文字”使用 OCR 功能。"})
                 return history, "", None
         elif ext in ('.csv', '.xlsx', '.xls'):
             file_result = await asyncio.to_thread(func, file_path)
