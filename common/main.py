@@ -10,7 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from openai import OpenAI
-import datetime, time
+import datetime
 from common.memory import memory
 try:
     from common import rag
@@ -117,7 +117,7 @@ def home():
     
 def enhanced_log_plan(session_id, user_query, plan, results, step_times, final_status, total_time, completed_steps=None):
     entry = {
-        "timestamp": datetime.datetime.datetime.now().isoformat(),
+        "timestamp": datetime.datetime.now().isoformat(),
         "session_id": session_id,
         "tenant": memory.get_tenant(session_id),
         "user_query": user_query,
