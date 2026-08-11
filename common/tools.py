@@ -629,34 +629,8 @@ def recognize_table(image_path: str) -> str:
 
 # ---------- 视觉理解 (Describle image) ----------
 def describe_image(image_path: str) -> str:
-    """使用 Hugging Face 视觉模型描述图片内容"""
-    api_token = os.getenv("HF_TOKEN")
-    if not api_token:
-        return "视觉理解未配置（缺少 HF_TOKEN）"
-
-    try:
-        with open(image_path, "rb") as f:
-            image_bytes = f.read()
-    except Exception as e:
-        return f"图片读取失败: {e}"
-
-    # 使用 Hugging Face 的无服务器推理 API (blip-image-captioning-base)
-    API_URL = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base"
-    headers = {"Authorization": f"Bearer {api_token}"}
-    try:
-        resp = requests.post(API_URL, data=image_bytes, headers=headers, timeout=30)
-        if resp.status_code == 200:
-            data = resp.json()
-            if isinstance(data, list) and len(data) > 0:
-                return data[0].get("generated_text", "无法生成描述")
-            elif isinstance(data, dict):
-                return data.get("generated_text", "无法生成描述")
-            else:
-                return f"描述失败: {resp.text[:200]}"
-        else:
-            return f"视觉模型调用失败: {resp.status_code} {resp.text[:200]}"
-    except Exception as e:
-        return f"视觉模型请求错误: {e}"
+    """当前视觉理解服务暂不可用，返回提示"""
+    return "视觉理解服务暂不可用，请稍后重试。如需提取文字，可使用 OCR 功能。"
                 
 
 # ---------- 工具元数据 ----------

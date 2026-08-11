@@ -23,7 +23,7 @@ from common.tools import (
 )
 from bus_memory.event_bus import EventBus
 from common.agents_memory import WorkerAgent, QueryWorker
-from common.tools import describe_image
+
 
 # 切换工作目录到项目根目录，以保证 sample.db、plan_log.json 等路径正确
 os.chdir(os.path.dirname(os.path.abspath(__file__)) + "/..")
@@ -189,23 +189,23 @@ async def unified_handler(message, history, file, tenant_dropdown):
 
         if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif'):
             if message and "表格" in message:
-                file_result = await loop.run_in_executor(None, recognize_table, file_path)
-                # 表格结果暂存，显示就绪提示
+                file_result = await asyncio.to_thread(recognize_table, file_path)
+                file_result = str(file_result)
                 memory.append(SESSION_ID, f"【上传文件：{file_name}】\n{file_result}", "")
                 history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
                 history.append({"role": "assistant", "content": "表格文件已就绪，您可以基于该内容提问。"})
                 return history, "", None
             else:
-                # 普通图片：自动生成描述并立即回复
-                description = await loop.run_in_executor(None, describe_image, file_path)
+                # 普通图片：暂不自动描述，返回友好提示
+                description = "视觉理解服务暂时不可用，您可以稍后重试或使用 OCR 提取文字。"
                 history.append({"role": "user", "content": f"🖼️ 上传图片：{file_name}"})
-                history.append({"role": "assistant", "content": f"图片描述：{description}"})
-                memory.append(SESSION_ID, f"[图片描述] {description}", "")
+                history.append({"role": "assistant", "content": description})
+                # 不保存图片内容到记忆，避免过期数据
                 return history, "", None
         elif ext in ('.csv', '.xlsx', '.xls'):
-            file_result = await loop.run_in_executor(None, analyze_file, file_path)
+            file_result = await asyncio.to_thread(func, file_path)
         elif ext in ('.wav', '.mp3', '.m4a', '.ogg'):
-            file_result = await loop.run_in_executor(None, speech_to_text, file_path)
+            file_result = await asyncio.to_thread(func, file_path)
         else:
             file_result = "不支持的文件类型"
 
