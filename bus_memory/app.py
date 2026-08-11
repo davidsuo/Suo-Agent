@@ -97,6 +97,10 @@ def get_available_tenants():
     return sorted(list(memory.all_tenants))
 
 async def unified_handler(message, history, file, tenant_dropdown):
+    # 确保 history 不为 None
+    if history is None:
+        history = []
+        
     # 无论如何，加载持久化历史，如果比当前传入的 history 更长（说明页面刷新了），就恢复
     loaded = memory.get_history(SESSION_ID)
     if loaded and (not history or len(history) < len(loaded)):
@@ -251,11 +255,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             )
             refresh_btn = gr.Button("刷新租户列表", size="sm", scale=0)
 
-        chatbot = gr.Chatbot(
-            label="对话",
-            height=500,
-            value=memory.get_history(SESSION_ID)   # 加载上次历史
-        )
+        chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
         with gr.Row():
             text_input = gr.Textbox(
@@ -324,6 +324,11 @@ with gr.Blocks(title="AI 智能体") as demo:
 
         refresh_btn2.click(fn=refresh_status, outputs=status_table)
         status_table.value = refresh_status()
+        
+    async def load_history():
+        return memory.get_history(SESSION_ID)
+
+    demo.load(fn=load_history, outputs=chatbot)
 
 if __name__ == "__main__":
     init_db()
