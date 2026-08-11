@@ -157,7 +157,7 @@ async def unified_handler(message, history, file, tenant_dropdown):
         ext = os.path.splitext(file_path)[1].lower()
         file_name = os.path.basename(file_path)
         loop = asyncio.get_event_loop()
-        file_result = ""   # 初始化
+        file_result = ""
 
         # 异步分析
         if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif'):
@@ -171,22 +171,21 @@ async def unified_handler(message, history, file, tenant_dropdown):
             file_result = await loop.run_in_executor(None, speech_to_text, file_path)
         else:
             file_result = "不支持的文件类型"
-            file_result = str(file_result)   # 确保为字符串
 
+        file_result = str(file_result)
         history = history or []
 
         # 音频：立即回复
         if ext in ('.wav', '.mp3', '.m4a', '.ogg'):
             history.append({"role": "user", "content": f"🎤 语音输入：{file_result}"})
-            answer = await chat_core(SESSION_ID, file_result, query_worker, command_worker, TOOL_ROUTER, None)
+            answer = await chat_core(SESSION_ID, file_result, query_worker, command_worker, TOOL_ROUTER)
             history.append({"role": "assistant", "content": answer})
             memory.append(SESSION_ID, file_result, answer)
             return history, "", None
         else:
-            # 其他文件：将文件内容作为用户消息加入对话历史（带明确前缀）
-            history.append({"role": "user", "content": f"【上传文件：{file_name}】\n{file_result[:2000]}"})  # 限制长度避免超出上下文
+            # 其他文件：暂存内容，用户侧显示文件名，助手回复就绪提示
             memory.append(SESSION_ID, f"【上传文件：{file_name}】\n{file_result}", "")
-            # 同时提示用户文件已就绪
+            history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
             history.append({"role": "assistant", "content": "文件已就绪，您可以基于该内容提问。"})
             return history, "", None
 
