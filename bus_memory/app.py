@@ -310,7 +310,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         gr.Markdown("## 实时 Worker 状态")
         refresh_btn2 = gr.Button("刷新")
         status_table = gr.Dataframe(
-            headers=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度"],
+            headers=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度", "平均耗时(s)", "错误率"],
             interactive=False
         )
 
@@ -319,8 +319,16 @@ with gr.Blocks(title="AI 智能体") as demo:
             data = []
             for w in workers:
                 stats = w.get_stats()
-                data.append([stats["name"], str(stats["is_running"]), stats["task_count"], stats["error_count"], stats["queue_size"]])
-            return pd.DataFrame(data, columns=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度"])
+                data.append([
+                    stats["name"],
+                    str(stats["is_running"]),
+                    stats["task_count"],
+                    stats["error_count"],
+                    stats["queue_size"],
+                    stats["avg_time"],
+                    stats["error_rate"]
+                ])
+            return pd.DataFrame(data, columns=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度", "平均耗时(s)", "错误率"])
 
         refresh_btn2.click(fn=refresh_status, outputs=status_table)
         status_table.value = refresh_status()
