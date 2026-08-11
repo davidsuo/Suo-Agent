@@ -114,6 +114,31 @@ def home():
     </body>
     </html>
     """
+    
+ def enhanced_log_plan(session_id, user_query, plan, results, step_times, final_status, completed_steps=None):
+    """记录详细的规划执行日志到 plan_log.json"""
+    entry = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "session_id": session_id,
+        "tenant": memory.get_tenant(session_id),
+        "user_query": user_query,
+        "plan": plan,
+        "results": results,
+        "step_times": step_times,
+        "final_status": final_status,
+        "total_time": round(total_time, 3)
+        #"total_time": round(time.monotonic() - start_total, 3)  # 需要外部传入 start_total，可以改为在调用处计算
+    }
+    if completed_steps is not None:
+        entry["completed_steps"] = [{"tool": s[0]["tool"], "description": s[0].get("description"), "result": str(s[2])[:200]} for s in completed_steps]
+
+    try:
+        with open("plan_log.json", "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        print("[规划日志] 已写入增强日志", flush=True)
+    except Exception as e:
+        print(f"[规划日志] 写入失败: {e}", flush=True)   
+    
 
 @app.post("/chat")
 async def chat(request: ChatRequest):
@@ -209,6 +234,8 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
     if plan:
         # ========== 规划模式 ==========
         results = {}
+        step_times = {}   # 记录每个步骤的耗时（秒）
+        start_total = time.monotonic()  # 总计时开始
         email_args = None
         completed_steps = []
 
@@ -216,6 +243,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
             step_id = step["id"]
             step_desc = step.get("description", f"步骤{step_id}")
             tool_name = step["tool"]
+            step_start = time.monotonic()            
             arguments = step["arguments"]
             arguments["_tenant"] = memory.get_tenant(session_id)
 
@@ -271,10 +299,13 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                         else:
                             answer += "\n\n没有需要回滚的操作。"
                         memory.append(session_id, query, answer)
+                        total_time = round(time.monotonic() - start_total, 3)
+                        enhanced_log_plan(session_id, query, plan, results, step_times, "failed_with_compensation", total_time, completed_steps)                        
                         return output_guard(answer)
 
                     # 成功
                     results[step_id] = str(raw_result)
+                    step_times[step_id] = round(time.monotonic() - step_start, 3)                    
                     completed_steps.append((step, arguments, raw_result))
                     print(f"[规划引擎] 步骤{step_id}完成: {str(raw_result)[:80]}")
 
@@ -302,6 +333,8 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                     else:
                         answer += "\n\n没有需要回滚的操作。"
                     memory.append(session_id, query, answer)
+                    total_time = round(time.monotonic() - start_total, 3)
+                    enhanced_log_plan(session_id, query, plan, results, step_times, "failed_with_compensation", total_time, completed_steps)                    
                     return output_guard(answer)
 
                 except Exception as e:
@@ -327,6 +360,8 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                     else:
                         answer += "\n\n没有需要回滚的操作。"
                     memory.append(session_id, query, answer)
+                    total_time = round(time.monotonic() - start_total, 3)
+                    enhanced_log_plan(session_id, query, plan, results, step_times, "failed_with_compensation", total_time, completed_steps)                    
                     return output_guard(answer)
             else:
                 results[step_id] = f"工具 {tool_name} 未配置"
@@ -349,6 +384,8 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                 f"**内容预览**：\n{body_display[:500]}\n\n"
                 f"> 请回复 **“确认”** 以执行，或回复其他内容取消。"
             )
+            total_time = round(time.monotonic() - start_total, 3)
+            enhanced_log_plan(session_id, query, plan, results, step_times, "pending_email_confirmation", total_time, completed_steps)            
             return confirm_msg
         else:
             raw_info = "\n".join([f"{step['description']}: {str(results[step['id']])[:500]}" for step in plan if step['tool'] != 'send_email'])
@@ -365,6 +402,8 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
             if image_output:
                 answer = answer + "\n\n" + image_output
             memory.append(session_id, query, answer)
+            total_time = round(time.monotonic() - start_total, 3)
+            enhanced_log_plan(session_id, query, plan, results, step_times, "success", total_time, completed_steps)            
             return answer
     else:
         # ========== 常规模式 ==========
@@ -379,6 +418,8 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
             except Exception as e:
                 answer = f"模型调用失败: {e}"
                 memory.append(session_id, query, answer)
+                total_time = round(time.monotonic() - start_total, 3)
+                enhanced_log_plan(session_id, query, plan, results, step_times, "failed_with_compensation", total_time, completed_steps)                
                 return output_guard(answer)
 
             msg = response.choices[0].message
@@ -518,3 +559,4 @@ async def generate_plan(user_query, history, client):
     except Exception as e:
         print(f"[规划引擎] 生成计划失败: {e}")
         return None
+        
