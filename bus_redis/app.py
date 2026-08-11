@@ -178,7 +178,7 @@ async def unified_handler(message, history, file, tenant_dropdown):
         # 音频：立即回复
         if ext in ('.wav', '.mp3', '.m4a', '.ogg'):
             history.append({"role": "user", "content": f"🎤 语音输入：{file_result}"})
-            answer = await chat_core(SESSION_ID, file_result, None)
+            answer = await chat_core(SESSION_ID, file_result, query_worker, command_worker, TOOL_ROUTER, None)
             history.append({"role": "assistant", "content": answer})
             memory.append(SESSION_ID, file_result, answer)
             return history, "", None
@@ -198,7 +198,7 @@ async def unified_handler(message, history, file, tenant_dropdown):
     history = history or []
     history.append({"role": "user", "content": display_msg})
 
-    answer = await chat_core(SESSION_ID, message, None)
+    answer = await chat_core(SESSION_ID, message, query_worker, command_worker, TOOL_ROUTER, None)
     history.append({"role": "assistant", "content": answer})
     return history, "", None
 
