@@ -556,11 +556,11 @@ async def generate_plan(user_query, history, client):
 
 【核心规则】
 1. 所有数学计算必须使用 calculator 或 SQL 聚合函数，严禁使用 execute_python 进行算术运算。
-2. 如果步骤需要用到前一步的结果，请在 arguments 中使用占位符 {step_X_result}。
+2. 如果步骤需要用到前一步的结果，请在 arguments 中使用占位符 {{step_X_result}}。
 3. send_email 必须放在最后一个步骤，且需要用户确认。
 4. 只返回 JSON 数组，不要有任何额外文字。
 5. **文件已上传时禁止调用文件工具**：如果对话历史中包含以“【上传文件：...】”开头的消息，说明文件内容已提供，**绝对禁止**使用 ocr_image、recognize_table、analyze_file 等需要文件路径的工具。用户要求提取文字、分析表格时，直接让模型基于历史内容回答，不要生成任何工具步骤。
-6. 禁止使用任何需要计算的占位符（如 {step_1_result_date_plus_1}），必须直接计算并写入绝对日期时间。
+6. 禁止使用任何需要计算的占位符（如 {{step_1_result_date_plus_1}必须直接计算并写入绝对日期时间。
 7. 严禁将数据库查询结果直接填入 calculator 表达式，calculator 的参数必须是单行纯数字与运算符，如 "60000+75000+55000+68000"。
 8. 所有工具参数不得包含换行符或表格符号。
 9. 当用户提到相对日期（如“明天”），必须将 add_event 或 list_events 的日期参数转换为 YYYY-MM-DD 格式。

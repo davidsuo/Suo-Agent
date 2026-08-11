@@ -112,26 +112,33 @@ async def unified_handler(message, history, file, tenant_dropdown):
     # 处理 /logs 命令
     if message and message.strip().lower() == "/logs":
         try:
-            if os.path.exists("plan_log.json") and os.path.getsize("plan_log.json") > 2 * 1024 * 1024:
-                with open("plan_log.json", "r", encoding="utf-8") as f:
-                    lines = f.readlines()[-500:]
-            else:
+            if os.path.exists("plan_log.json"):
                 with open("plan_log.json", "r", encoding="utf-8") as f:
                     lines = f.readlines()
-            if not lines:
-                answer = "暂无规划日志。"
+                valid_entries = []
+                for line in lines:
+                    try:
+                        entry = json.loads(line.strip())
+                        if isinstance(entry, dict):
+                            valid_entries.append(entry)
+                    except json.JSONDecodeError:
+                        continue   # 跳过损坏的行
+                if not valid_entries:
+                    answer = "暂无规划日志。"
+                else:
+                    recent = valid_entries[-3:] if len(valid_entries) > 3 else valid_entries
+                    logs_display = "**最近规划日志：**\n\n"
+                    for idx, entry in enumerate(recent, 1):
+                        logs_display += f"记录{idx} | 时间: {entry.get('timestamp', '未知')}\n"
+                        logs_display += f"用户需求: {entry.get('user_query', '未知')}\n"
+                        logs_display += f"步骤数: {len(entry.get('plan', []))} 步\n" if 'plan' in entry else ""
+                        results = entry.get('results', {})
+                        for step_id, result in results.items():
+                            logs_display += f"  → 步骤{step_id}: {str(result)[:100]}...\n"
+                        logs_display += "\n"
+                    answer = logs_display
             else:
-                recent = lines[-3:] if len(lines) > 3 else lines
-                logs_display = "**最近规划日志：**\n\n"
-                for idx, line in enumerate(recent, 1):
-                    entry = json.loads(line)
-                    logs_display += f"记录{idx} | 时间: {entry['timestamp']}\n"
-                    logs_display += f"用户需求: {entry['user_query']}\n"
-                    logs_display += f"步骤数: {len(entry['plan'])} 步\n"
-                    for step_id, result in entry['results'].items():
-                        logs_display += f"  → 步骤{step_id}: {str(result)[:100]}...\n"
-                    logs_display += "\n"
-                answer = logs_display
+                answer = "暂无规划日志文件。"
         except FileNotFoundError:
             answer = "暂无规划日志文件。"
         except Exception as e:
