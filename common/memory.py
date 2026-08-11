@@ -1,22 +1,51 @@
-# memory.py
+# common/memory.py
+import json
+import os
+
 class ConversationMemory:
-    def __init__(self):
+    def __init__(self, storage_path="memory_state.json"):
+        self.storage_path = storage_path
         self.sessions = {}
         self.tenant_map = {}
-        self.all_tenants = set()          # 确保为集合
-        self.all_tenants.add("default")   # 默认包含 default
+        self.all_tenants = {"default"}
+        self.load_from_file()   # 启动时加载历史
+
+    def _save_to_file(self):
+        """保存完整状态到文件"""
+        try:
+            data = {
+                "sessions": self.sessions,
+                "tenant_map": self.tenant_map,
+                "all_tenants": list(self.all_tenants),
+            }
+            with open(self.storage_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"[Memory] 保存失败: {e}")
+
+    def load_from_file(self):
+        """从文件加载历史状态"""
+        if os.path.exists(self.storage_path):
+            try:
+                with open(self.storage_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                self.sessions = data.get("sessions", {})
+                self.tenant_map = data.get("tenant_map", {})
+                self.all_tenants = set(data.get("all_tenants", ["default"]))
+                print("[Memory] 历史记录已从文件加载")
+            except Exception as e:
+                print(f"[Memory] 加载失败，使用全新记忆: {e}")
 
     def set_tenant(self, session_id, tenant_id):
         self.tenant_map[session_id] = tenant_id
-        self.all_tenants.add(str(tenant_id))   # 转为字符串存储
+        self.all_tenants.add(tenant_id)
+        self._save_to_file()
 
     def get_tenant(self, session_id):
         return self.tenant_map.get(session_id, "default")
 
-    # 其他方法保持不变...  
-
     def _get_session_key(self, session_id):
-        tenant = self.tenant_map.get(session_id, "default")
+        tenant = self.get_tenant(session_id)
         return f"{tenant}:{session_id}"
 
     def get(self, session_id: str) -> list:
@@ -29,17 +58,19 @@ class ConversationMemory:
             self.sessions[key] = []
         self.sessions[key].append({"role": "user", "content": user_msg})
         self.sessions[key].append({"role": "assistant", "content": assistant_msg})
-    
+        self._save_to_file()
+
     def set_history(self, session_id: str, history: list):
-        """直接设置某个会话的历史记录（用于切换租户时保存当前窗口）"""
+        """直接设置某个会话的历史记录（用于切换租户时保存）"""
         if history:
             key = self._get_session_key(session_id)
             self.sessions[key] = history.copy()
+            self._save_to_file()
 
     def get_history(self, session_id: str) -> list:
-        """获取完整历史记录，若不存在则返回空列表"""
+        """获取完整历史记录"""
         key = self._get_session_key(session_id)
         return self.sessions.get(key, [])
 
-# 模块级单例，供其他模块导入
+# 全局单例
 memory = ConversationMemory()

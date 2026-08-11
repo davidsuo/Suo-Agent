@@ -25,3 +25,8 @@ main_backup.py
 
 coffee_sales
 coffee_sales1
+
+*.pem
+*_test.py
+
+memory_state.json

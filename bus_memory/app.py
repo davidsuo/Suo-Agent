@@ -243,7 +243,11 @@ with gr.Blocks(title="AI 智能体") as demo:
             )
             refresh_btn = gr.Button("刷新租户列表", size="sm", scale=0)
 
-        chatbot = gr.Chatbot(label="对话", height=500)
+        chatbot = gr.Chatbot(
+            label="对话",
+            height=500,
+            value=memory.get_history(SESSION_ID)   # 加载上次历史
+        )
 
         with gr.Row():
             text_input = gr.Textbox(
