@@ -1,83 +1,79 @@
-# redis_agents.py
+# bus_redis/agents_redis.py
 import asyncio
-import uuid
 import json
 import traceback
+import time
 from functools import partial
 from typing import Any, Dict, Callable
-import redis.asyncio as redis
+from redis.exceptions import ConnectionError, TimeoutError
 
-class RedisAgent:
-    def __init__(self, name: str, redis_url: str):
+class Agent:
+    def __init__(self, name: str, event_bus: 'RedisEventBus'):
         self.name = name
-        self.queue_key = f"agent:{name}:queue"
-        self.result_key_prefix = f"agent:{name}:result:"
-        self.redis = redis.from_url(
-            redis_url,
-            decode_responses=True,
-            ssl_cert_reqs=None,          # 忽略证书验证（Upstash 在免费层建议）
-            socket_keepalive=True,       # 保持连接
-            socket_connect_timeout=10,   # 连接超时
-            retry_on_timeout=True,       # 超时重试
-            health_check_interval=30     # 每30秒检查连接健康
-        )
+        self.bus = event_bus
         self.is_running = False
         self.task_count = 0
         self.error_count = 0
 
     async def send_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """发送任务到 Redis 队列，并等待结果返回"""
-        task_id = str(uuid.uuid4())
-        task["task_id"] = task_id
-        result_key = self.result_key_prefix + task_id
-
-        # 将任务放入队列（JSON 序列化）
-        await self.redis.lpush(self.queue_key, json.dumps(task))
-        print(f"[{self.name}] 任务已入队: {task_id}")
-
-        # 轮询等待结果
-        while True:
-            result_data = await self.redis.get(result_key)
-            if result_data:
-                await self.redis.delete(result_key)  # 清理结果
-                return json.loads(result_data)
-            await asyncio.sleep(0.2)
+        """通过 Redis 总线发送任务并等待结果"""
+        future = asyncio.get_event_loop().create_future()
+        event_data = {"task": task, "future": future}
+        await self.bus.publish(f"ToolRequested.{self.name}", event_data)
+        return await future
 
     async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         raise NotImplementedError
 
     async def run_loop(self):
-        """Worker 主循环：从 Redis 队列中取出任务并处理"""
-        print(f"[{self.name}] Redis Worker 启动，队列: {self.queue_key}")
+        """Worker 主循环：从 Redis 任务队列拉取任务并执行"""
+        task_queue = f"task:{self.name}"
+        result_queue = f"result:{self.name}"
+        print(f"[{self.name}] Redis Worker 启动，监听队列: {task_queue}", flush=True)
         self.is_running = True
         while True:
-            # 阻塞式弹出任务（BRPOP）
-            result = await self.redis.brpop(self.queue_key, timeout=5)
-            if result is None:
-                continue  # 超时无任务，继续等待
-            _, task_data = result
-            task = json.loads(task_data)
-            task_id = task.get("task_id")
-            print(f"[{self.name}] 收到任务: {task.get('tool', 'unknown')} (ID: {task_id})")
             try:
-                res = await self.handle_task(task)
-                self.task_count += 1
+                result = await self.bus.redis.brpop(task_queue, timeout=10)
+                if result is None:
+                    continue
+                _, task_data = result
+                task = json.loads(task_data)
+                task_id = task.get("task_id")
+                print(f"[{self.name}] 收到任务: {task.get('tool', 'unknown')} (ID: {task_id})")
+                try:
+                    res = await self.handle_task(task)
+                    self.task_count += 1
+                except Exception as e:
+                    self.error_count += 1
+                    res = {"error": str(e), "traceback": traceback.format_exc()}
+                result_payload = {"task_id": task_id, "result": res}
+                await self.bus.redis.lpush(result_queue, json.dumps(result_payload))
+                print(f"[{self.name}] 任务完成 (成功: {self.task_count}, 失败: {self.error_count})")
+            except (ConnectionError, TimeoutError):
+                await asyncio.sleep(1)
             except Exception as e:
-                res = {"error": str(e), "traceback": traceback.format_exc()}
-                self.error_count += 1
-            # 将结果存入 Redis
-            result_key = self.result_key_prefix + task_id
-            await self.redis.set(result_key, json.dumps(res), ex=300)  # 5分钟过期
-            print(f"[{self.name}] 任务完成 (成功: {self.task_count}, 失败: {self.error_count})")
+                print(f"[{self.name}] 循环异常: {e}", flush=True)
+                await asyncio.sleep(5)
 
-class SearchWorkerRedis(RedisAgent):
-    def __init__(self, tools: Dict[str, Callable], redis_url: str):
-        super().__init__("SearchWorker", redis_url)
+    def get_stats(self):
+        return {
+            "name": self.name,
+            "is_running": self.is_running,
+            "task_count": self.task_count,
+            "error_count": self.error_count,
+            "queue_size": "N/A"
+        }
+
+class WorkerAgent(Agent):
+    def __init__(self, name: str, tools: Dict[str, Callable], event_bus: 'RedisEventBus'):
+        super().__init__(name, event_bus)
         self.tools = tools
 
     async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         tool_name = task.get("tool")
         arguments = task.get("arguments", {})
+        if tool_name not in ("add_event", "list_events", "delete_event"):
+            arguments.pop("_tenant", None)
         if tool_name not in self.tools:
             return {"error": f"工具 {tool_name} 不存在"}
         func = self.tools[tool_name]
@@ -85,32 +81,36 @@ class SearchWorkerRedis(RedisAgent):
         result = await loop.run_in_executor(None, partial(func, **arguments))
         return {"result": result}
 
-class CodeWorkerRedis(RedisAgent):
-    def __init__(self, tools: Dict[str, Callable], redis_url: str):
-        super().__init__("CodeWorker", redis_url)
-        self.tools = tools
+class QueryWorker(WorkerAgent):
+    def __init__(self, name: str, tools: Dict[str, Callable], event_bus: 'RedisEventBus'):
+        super().__init__(name, tools, event_bus)
+        self.cache = {}
+        self.ttl_map = {
+            "get_current_time": 1,
+            "query_database": 30,
+            "list_events": 1,
+        }
+
+    def _get_cache_key(self, tool_name, arguments):
+        return f"{tool_name}:{json.dumps(arguments, sort_keys=True)}"
 
     async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         tool_name = task.get("tool")
         arguments = task.get("arguments", {})
-        if tool_name not in self.tools:
-            return {"error": f"工具 {tool_name} 不存在"}
-        func = self.tools[tool_name]
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, partial(func, **arguments))
-        return {"result": result}
 
-class DataWorkerRedis(RedisAgent):
-    def __init__(self, tools: Dict[str, Callable], redis_url: str):
-        super().__init__("DataWorker", redis_url)
-        self.tools = tools
+        if tool_name == "get_current_time":
+            return await super().handle_task(task)
 
-    async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        tool_name = task.get("tool")
-        arguments = task.get("arguments", {})
-        if tool_name not in self.tools:
-            return {"error": f"工具 {tool_name} 不存在"}
-        func = self.tools[tool_name]
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, partial(func, **arguments))
-        return {"result": result}
+        cache_key = self._get_cache_key(tool_name, arguments)
+        now = time.time()
+        cached = self.cache.get(cache_key)
+        if cached and cached[1] > now:
+            print(f"[QueryWorker] 缓存命中: {cache_key}", flush=True)
+            return {"result": cached[0]}
+
+        result = await super().handle_task(task)
+        if "result" in result and "error" not in result:
+            ttl = self.ttl_map.get(tool_name, 10)
+            self.cache[cache_key] = (result["result"], now + ttl)
+            print(f"[QueryWorker] 缓存写入 (TTL={ttl}s): {cache_key}", flush=True)
+        return result

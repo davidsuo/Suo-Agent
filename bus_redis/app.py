@@ -1,22 +1,63 @@
+# bus_redis/app.py
+import sys, os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import gradio as gr
 import asyncio
 import json
 import pandas as pd
-from main import chat_core, bus, query_worker, command_worker
-from memory import memory
-import tools
-from tools import speech_to_text, ocr_image, recognize_table, analyze_file
-
-import sys, os
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
+from common.main import chat_core, set_workers
+from common.memory import memory
+from common.tools import (
+    get_current_time, calculator,
+    query_database, web_search, execute_python,
+    speech_to_text, analyze_file,
+    fetch_webpage, generate_image,
+    ocr_image, add_event, list_events, delete_event,
+    recognize_table, send_email, init_calendar,
+)
 from bus_redis.redis_bus import RedisEventBus
-from common.agents_redis import WorkerAgent, QueryWorker   # 假设 Redis 版 Agent 已准备好
-# ... 其余类似，但使用 Redis 总线
+from bus_redis.agents_redis import WorkerAgent, QueryWorker
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)) + "/..")
 
 SESSION_ID = "render_user"
+
+# 初始化 Redis 总线
+REDIS_URL = os.getenv("REDIS_URL")
+if not REDIS_URL:
+    raise ValueError("REDIS_URL 环境变量未设置")
+bus = RedisEventBus(REDIS_URL)
+
+# Worker 工具集（与内存版相同）
+query_worker_tools = {
+    "get_current_time": get_current_time,
+    "calculator": calculator,
+    "query_database": query_database,
+    "list_events": list_events,
+    "web_search": web_search,
+    "fetch_webpage": fetch_webpage,
+    "ocr_image": ocr_image,
+    "recognize_table": recognize_table,
+    "analyze_file": analyze_file,
+    "speech_to_text": speech_to_text,
+}
+command_worker_tools = {
+    "send_email": send_email,
+    "add_event": add_event,
+    "delete_event": delete_event,
+    "execute_python": execute_python,
+    "generate_image": generate_image,
+}
+
+query_worker = QueryWorker("QueryWorker", query_worker_tools, bus)
+command_worker = WorkerAgent("CommandWorker", command_worker_tools, bus)
+
+TOOL_ROUTER = {}
+for name in query_worker.tools: TOOL_ROUTER[name] = query_worker
+for name in command_worker.tools: TOOL_ROUTER[name] = command_worker
+
+set_workers(query_worker, command_worker, TOOL_ROUTER)
 
 def init_db():
     db_path = "sample.db"
