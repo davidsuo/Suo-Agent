@@ -14,6 +14,7 @@ class Agent:
         self.is_running = False
         self.task_count = 0
         self.error_count = 0
+        self.total_time = 0.0   # 总耗时（秒）
 
     async def send_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         future = asyncio.get_event_loop().create_future()
@@ -23,30 +24,38 @@ class Agent:
     async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         raise NotImplementedError
 
-    async def run_loop(self):
-        print(f"[{self.name}] Worker 启动（内存总线），等待任务...")
-        self.is_running = True
-        while True:
-            task, future = await self.queue.get()
-            print(f"[{self.name}] 收到任务: {task.get('tool', 'unknown')}")
-            try:
-                result = await self.handle_task(task)
-                self.task_count += 1
-            except Exception as e:
-                self.error_count += 1
-                result = {"error": str(e), "traceback": traceback.format_exc()}
-                print(f"[{self.name}] 任务执行失败: {e}")
-            future.set_result(result)
-            print(f"[{self.name}] 任务完成 (成功: {self.task_count}, 失败: {self.error_count})")
+async def run_loop(self):
+    print(f"[{self.name}] Worker 启动（内存总线），等待任务...")
+    self.is_running = True
+    while True:
+        task, future = await self.queue.get()
+        print(f"[{self.name}] 收到任务: {task.get('tool', 'unknown')}")
+        start_time = time.monotonic()
+        try:
+            result = await self.handle_task(task)
+            self.task_count += 1
+        except Exception as e:
+            self.error_count += 1
+            result = {"error": str(e), "traceback": traceback.format_exc()}
+            print(f"[{self.name}] 任务执行失败: {e}")
+        elapsed = time.monotonic() - start_time
+        self.total_time += elapsed
+        future.set_result(result)
+        print(f"[{self.name}] 任务完成 (成功: {self.task_count}, 失败: {self.error_count}, 耗时: {elapsed:.2f}s)")
 
-    def get_stats(self):
-        return {
-            "name": self.name,
-            "is_running": self.is_running,
-            "task_count": self.task_count,
-            "error_count": self.error_count,
-            "queue_size": self.queue.qsize()
-        }
+def get_stats(self):
+    total = self.task_count + self.error_count
+    avg_time = (self.total_time / total) if total > 0 else 0.0
+    error_rate = (self.error_count / total) if total > 0 else 0.0
+    return {
+        "name": self.name,
+        "is_running": self.is_running,
+        "task_count": self.task_count,
+        "error_count": self.error_count,
+        "queue_size": self.queue.qsize(),
+        "avg_time": round(avg_time, 2),
+        "error_rate": round(error_rate, 2),
+    }
 
 class WorkerAgent(Agent):
     def __init__(self, name: str, tools: Dict[str, Callable], event_bus: 'EventBus'):
