@@ -97,11 +97,13 @@ def get_available_tenants():
     return sorted(list(memory.all_tenants))
 
 async def unified_handler(message, history, file, tenant_dropdown):
-    # 页面刷新或新连接时，加载持久化历史（排除文件上传的情况）
-    if (history is None or len(history) == 0) and (message is None or message.strip() == "") and file is None:
-        loaded = memory.get_history(SESSION_ID)
-        if loaded:
-            return loaded, "", None
+    # 无论如何，加载持久化历史，如果比当前传入的 history 更长（说明页面刷新了），就恢复
+    loaded = memory.get_history(SESSION_ID)
+    if loaded and (not history or len(history) < len(loaded)):
+        # 使用持久化历史替换当前历史（刷新恢复）
+        history = loaded
+    elif not history:
+        history = []
             
     # 处理 /logs 命令
     if message and message.strip().lower() == "/logs":
