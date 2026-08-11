@@ -8,11 +8,11 @@ import traceback
 import requests
 import base64
 import json
-import replicate
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from ddgs import DDGS
 from bs4 import BeautifulSoup
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo  # Python 3.9+ 内置
 
 
@@ -53,9 +53,6 @@ def calculator(expression: str):
         return f"计算出错: {e}"
         
 # ---------- 获取当前的日期和时间  (get_current_time) ----------
-from zoneinfo import ZoneInfo
-from datetime import datetime
-
 def get_current_time():
     """返回当前东八区（北京时间）日期和时间"""
     try:
@@ -628,6 +625,38 @@ def recognize_table(image_path: str) -> str:
         return all_tables_text if all_tables_text else "未识别到表格内容"
     except Exception as e:
         return f"表格数据解析失败: {e}"
+        
+
+# ---------- 视觉理解 (Describle image) ----------
+def describe_image(image_path: str) -> str:
+    """使用 Hugging Face 视觉模型描述图片内容"""
+    api_token = os.getenv("HF_TOKEN")
+    if not api_token:
+        return "视觉理解未配置（缺少 HF_TOKEN）"
+
+    try:
+        with open(image_path, "rb") as f:
+            image_bytes = f.read()
+    except Exception as e:
+        return f"图片读取失败: {e}"
+
+    # 使用 Hugging Face 的无服务器推理 API (blip-image-captioning-base)
+    API_URL = "https://api-inference.huggingface.co/models/Salesforce/blip-image-captioning-base"
+    headers = {"Authorization": f"Bearer {api_token}"}
+    try:
+        resp = requests.post(API_URL, data=image_bytes, headers=headers, timeout=30)
+        if resp.status_code == 200:
+            data = resp.json()
+            if isinstance(data, list) and len(data) > 0:
+                return data[0].get("generated_text", "无法生成描述")
+            elif isinstance(data, dict):
+                return data.get("generated_text", "无法生成描述")
+            else:
+                return f"描述失败: {resp.text[:200]}"
+        else:
+            return f"视觉模型调用失败: {resp.status_code} {resp.text[:200]}"
+    except Exception as e:
+        return f"视觉模型请求错误: {e}"
                 
 
 # ---------- 工具元数据 ----------
@@ -847,6 +876,20 @@ TOOLS_METADATA = [
                 "required": ["image_path"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "describe_image",
+            "description": "描述图片的内容，返回英文描述。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "image_path": {"type": "string", "description": "图片文件的本地路径"}
+                },
+                "required": ["image_path"]
+            }
+        }
     }
 ]
 
@@ -917,7 +960,8 @@ AVAILABLE_TOOLS = {
     "add_event": add_event,
     "list_events": list_events,
     "delete_event": delete_event,
-    "recognize_table": recognize_table,    
+    "recognize_table": recognize_table,   
+    "describe_image": describe_image,    
 }
 
         
