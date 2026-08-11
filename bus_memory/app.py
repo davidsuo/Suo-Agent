@@ -319,6 +319,7 @@ with gr.Blocks(title="AI 智能体") as demo:
 
 if __name__ == "__main__":
     init_db()
+    memory.load_from_file()   # 显式加载历史记录
     init_calendar()   # 确保日程表存在
     loop = asyncio.get_event_loop()
     loop.create_task(query_worker.run_loop())
