@@ -115,7 +115,7 @@ def home():
     </html>
     """
     
- def enhanced_log_plan(session_id, user_query, plan, results, step_times, final_status, completed_steps=None):
+def enhanced_log_plan(session_id, user_query, plan, results, step_times, final_status, completed_steps=None):
     """记录详细的规划执行日志到 plan_log.json"""
     entry = {
         "timestamp": datetime.datetime.now().isoformat(),
