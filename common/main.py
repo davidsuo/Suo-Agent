@@ -207,6 +207,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
 
         for step in plan:
             step_id = step["id"]
+            step_desc = step.get("description", f"步骤{step_id}")
             tool_name = step["tool"]
             arguments = step["arguments"]
             arguments["_tenant"] = memory.get_tenant(session_id)
@@ -230,38 +231,94 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                     raw_result = res.get("result", res.get("error")) if res else "未知错误"
 
                     if "error" in res or "失败" in str(raw_result) or "错误" in str(raw_result):
-                        # Saga 补偿
+                        # -------- Saga 补偿回滚（简洁流程提示） --------
                         print(f"[Saga] 步骤{step_id}失败，开始补偿...")
+                        # 构建流程步骤状态
+                        steps_summary = []
+                        for comp_step, comp_args, comp_result in completed_steps:
+                            comp_desc = comp_step.get("description", f"步骤{comp_step['id']}")
+                            steps_summary.append(f"✅ {comp_desc}")
+                        steps_summary.append(f"❌ {step_desc}（遇到问题）")
+
+                        # 执行补偿
                         compensation_msgs = []
                         for comp_step, comp_args, comp_result in reversed(completed_steps):
                             comp_func_name = comp_step.get("tool")
                             if comp_func_name in COMPENSATIONS:
                                 try:
                                     comp_msg = COMPENSATIONS[comp_func_name](**comp_args, result=comp_result)
-                                    compensation_msgs.append(comp_msg)
+                                    # 提取补偿的友好描述（去掉原始JSON）
+                                    if "已删除" in comp_msg or "已取消" in comp_msg:
+                                        compensation_msgs.append(f"🔄 {comp_step.get('description', '未知步骤')} 已回滚")
+                                    else:
+                                        compensation_msgs.append(f"🔄 {comp_msg}")
+                                    print(f"[Saga] 补偿 {comp_func_name}: {comp_msg}")
                                 except Exception as comp_exc:
-                                    compensation_msgs.append(f"补偿失败: {comp_exc}")
-                        answer = f"任务执行失败（步骤{step_id}），已自动回滚。\n错误: {raw_result}"
+                                    compensation_msgs.append(f"🔄 回滚失败: {comp_exc}")
+                                    print(f"[Saga] 补偿失败: {comp_exc}")
+
+                        # 构建简洁回答
+                        answer = "任务执行情况：\n" + "\n".join(steps_summary)
                         if compensation_msgs:
-                            answer += "\n补偿操作：\n" + "\n".join(f"  - {msg}" for msg in compensation_msgs)
+                            answer += "\n\n" + "\n".join(compensation_msgs)
+                        else:
+                            answer += "\n\n没有需要回滚的操作。"
                         memory.append(session_id, query, answer)
                         return output_guard(answer)
 
+                    # 成功
                     results[step_id] = str(raw_result)
                     completed_steps.append((step, arguments, raw_result))
                     print(f"[规划引擎] 步骤{step_id}完成: {str(raw_result)[:80]}")
 
-                except Exception as e:
-                    print(f"[Saga] 步骤{step_id}异常，开始补偿: {e}")
-                    # 补偿逻辑
+                except asyncio.TimeoutError:
+                    print(f"[Saga] 步骤{step_id}超时，开始补偿...")
+                    # 类似构建步骤状态和补偿
+                    steps_summary = []
+                    for comp_step, comp_args, comp_result in completed_steps:
+                        comp_desc = comp_step.get("description", f"步骤{comp_step['id']}")
+                        steps_summary.append(f"✅ {comp_desc}")
+                    steps_summary.append(f"⏱️ {step_desc}（超时）")
+
+                    compensation_msgs = []
                     for comp_step, comp_args, comp_result in reversed(completed_steps):
                         comp_func_name = comp_step.get("tool")
                         if comp_func_name in COMPENSATIONS:
                             try:
                                 COMPENSATIONS[comp_func_name](**comp_args, result=comp_result)
+                                compensation_msgs.append(f"🔄 {comp_step.get('description', '未知步骤')} 已回滚")
                             except Exception:
                                 pass
-                    answer = f"任务执行异常（步骤{step_id}），已自动回滚。原因: {e}"
+                    answer = "任务执行情况：\n" + "\n".join(steps_summary)
+                    if compensation_msgs:
+                        answer += "\n\n" + "\n".join(compensation_msgs)
+                    else:
+                        answer += "\n\n没有需要回滚的操作。"
+                    memory.append(session_id, query, answer)
+                    return output_guard(answer)
+
+                except Exception as e:
+                    print(f"[Saga] 步骤{step_id}异常，开始补偿: {e}")
+                    steps_summary = []
+                    for comp_step, comp_args, comp_result in completed_steps:
+                        comp_desc = comp_step.get("description", f"步骤{comp_step['id']}")
+                        steps_summary.append(f"✅ {comp_desc}")
+                    steps_summary.append(f"❌ {step_desc}（系统异常）")
+
+                    compensation_msgs = []
+                    for comp_step, comp_args, comp_result in reversed(completed_steps):
+                        comp_func_name = comp_step.get("tool")
+                        if comp_func_name in COMPENSATIONS:
+                            try:
+                                COMPENSATIONS[comp_func_name](**comp_args, result=comp_result)
+                                compensation_msgs.append(f"🔄 {comp_step.get('description', '未知步骤')} 已回滚")
+                            except Exception:
+                                pass
+                    answer = "任务执行情况：\n" + "\n".join(steps_summary)
+                    if compensation_msgs:
+                        answer += "\n\n" + "\n".join(compensation_msgs)
+                    else:
+                        answer += "\n\n没有需要回滚的操作。"
                     memory.append(session_id, query, answer)
                     return output_guard(answer)
             else:
