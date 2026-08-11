@@ -2,7 +2,7 @@
 import sys, os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import json, asyncio, time, uuid, traceback, re
+import json, asyncio, uuid, traceback, re
 from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
@@ -10,7 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from openai import OpenAI
-from datetime import datetime, timedelta
+imprt datetime
 from common.memory import memory
 try:
     from common import rag
@@ -117,7 +117,7 @@ def home():
     
 def enhanced_log_plan(session_id, user_query, plan, results, step_times, final_status, total_time, completed_steps=None):
     entry = {
-        "timestamp": datetime.datetime.now().isoformat(),
+        "timestamp": datetime.datetime.datetime.now().isoformat(),
         "session_id": session_id,
         "tenant": memory.get_tenant(session_id),
         "user_query": user_query,
@@ -143,12 +143,12 @@ def enhanced_log_plan(session_id, user_query, plan, results, step_times, final_s
 def simple_log_tool(session_id, user_query, tool_name, arguments, result):
     """记录非规划模式的工具调用"""
     entry = {
-        "timestamp": datetime.datetime.now().isoformat(),
+        "timestamp": datetime.datetime.now().isoformat(),   # 注意这里是 datetime.datetime
         "session_id": session_id,
         "tenant": memory.get_tenant(session_id),
         "user_query": user_query,
         "tool": tool_name,
-        "arguments": {k: v for k, v in arguments.items() if k != "_tenant"},  # 隐藏内部参数
+        "arguments": {k: v for k, v in arguments.items() if k != "_tenant"},
         "result": str(result)[:300],
         "mode": "regular"
     }
