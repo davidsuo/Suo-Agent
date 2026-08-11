@@ -10,7 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from openai import OpenAI
-imprt datetime
+import datetime
 from common.memory import memory
 try:
     from common import rag
