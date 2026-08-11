@@ -6,34 +6,26 @@ import gradio as gr
 import asyncio
 import json
 import pandas as pd
-
-# 导入公共模块
-from common.main import chat_core, set_workers   # 注意：需要从 main.py 导入 set_workers
+from common.main import chat_core, set_workers
 from common.memory import memory
 from common.tools import (
     get_current_time, calculator,
     query_database, web_search, execute_python,
     speech_to_text, analyze_file,
     fetch_webpage, generate_image,
-    ocr_image,
-    add_event, list_events, delete_event,
-    recognize_table,
-    send_email,
-    init_calendar,   # 确保 tools.py 中存在此函数
+    ocr_image, add_event, list_events, delete_event,
+    recognize_table, send_email, init_calendar,
 )
 from bus_memory.event_bus import EventBus
 from common.agents_memory import WorkerAgent, QueryWorker
 
-
-# 切换工作目录到项目根目录，以保证 sample.db、plan_log.json 等路径正确
 os.chdir(os.path.dirname(os.path.abspath(__file__)) + "/..")
 
 SESSION_ID = "render_user"
 
-# 初始化内存总线
 bus = EventBus()
 
-# ========== 查询类 Worker（带缓存） ==========
+# Worker 工具集
 query_worker_tools = {
     "get_current_time": get_current_time,
     "calculator": calculator,
@@ -46,9 +38,6 @@ query_worker_tools = {
     "analyze_file": analyze_file,
     "speech_to_text": speech_to_text,
 }
-query_worker = QueryWorker("QueryWorker", query_worker_tools, bus)
-
-# ========== 命令类 Worker ==========
 command_worker_tools = {
     "send_email": send_email,
     "add_event": add_event,
@@ -56,19 +45,16 @@ command_worker_tools = {
     "execute_python": execute_python,
     "generate_image": generate_image,
 }
+
+query_worker = QueryWorker("QueryWorker", query_worker_tools, bus)
 command_worker = WorkerAgent("CommandWorker", command_worker_tools, bus)
 
-# 工具路由表
 TOOL_ROUTER = {}
-for name in query_worker.tools:
-    TOOL_ROUTER[name] = query_worker
-for name in command_worker.tools:
-    TOOL_ROUTER[name] = command_worker
+for name in query_worker.tools: TOOL_ROUTER[name] = query_worker
+for name in command_worker.tools: TOOL_ROUTER[name] = command_worker
 
-# 将 Worker 和路由注入 common.main（使 chat_core 能访问）
 set_workers(query_worker, command_worker, TOOL_ROUTER)
 
-# ========== 前端逻辑 ==========
 def init_db():
     db_path = "sample.db"
     if not os.path.exists(db_path):
@@ -98,53 +84,40 @@ def get_available_tenants():
     return sorted(list(memory.all_tenants))
 
 async def unified_handler(message, history, file, tenant_dropdown):
-    # 确保 history 不为 None
-    if history is None:
-        history = []
-        
-    # 无论如何，加载持久化历史，如果比当前传入的 history 更长（说明页面刷新了），就恢复
     loaded = memory.get_history(SESSION_ID)
     if loaded and (not history or len(history) < len(loaded)):
-        # 使用持久化历史替换当前历史（刷新恢复）
         history = loaded
     elif not history:
         history = []
-            
-    # 处理 /logs 命令
+
     if message and message.strip().lower() == "/logs":
         try:
-            if os.path.exists("plan_log.json"):
+            if os.path.exists("plan_log.json") and os.path.getsize("plan_log.json") > 2 * 1024 * 1024:
+                with open("plan_log.json", "r", encoding="utf-8") as f:
+                    lines = f.readlines()[-500:]
+            else:
                 with open("plan_log.json", "r", encoding="utf-8") as f:
                     lines = f.readlines()
-                valid_entries = []
-                for line in lines:
-                    try:
-                        entry = json.loads(line.strip())
-                        if isinstance(entry, dict):
-                            valid_entries.append(entry)
-                    except json.JSONDecodeError:
-                        continue   # 跳过损坏的行
-                if not valid_entries:
-                    answer = "暂无规划日志。"
-                else:
-                    recent = valid_entries[-3:] if len(valid_entries) > 3 else valid_entries
-                    logs_display = "**最近规划日志：**\n\n"
-                    for idx, entry in enumerate(recent, 1):
-                        logs_display += f"记录{idx} | 时间: {entry.get('timestamp', '未知')}\n"
-                        logs_display += f"用户需求: {entry.get('user_query', '未知')}\n"
-                        logs_display += f"步骤数: {len(entry.get('plan', []))} 步\n" if 'plan' in entry else ""
-                        results = entry.get('results', {})
-                        for step_id, result in results.items():
-                            logs_display += f"  → 步骤{step_id}: {str(result)[:100]}...\n"
-                        logs_display += "\n"
-                    answer = logs_display
+            if not lines:
+                answer = "暂无规划日志。"
             else:
-                answer = "暂无规划日志文件。"
+                recent = lines[-3:] if len(lines) > 3 else lines
+                logs_display = "**最近规划日志：**\n\n"
+                for idx, line in enumerate(recent, 1):
+                    entry = json.loads(line)
+                    logs_display += f"记录{idx} | 时间: {entry.get('timestamp', '未知')}\n"
+                    logs_display += f"用户需求: {entry.get('user_query', '未知')}\n"
+                    if 'plan' in entry:
+                        logs_display += f"步骤数: {len(entry['plan'])} 步\n"
+                    results = entry.get('results', {})
+                    for step_id, result in results.items():
+                        logs_display += f"  → 步骤{step_id}: {str(result)[:100]}...\n"
+                    logs_display += "\n"
+                answer = logs_display
         except FileNotFoundError:
             answer = "暂无规划日志文件。"
         except Exception as e:
             answer = f"读取日志失败: {e}"
-        history = history or []
         history.append({"role": "user", "content": "/logs"})
         history.append({"role": "assistant", "content": answer})
         return history, "", None
@@ -155,7 +128,6 @@ async def unified_handler(message, history, file, tenant_dropdown):
             if len(parts) == 1:
                 current_tenant = memory.get_tenant(SESSION_ID)
                 answer = f"当前租户：{current_tenant}"
-                history = history or []
                 history.append({"role": "user", "content": message})
                 history.append({"role": "assistant", "content": answer})
                 return history, "", None
@@ -188,28 +160,18 @@ async def unified_handler(message, history, file, tenant_dropdown):
         file_result = ""
 
         if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif'):
-            # 判断用户是否明确要求表格识别
             if message and "表格" in message:
                 file_result = await asyncio.to_thread(recognize_table, file_path)
-                file_result = str(file_result)
-                memory.append(SESSION_ID, f"【上传文件：{file_name}】\n{file_result}", "")
-                history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
-                history.append({"role": "assistant", "content": "表格文件已就绪，您可以基于该内容提问。"})
-                return history, "", None
             else:
-                # 普通图片：暂不自动描述，返回友好提示
-                history.append({"role": "user", "content": f"🖼️ 上传图片：{file_name}"})
-                history.append({"role": "assistant", "content": "视觉理解服务暂时不可用，您可以稍后重试或输入“提取文字”使用 OCR 功能。"})
-                return history, "", None
+                file_result = await asyncio.to_thread(ocr_image, file_path)
         elif ext in ('.csv', '.xlsx', '.xls'):
-            file_result = await asyncio.to_thread(func, file_path)
+            file_result = await asyncio.to_thread(analyze_file, file_path)
         elif ext in ('.wav', '.mp3', '.m4a', '.ogg'):
-            file_result = await asyncio.to_thread(func, file_path)
+            file_result = await asyncio.to_thread(speech_to_text, file_path)
         else:
             file_result = "不支持的文件类型"
 
         file_result = str(file_result)
-        history = history or []
 
         if ext in ('.wav', '.mp3', '.m4a', '.ogg'):
             history.append({"role": "user", "content": f"🎤 语音输入：{file_result}"})
@@ -218,18 +180,15 @@ async def unified_handler(message, history, file, tenant_dropdown):
             memory.append(SESSION_ID, file_result, answer)
             return history, "", None
         else:
-            # 其他文件：暂存内容，显示用户侧上传提示 + 助手就绪回复
             memory.append(SESSION_ID, f"【上传文件：{file_name}】\n{file_result}", "")
             history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
             history.append({"role": "assistant", "content": "文件已就绪，您可以基于该内容提问。"})
             return history, "", None
 
-    # 纯文本处理
     if not message or not message.strip():
         return history, "", None
 
     display_msg = message
-    history = history or []
     history.append({"role": "user", "content": display_msg})
 
     answer = await chat_core(SESSION_ID, message, query_worker, command_worker, TOOL_ROUTER)
@@ -257,7 +216,6 @@ def on_tenant_change(new_tenant):
         return [], gr.Dropdown(choices=tenants, value="default")
 
 
-# Gradio 界面
 with gr.Blocks(title="AI 智能体") as demo:
     with gr.Tab("聊天"):
         gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具）")
@@ -323,6 +281,11 @@ with gr.Blocks(title="AI 智能体") as demo:
             return gr.Dropdown(choices=tenants, value=memory.get_tenant(SESSION_ID))
         refresh_btn.click(refresh_tenants, None, tenant_dropdown)
 
+        async def load_history():
+            hist = memory.get_history(SESSION_ID)
+            return hist if hist else []
+        demo.load(fn=load_history, outputs=chatbot)
+
     with gr.Tab("Worker 监控"):
         gr.Markdown("## 实时 Worker 状态")
         refresh_btn2 = gr.Button("刷新")
@@ -349,16 +312,11 @@ with gr.Blocks(title="AI 智能体") as demo:
 
         refresh_btn2.click(fn=refresh_status, outputs=status_table)
         status_table.value = refresh_status()
-        
-    async def load_history():
-        return memory.get_history(SESSION_ID)
-
-    demo.load(fn=load_history, outputs=chatbot)
 
 if __name__ == "__main__":
     init_db()
-    memory.load_from_file()   # 显式加载历史记录
-    init_calendar()   # 确保日程表存在
+    memory.load_from_file()
+    init_calendar()
     loop = asyncio.get_event_loop()
     loop.create_task(query_worker.run_loop())
     loop.create_task(command_worker.run_loop())
