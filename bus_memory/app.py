@@ -83,18 +83,15 @@ def init_db():
 def get_available_tenants():
     return sorted(list(memory.all_tenants))
 
-print(f"[Handler] history 长度: {len(history) if history else 0}, 持久化长度: {len(loaded) if loaded else 0}")
+
 async def unified_handler(message, history, file, tenant_dropdown):
-    # 从持久化文件加载完整历史，如果当前历史为空或不完整，则替换
     loaded = memory.get_history(SESSION_ID)
     if loaded:
-        # 如果传入的历史为空，或者持久化历史更长（说明页面刷新后丢失了历史），直接替换
         if not history or len(history) < len(loaded):
             history = loaded
     if not history:
         history = []
     
-    # 原有特殊命令处理等继续...
 
     if message and message.strip().lower() == "/logs":
         try:
