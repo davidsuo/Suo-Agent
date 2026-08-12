@@ -19,6 +19,8 @@ from common.tools import (
 from bus_memory.event_bus import EventBus
 from common.agents_memory import WorkerAgent, QueryWorker
 
+from common.auth import init_users_db, authenticate   # 确保导入 authenticate 和 init_users_db
+
 os.chdir(os.path.dirname(os.path.abspath(__file__)) + "/..")
 
 SESSION_ID = "render_user"
@@ -230,7 +232,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     # 登录表单（初始可见）
     with gr.Column(visible=True) as login_column:
         gr.Markdown("# 🔐 AI 智能体 - 请登录")
-        username_input = gr.Textbox(label="用户名")
+        username_input = gr.Textbox(label="用户名（小写，例如 alice）")
         pin_input = gr.Textbox(label="PIN 码", type="password")
         login_btn = gr.Button("登录")
         login_msg = gr.Markdown("")
@@ -362,6 +364,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             
 
 if __name__ == "__main__":
+    init_users_db()
     init_db()
     memory.load_from_file()
     init_calendar()
