@@ -305,32 +305,32 @@ with gr.Blocks(title="AI 智能体") as demo:
             refresh_btn.click(refresh_tenants, None, tenant_dropdown)
 
             def load_history():
-            # 检查是否有持久化的用户信息
-            user = memory.get_user_info(SESSION_ID)
-            if user:
-                # 恢复登录状态
-                hist = memory.get_history(SESSION_ID)
-                tenants = get_available_tenants()
-                return (
-                    user,                              # user_state
-                    gr.update(visible=False),          # 隐藏登录框
-                    gr.update(visible=True),           # 显示聊天框
-                    hist if hist else [],              # 聊天记录
-                    gr.Dropdown(choices=tenants, value=user["tenant"]),
-                    "",                                # 清空登录消息
-                    f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**"
-                )
-            else:
-                # 未登录状态
-                return (
-                    None,
-                    gr.update(visible=True),
-                    gr.update(visible=False),
-                    [],
-                    gr.Dropdown(choices=get_available_tenants(), value="default"),
-                    "",
-                    ""
-                )
+                # 检查是否有持久化的用户信息
+                user = memory.get_user_info(SESSION_ID)
+                if user:
+                    # 恢复登录状态
+                    hist = memory.get_history(SESSION_ID)
+                    tenants = get_available_tenants()
+                    return (
+                        user,                              # user_state
+                        gr.update(visible=False),          # 隐藏登录框
+                        gr.update(visible=True),           # 显示聊天框
+                        hist if hist else [],              # 聊天记录
+                        gr.Dropdown(choices=tenants, value=user["tenant"]),
+                        "",                                # 清空登录消息
+                        f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**"
+                    )
+                else:
+                    # 未登录状态
+                    return (
+                        None,
+                        gr.update(visible=True),
+                        gr.update(visible=False),
+                        [],
+                        gr.Dropdown(choices=get_available_tenants(), value="default"),
+                        "",
+                        ""
+                    )
             demo.load(
                 fn=load_history,
                 outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display]
