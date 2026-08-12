@@ -420,17 +420,15 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
             memory.append(session_id, query, answer)
             return answer
     else:
-        # 主动时间注入：当用户询问时间时，自动获取最新时间并作为系统消息
+        # 智能时间注入：如果用户询问时间，直接在 query 中提供当前准确时间
         time_keywords = ["几点", "时间", "几时", "现在时间", "当前时间", "什么时间", "时刻", "钟"]
         if any(kw in query for kw in time_keywords):
             try:
-                # 直接调用 get_current_time 工具（同步执行，不通过 Worker）
                 current_time = get_current_time()
-                # 将最新时间作为系统消息插入，帮助模型回答
-                messages.append({"role": "system", "content": f"[系统提示] 当前准确北京时间是 {current_time}。请基于此时间回答用户。"})
-                print(f"[主动注入] 最新时间已注入: {current_time}")
+                query = f"{query}（当前准确北京时间：{current_time}）"
+                print(f"[时间注入] 已更新时间上下文: {current_time}")
             except Exception as e:
-                print(f"[主动注入] 获取时间失败: {e}")        
+                print(f"[时间注入] 获取失败: {e}")        
         for _ in range(8):
             try:
                 response = client.chat.completions.create(

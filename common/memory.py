@@ -24,17 +24,18 @@ class ConversationMemory:
             print(f"[Memory] 保存失败: {e}")
 
     def load_from_file(self):
-        """从文件加载历史状态"""
         if os.path.exists(self.storage_path):
             try:
                 with open(self.storage_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 self.sessions = data.get("sessions", {})
                 self.tenant_map = data.get("tenant_map", {})
-                self.all_tenants = set(data.get("all_tenants", ["default"]))
-                print("[Memory] 历史记录已从文件加载")
+                loaded_tenants = data.get("all_tenants", ["default"])
+                self.all_tenants = set(loaded_tenants) if loaded_tenants else {"default"}
+                print("[Memory] 历史记录已加载")
             except Exception as e:
-                print(f"[Memory] 加载失败，使用全新记忆: {e}")
+                print(f"[Memory] 加载失败: {e}")
+
 
     def set_tenant(self, session_id, tenant_id):
         self.tenant_map[session_id] = tenant_id
