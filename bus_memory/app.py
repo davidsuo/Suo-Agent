@@ -223,7 +223,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         with gr.Row():
             tenant_dropdown = gr.Dropdown(
                 choices=get_available_tenants(),
-                value="default",
+                value=memory.get_tenant(SESSION_ID),  # 动态加载当前租户
                 label="租户切换",
                 interactive=True,
                 scale=1

@@ -32,7 +32,7 @@ class ConversationMemory:
                 self.tenant_map = data.get("tenant_map", {})
                 loaded_tenants = data.get("all_tenants", ["default"])
                 self.all_tenants = set(loaded_tenants) if loaded_tenants else {"default"}
-                print("[Memory] 历史记录已加载")
+                print(f"[Memory] 历史记录已加载，tenant_map: {self.tenant_map}, sessions keys: {list(self.sessions.keys())}")
             except Exception as e:
                 print(f"[Memory] 加载失败: {e}")
 
