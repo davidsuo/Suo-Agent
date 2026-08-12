@@ -354,7 +354,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                 gr.update(visible=True),                  # 显示聊天框
                 hist if hist else [],                      # 加载历史记录
                 gr.Dropdown(choices=tenants, value=user["tenant"]),  # 更新租户下拉
-                f"✅ 登录成功，欢迎 {user['display_name']}！"
+                f"✅ 登录成功，欢迎 {user['display_name']}！",
                 f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**"  # 新增
             )
         else:
