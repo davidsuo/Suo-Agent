@@ -420,6 +420,17 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
             memory.append(session_id, query, answer)
             return answer
     else:
+        # 主动时间注入：当用户询问时间时，自动获取最新时间并作为系统消息
+        time_keywords = ["几点", "时间", "几时", "现在时间", "当前时间", "什么时间", "时刻", "钟"]
+        if any(kw in query for kw in time_keywords):
+            try:
+                # 直接调用 get_current_time 工具（同步执行，不通过 Worker）
+                current_time = get_current_time()
+                # 将最新时间作为系统消息插入，帮助模型回答
+                messages.append({"role": "system", "content": f"[系统提示] 当前准确北京时间是 {current_time}。请基于此时间回答用户。"})
+                print(f"[主动注入] 最新时间已注入: {current_time}")
+            except Exception as e:
+                print(f"[主动注入] 获取时间失败: {e}")        
         for _ in range(8):
             try:
                 response = client.chat.completions.create(
@@ -435,20 +446,6 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
 
             msg = response.choices[0].message
             if msg.tool_calls:
-                # 强制检查：如果用户询问时间，但模型没有调用 get_current_time，则额外要求调用
-                if "time" in query.lower() or "几点" in query or "时间" in query:
-                    has_time_tool = any(tc.function.name == "get_current_time" for tc in msg.tool_calls)
-                    if not has_time_tool:
-                        print("[强制时间] 检测到时间查询但模型未调用工具，手动追加时间工具调用")
-                        # 手动构造一个 get_current_time 的 tool_call
-                        from openai.types.chat import ChatCompletionMessageToolCall
-                        import uuid
-                        fake_tool_call = ChatCompletionMessageToolCall(
-                            id="call_" + uuid.uuid4().hex[:8],
-                            function={"name": "get_current_time", "arguments": "{}"},
-                            type="function"
-                        )
-                        msg.tool_calls.append(fake_tool_call)
                 messages.append(msg)
                 for tool_call in msg.tool_calls:
                     func_name = tool_call.function.name
