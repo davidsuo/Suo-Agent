@@ -383,7 +383,15 @@ with gr.Blocks(title="AI 智能体") as demo:
                 f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**"  # 新增
             )
         else:
-            return None, gr.update(visible=True), gr.update(visible=False), [], gr.update(), "❌ 用户名或 PIN 码错误"
+            return (
+                None,                              # user_state 保持空
+                gr.update(visible=True),           # 登录框保持可见
+                gr.update(visible=False),          # 聊天框保持隐藏
+                [],                                # 聊天记录保持空
+                gr.update(),                       # 租户下拉保持不变
+                "❌ 用户名或 PIN 码错误",           # 错误消息
+                ""                                 # 清空用户显示信息
+            )
 
     login_btn.click(
         fn=login,
