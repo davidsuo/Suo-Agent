@@ -85,6 +85,11 @@ def get_available_tenants():
 
 
 async def unified_handler(message, history, file, tenant_dropdown):
+    # 获取当前登录用户（从全局状态或通过参数传递）
+    # 由于 Gradio 的事件处理通常通过 inputs 传递 state，我们需要修改事件绑定
+    # 暂时采用全局变量方式：在 login 函数中将用户信息存到 memory 中
+    # 最简单的方式：直接从 memory 获取当前租户对应的用户信息
+    current_user = memory.get_tenant(SESSION_ID)  # 将租户名作为用户名？需要调整
     loaded = memory.get_history(SESSION_ID)
     if loaded:
         if not history or len(history) < len(loaded):
@@ -220,104 +225,141 @@ def on_tenant_change(new_tenant):
 
 
 with gr.Blocks(title="AI 智能体") as demo:
-    with gr.Tab("聊天"):
-        gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具）")
-
-        with gr.Row():
-            tenant_dropdown = gr.Dropdown(
-                choices=get_available_tenants(),
-                value=memory.get_tenant(SESSION_ID),  # 动态加载当前租户
-                label="租户切换",
-                interactive=True,
-                scale=1
+    user_state = gr.State(value=None)  # 存储当前登录用户信息
+    
+    # 登录表单（初始可见）
+    with gr.Column(visible=True) as login_column:
+        gr.Markdown("# 🔐 AI 智能体 - 请登录")
+        username_input = gr.Textbox(label="用户名")
+        pin_input = gr.Textbox(label="PIN 码", type="password")
+        login_btn = gr.Button("登录")
+        login_msg = gr.Markdown("")
+    
+    # 主聊天界面（登录后可见）
+    with gr.Column(visible=False) as chat_column:
+        with gr.Tab("聊天"):
+            gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具）")  
+            with gr.Row():
+                tenant_dropdown = gr.Dropdown(
+                    choices=get_available_tenants(),
+                    value=memory.get_tenant(SESSION_ID),  # 动态加载当前租户
+                    label="租户切换",
+                    interactive=True,
+                    scale=1
+                )
+                refresh_btn = gr.Button("刷新租户列表", size="sm", scale=0)
+            
+            chatbot = gr.Chatbot(label="对话", height=500, value=[])    
+        
+            with gr.Row():
+                text_input = gr.Textbox(
+                    label="输入文字（可用 /logs 查看日志）",
+                    placeholder="在这里输入问题或指令...",
+                    scale=4
+                )
+            
+            with gr.Row():
+                file_upload_btn = gr.UploadButton(
+                    "📁 上传文件",
+                    file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
+                    scale=0
+                )
+                audio_input_btn = gr.Audio(
+                    label="🎤 语音输入",
+                    sources=["microphone"],
+                    type="filepath",
+                    scale=1
+                )
+            text_input.submit(
+                unified_handler,
+                [text_input, chatbot, file_upload_btn, tenant_dropdown],
+                [chatbot, text_input, file_upload_btn]
             )
-            refresh_btn = gr.Button("刷新租户列表", size="sm", scale=0)
 
-        chatbot = gr.Chatbot(label="对话", height=500, value=[])
-
-        with gr.Row():
-            text_input = gr.Textbox(
-                label="输入文字（可用 /logs 查看日志，#tenant 切换租户）",
-                placeholder="在这里输入问题或指令...",
-                scale=4
+            file_upload_btn.upload(
+                unified_handler,
+                [text_input, chatbot, file_upload_btn, tenant_dropdown],
+                [chatbot, text_input, file_upload_btn]
             )
 
-        with gr.Row():
-            file_upload_btn = gr.UploadButton(
-                "📁 上传文件",
-                file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
-                scale=0
-            )
-            audio_input_btn = gr.Audio(
-                label="🎤 语音输入",
-                sources=["microphone"],
-                type="filepath",
-                scale=1
+            audio_input_btn.stop_recording(
+                unified_handler,
+                [text_input, chatbot, audio_input_btn, tenant_dropdown],
+                [chatbot, text_input, audio_input_btn]
             )
 
-        text_input.submit(
-            unified_handler,
-            [text_input, chatbot, file_upload_btn, tenant_dropdown],
-            [chatbot, text_input, file_upload_btn]
-        )
+            tenant_dropdown.change(
+                on_tenant_change,
+                [tenant_dropdown],
+                [chatbot, tenant_dropdown]
+            )
+            
+            def refresh_tenants():
+                tenants = get_available_tenants()
+                return gr.Dropdown(choices=tenants, value=memory.get_tenant(SESSION_ID))
+            refresh_btn.click(refresh_tenants, None, tenant_dropdown)
 
-        file_upload_btn.upload(
-            unified_handler,
-            [text_input, chatbot, file_upload_btn, tenant_dropdown],
-            [chatbot, text_input, file_upload_btn]
-        )
+            def load_history():
+                hist = memory.get_history(SESSION_ID)
+                tenants = get_available_tenants()
+                current = memory.get_tenant(SESSION_ID)
+                print(f"[load_history] 返回历史长度: {len(hist)}")
+                return hist if hist else [], gr.Dropdown(choices=tenants, value=current)
+            demo.load(fn=load_history, outputs=[chatbot, tenant_dropdown])
+            
+        with gr.Tab("Worker 监控"):
+            gr.Markdown("## 实时 Worker 状态")
+            refresh_btn2 = gr.Button("刷新")
+            status_table = gr.Dataframe(
+                headers=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度", "平均耗时(s)", "错误率"],
+                interactive=False
+            )    
+            
+            def refresh_status():
+                workers = [query_worker, command_worker]
+                data = []
+                for w in workers:
+                    stats = w.get_stats()
+                    data.append([
+                        stats["name"],
+                        str(stats["is_running"]),
+                        stats["task_count"],
+                        stats["error_count"],
+                        stats["queue_size"],
+                        stats["avg_time"],
+                        stats["error_rate"]
+                    ])
+                return pd.DataFrame(data, columns=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度", "平均耗时(s)", "错误率"])
+            
+            refresh_btn2.click(fn=refresh_status, outputs=status_table)
+            status_table.value = refresh_status()
 
-        audio_input_btn.stop_recording(
-            unified_handler,
-            [text_input, chatbot, audio_input_btn, tenant_dropdown],
-            [chatbot, text_input, audio_input_btn]
-        )
-
-        tenant_dropdown.change(
-            on_tenant_change,
-            [tenant_dropdown],
-            [chatbot, tenant_dropdown]
-        )
-
-        def refresh_tenants():
-            tenants = get_available_tenants()
-            return gr.Dropdown(choices=tenants, value=memory.get_tenant(SESSION_ID))
-        refresh_btn.click(refresh_tenants, None, tenant_dropdown)
-
-        def load_history():
+    # 登录处理函数
+    def login(username, pin):
+        from common.auth import authenticate
+        user = authenticate(username, pin)
+        if user:
+            # 设置当前租户为该用户的租户
+            memory.set_tenant(SESSION_ID, user["tenant"])
             hist = memory.get_history(SESSION_ID)
             tenants = get_available_tenants()
-            current = memory.get_tenant(SESSION_ID)
-            print(f"[load_history] 返回历史长度: {len(hist)}")
-            return hist if hist else [], gr.Dropdown(choices=tenants, value=current)
-        demo.load(fn=load_history, outputs=[chatbot, tenant_dropdown])
+            return (
+                user,                                     # 更新 user_state
+                gr.update(visible=False),                 # 隐藏登录框
+                gr.update(visible=True),                  # 显示聊天框
+                hist if hist else [],                      # 加载历史记录
+                gr.Dropdown(choices=tenants, value=user["tenant"]),  # 更新租户下拉
+                f"✅ 登录成功，欢迎 {user['display_name']}！"
+            )
+        else:
+            return None, gr.update(visible=True), gr.update(visible=False), [], gr.update(), "❌ 用户名或 PIN 码错误"
 
-    with gr.Tab("Worker 监控"):
-        gr.Markdown("## 实时 Worker 状态")
-        refresh_btn2 = gr.Button("刷新")
-        status_table = gr.Dataframe(
-            headers=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度", "平均耗时(s)", "错误率"],
-            interactive=False
-        )
-
-        def refresh_status():
-            workers = [query_worker, command_worker]
-            data = []
-            for w in workers:
-                stats = w.get_stats()
-                data.append([
-                    stats["name"],
-                    str(stats["is_running"]),
-                    stats["task_count"],
-                    stats["error_count"],
-                    stats["queue_size"],
-                    stats["avg_time"],
-                    stats["error_rate"]
-                ])
-            return pd.DataFrame(data, columns=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度", "平均耗时(s)", "错误率"])
-
-        refresh_btn2.click(fn=refresh_status, outputs=status_table)
-        status_table.value = refresh_status()
+    login_btn.click(
+        fn=login,
+        inputs=[username_input, pin_input],
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg]
+    )       
+            
 
 if __name__ == "__main__":
     init_db()

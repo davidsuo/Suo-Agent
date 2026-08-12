@@ -65,6 +65,16 @@ class ConversationMemory:
             key = self._get_session_key(session_id)
             self.sessions[key] = history.copy()
             self._save_to_file()
+    
+    def set_user_info(self, session_id, user_info):
+        key = f"__user__:{session_id}"
+        self.sessions[key] = user_info
+        self._save_to_file()
+
+    def get_user_info(self, session_id):
+        key = f"__user__:{session_id}"
+        return self.sessions.get(key, {})
+        
 
 # 全局单例
 memory = ConversationMemory()
