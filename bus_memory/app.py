@@ -285,6 +285,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             hist = memory.get_history(SESSION_ID)
             tenants = get_available_tenants()
             current = memory.get_tenant(SESSION_ID)
+            print(f"[load_history] 租户: {current}, 历史长度: {len(hist)}")
             return (hist if hist else []), gr.Dropdown(choices=tenants, value=current)
             demo.load(fn=load_history, outputs=[chatbot, tenant_dropdown])
 
