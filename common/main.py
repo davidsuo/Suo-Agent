@@ -468,9 +468,12 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                         # 检查系统是否已注入准确时间
                         injected_time = None
                         for m in reversed(messages):
-                            if m.get("role") == "system" and "当前准确时间是" in m.get("content", ""):
+                            # 兼容 ChatCompletionMessage 对象和 dict
+                            role = m.get("role") if isinstance(m, dict) else m.role
+                            content = m.get("content", "") if isinstance(m, dict) else (m.content or "")
+                            if role == "system" and "当前准确时间是" in content:
                                 import re
-                                match = re.search(r'当前准确时间是 (.+?)$', m["content"])
+                                match = re.search(r'当前准确时间是 (.+?)$', content)
                                 if match:
                                     injected_time = match.group(1)
                                 break
