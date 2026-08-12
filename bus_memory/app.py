@@ -286,7 +286,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             tenants = get_available_tenants()
             current = memory.get_tenant(SESSION_ID)
             return (hist if hist else []), gr.Dropdown(choices=tenants, value=current)
-            demo.load(fn=load_history, outputs=[chatbot, tenant_dropdown])
+        demo.load(fn=load_history, outputs=[chatbot, tenant_dropdown])
 
     with gr.Tab("Worker 监控"):
         gr.Markdown("## 实时 Worker 状态")
