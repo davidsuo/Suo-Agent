@@ -239,6 +239,9 @@ with gr.Blocks(title="AI 智能体") as demo:
     
     # 主聊天界面（登录后可见）
     with gr.Column(visible=False) as chat_column:
+        with gr.Row():
+            user_display = gr.Markdown("")  # 显示当前用户名
+            logout_btn = gr.Button("退出登录", size="sm")        
         with gr.Tab("聊天"):
             gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具）")  
             with gr.Row():
@@ -352,6 +355,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                 hist if hist else [],                      # 加载历史记录
                 gr.Dropdown(choices=tenants, value=user["tenant"]),  # 更新租户下拉
                 f"✅ 登录成功，欢迎 {user['display_name']}！"
+                f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**"  # 新增
             )
         else:
             return None, gr.update(visible=True), gr.update(visible=False), [], gr.update(), "❌ 用户名或 PIN 码错误"
@@ -359,9 +363,29 @@ with gr.Blocks(title="AI 智能体") as demo:
     login_btn.click(
         fn=login,
         inputs=[username_input, pin_input],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg]
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display]
     )       
-            
+
+
+    def logout():
+        # 清除当前用户状态
+        memory.set_user_info(SESSION_ID, {})
+        memory.set_tenant(SESSION_ID, "default")
+        return (
+            None,                              # user_state 置空
+            gr.update(visible=True),           # 显示登录框
+            gr.update(visible=False),          # 隐藏聊天框
+            [],                                # 清空聊天记录
+            gr.Dropdown(choices=["default"], value="default"),  # 重置租户下拉
+            ""                                 # 清空登录消息
+        )
+
+    logout_btn.click(
+        fn=logout,
+        inputs=[],
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg]
+    )
+           
 
 if __name__ == "__main__":
     init_users_db()
