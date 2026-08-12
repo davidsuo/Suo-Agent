@@ -305,12 +305,36 @@ with gr.Blocks(title="AI 智能体") as demo:
             refresh_btn.click(refresh_tenants, None, tenant_dropdown)
 
             def load_history():
+            # 检查是否有持久化的用户信息
+            user = memory.get_user_info(SESSION_ID)
+            if user:
+                # 恢复登录状态
                 hist = memory.get_history(SESSION_ID)
                 tenants = get_available_tenants()
-                current = memory.get_tenant(SESSION_ID)
-                print(f"[load_history] 返回历史长度: {len(hist)}")
-                return hist if hist else [], gr.Dropdown(choices=tenants, value=current)
-            demo.load(fn=load_history, outputs=[chatbot, tenant_dropdown])
+                return (
+                    user,                              # user_state
+                    gr.update(visible=False),          # 隐藏登录框
+                    gr.update(visible=True),           # 显示聊天框
+                    hist if hist else [],              # 聊天记录
+                    gr.Dropdown(choices=tenants, value=user["tenant"]),
+                    "",                                # 清空登录消息
+                    f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**"
+                )
+            else:
+                # 未登录状态
+                return (
+                    None,
+                    gr.update(visible=True),
+                    gr.update(visible=False),
+                    [],
+                    gr.Dropdown(choices=get_available_tenants(), value="default"),
+                    "",
+                    ""
+                )
+            demo.load(
+                fn=load_history,
+                outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display]
+            )
             
         with gr.Tab("Worker 监控"):
             gr.Markdown("## 实时 Worker 状态")
@@ -345,6 +369,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         user = authenticate(username, pin)
         if user:
             # 设置当前租户为该用户的租户
+            memory.set_user_info(SESSION_ID, user)
             memory.set_tenant(SESSION_ID, user["tenant"])
             hist = memory.get_history(SESSION_ID)
             tenants = get_available_tenants()
@@ -369,6 +394,7 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     def logout():
         # 清除当前用户状态，但保留租户和聊天历史
+        memory.clear_user_info(SESSION_ID)
         memory.set_user_info(SESSION_ID, {})
         return (
             None,                              # user_state 置空

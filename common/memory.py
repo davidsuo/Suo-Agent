@@ -75,6 +75,12 @@ class ConversationMemory:
         key = f"__user__:{session_id}"
         return self.sessions.get(key, {})
         
+    def clear_user_info(self, session_id):
+        key = f"__user__:{session_id}"
+        if key in self.sessions:
+            del self.sessions[key]
+            self._save_to_file()
+        
 
 # 全局单例
 memory = ConversationMemory()
