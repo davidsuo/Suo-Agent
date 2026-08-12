@@ -3,6 +3,7 @@ import sys, os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import json, asyncio, uuid, traceback, re
+from openai.types.chat import ChatCompletionMessageToolCall
 from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
@@ -434,6 +435,20 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
 
             msg = response.choices[0].message
             if msg.tool_calls:
+                # 强制检查：如果用户询问时间，但模型没有调用 get_current_time，则额外要求调用
+                if "time" in query.lower() or "几点" in query or "时间" in query:
+                    has_time_tool = any(tc.function.name == "get_current_time" for tc in msg.tool_calls)
+                    if not has_time_tool:
+                        print("[强制时间] 检测到时间查询但模型未调用工具，手动追加时间工具调用")
+                        # 手动构造一个 get_current_time 的 tool_call
+                        from openai.types.chat import ChatCompletionMessageToolCall
+                        import uuid
+                        fake_tool_call = ChatCompletionMessageToolCall(
+                            id="call_" + uuid.uuid4().hex[:8],
+                            function={"name": "get_current_time", "arguments": "{}"},
+                            type="function"
+                        )
+                        msg.tool_calls.append(fake_tool_call)
                 messages.append(msg)
                 for tool_call in msg.tool_calls:
                     func_name = tool_call.function.name
