@@ -3,7 +3,6 @@ import sys, os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import json, asyncio, uuid, traceback, re
-from openai.types.chat import ChatCompletionMessageToolCall
 from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
@@ -420,12 +419,15 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
             memory.append(session_id, query, answer)
             return answer
     else:
-        # 智能时间注入：如果用户询问时间，直接在 query 中提供当前准确时间
+        # 智能时间注入：如果用户询问时间，提供准确北京时间并禁止工具调用
         time_keywords = ["几点", "时间", "几时", "现在时间", "当前时间", "什么时间", "时刻", "钟"]
         if any(kw in query for kw in time_keywords):
             try:
                 current_time = get_current_time()
+                # 将准确时间直接嵌入用户消息末尾
                 query = f"{query}（当前准确北京时间：{current_time}）"
+                # 追加系统指令，严禁模型调用 get_current_time 工具
+                messages.append({"role": "system", "content": f"[系统指令] 你必须使用提供的时间回答用户，严禁调用 get_current_time 工具。当前准确时间是 {current_time}。"})
                 print(f"[时间注入] 已更新时间上下文: {current_time}")
             except Exception as e:
                 print(f"[时间注入] 获取失败: {e}")        
@@ -462,6 +464,30 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                         messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": result})
                         continue
 
+                    if func_name == "get_current_time":
+                        # 检查系统是否已注入准确时间
+                        injected_time = None
+                        for m in reversed(messages):
+                            if m.get("role") == "system" and "当前准确时间是" in m.get("content", ""):
+                                import re
+                                match = re.search(r'当前准确时间是 (.+?)$', m["content"])
+                                if match:
+                                    injected_time = match.group(1)
+                                break
+                        if injected_time:
+                            result = injected_time
+                        else:
+                            try:
+                                result = get_current_time()
+                            except Exception as e:
+                                result = f"获取时间失败: {e}"
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": result
+                        })
+                        continue
+                    
                     if func_name == "send_email":
                         if tool_call_guard(func_name):
                             pending[session_id] = {"tool_name": func_name, "arguments": arguments}
