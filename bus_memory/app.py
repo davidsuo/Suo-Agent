@@ -368,22 +368,22 @@ with gr.Blocks(title="AI 智能体") as demo:
 
 
     def logout():
-        # 清除当前用户状态
+        # 清除当前用户状态，但保留租户和聊天历史
         memory.set_user_info(SESSION_ID, {})
-        memory.set_tenant(SESSION_ID, "default")
         return (
             None,                              # user_state 置空
             gr.update(visible=True),           # 显示登录框
             gr.update(visible=False),          # 隐藏聊天框
-            [],                                # 清空聊天记录
-            gr.Dropdown(choices=["default"], value="default"),  # 重置租户下拉
-            ""                                 # 清空登录消息
+            gr.update(),                       # 聊天记录保持不变
+            gr.update(),                       # 租户下拉保持不变
+            "",                                # 清空登录消息
+            ""                                 # 清空用户显示
         )
 
     logout_btn.click(
         fn=logout,
         inputs=[],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg]
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display]
     )
            
 
