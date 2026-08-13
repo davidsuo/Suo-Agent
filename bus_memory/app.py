@@ -19,7 +19,7 @@ from common.tools import (
 from bus_memory.event_bus import EventBus
 from common.agents_memory import WorkerAgent, QueryWorker
 
-from common.auth import init_users_db, authenticate, filter_tools_by_role  # 确保导入 authenticate 和 init_users_db 以及 filter_tools_by_role
+from common.auth import init_users_db, authenticate, get_user_info  # 确保导入 authenticate 和 init_users_db 以及 filter_tools_by_role
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)) + "/..")
 
