@@ -211,6 +211,7 @@ def on_tenant_change(new_tenant):
 
 with gr.Blocks(title="AI 智能体") as demo:
     user_state = gr.State(value=None)  # 存储当前登录用户信息
+    browser_user = gr.BrowserState(default="")   # 存储当前浏览器登录的用户名
     
     # 登录表单（初始可见）
     with gr.Column(visible=True) as login_column:
@@ -282,35 +283,38 @@ with gr.Blocks(title="AI 智能体") as demo:
                 return gr.Dropdown(choices=tenants, value=memory.get_tenant(session_id))
             refresh_btn.click(refresh_tenants, None, tenant_dropdown)
 
-            def load_history():
-                user = memory.get_current_user()
-                if user:
-                    hist = memory.get_history(user["username"])
-                    tenants = get_available_tenants()
-                    return (
-                        user,                              # user_state
-                        gr.update(visible=False),          # 隐藏登录框
-                        gr.update(visible=True),           # 显示聊天框
-                        hist if hist else [],              # 聊天记录
-                        gr.Dropdown(choices=tenants, value=user["tenant"]),
-                        "",                                # 登录消息
-                        f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**"
-                    )
-                else:
-                    return (
-                        None,
-                        gr.update(visible=True),
-                        gr.update(visible=False),
-                        [],
-                        gr.Dropdown(choices=get_available_tenants(), value="default"),
-                        "",
-                        ""
-                    )
+            def load_history(browser_username):
+                if browser_username:
+                    user = get_user_info(browser_username)   # 从数据库获取用户信息
+                    if user:
+                        hist = memory.get_history(user["username"])
+                        tenants = get_available_tenants()
+                        return (
+                            user,                              # user_state
+                            gr.update(visible=False),
+                            gr.update(visible=True),
+                            hist if hist else [],
+                            gr.Dropdown(choices=tenants, value=user["tenant"]),
+                            "",
+                            f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**",
+                            browser_username                   # 保持浏览器状态
+                        )
+                # 未登录状态
+                return (
+                    None,
+                    gr.update(visible=True),
+                    gr.update(visible=False),
+                    [],
+                    gr.Dropdown(choices=get_available_tenants(), value="default"),
+                    "",
+                    "",
+                    ""                                       # 清空浏览器状态
+                )
 
             demo.load(
                 fn=load_history,
                 inputs=None,
-                outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display]
+                outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, browser_user]
             )
             
         with gr.Tab("Worker 监控"):
@@ -397,6 +401,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                 gr.Dropdown(choices=tenants, value=user["tenant"]),  # 更新租户下拉
                 f"✅ 登录成功，欢迎 {user['display_name']}！",
                 f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**"  # 新增
+                user["username"]      # 新增：保存到浏览器状态
             )
         else:
             return (
@@ -406,13 +411,14 @@ with gr.Blocks(title="AI 智能体") as demo:
                 [],                                # 聊天记录保持空
                 gr.update(),                       # 租户下拉保持不变
                 "❌ 用户名或 PIN 码错误",           # 错误消息
-                ""                                 # 清空用户显示信息
+                "",                                 # 清空用户显示信息
+                ""                      # 新增：清空浏览器状态
             )    
 
     login_btn.click(
         fn=login,
         inputs=[username_input, pin_input],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display]
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, browser_user]
     )       
 
 
@@ -426,13 +432,14 @@ with gr.Blocks(title="AI 智能体") as demo:
             gr.update(),
             gr.update(),
             "",
-            ""
+            "",
+            ""                     # 新增：清空浏览器状态
         )
 
     logout_btn.click(
         fn=logout,
         inputs=[user_state],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display]
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, browser_user]
     )
            
 
