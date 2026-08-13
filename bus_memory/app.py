@@ -297,7 +297,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                             gr.Dropdown(choices=tenants, value=user["tenant"]),
                             "",
                             f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**",
-                            browser_username   # 保持不变
+                            browser_username
                         )
                 # 未登录状态
                 return (
@@ -308,7 +308,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                     gr.Dropdown(choices=get_available_tenants(), value="default"),
                     "",
                     "",
-                    ""   # 清空浏览器状态
+                    ""
                 )
 
             demo.load(
@@ -351,7 +351,6 @@ with gr.Blocks(title="AI 智能体") as demo:
         if user:
             # 设置当前租户为该用户的租户
             memory.set_tenant(user["username"], user["tenant"])
-            memory.set_current_user(user)   # 新增
             
             hist = memory.get_history(user["username"])
             tenants = get_available_tenants()

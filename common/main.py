@@ -266,15 +266,17 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
         for step in plan:
             step_id = step["id"]
             tool_name = step["tool"]
+            step_desc = step.get("description", f"步骤{step_id}")
+            arguments = step["arguments"]
+            arguments["_tenant"] = memory.get_tenant(session_id)
+            
             # RBAC 权限检查
             if not is_tool_allowed(role, tool_name):
                 results[step_id] = f"⚠️ 您没有权限使用工具 {tool_name}。"
                 continue            
             current_user = memory.get_user_info(session_id)
             role = current_user.get("role", "viewer") if current_user else "viewer"
-            step_desc = step.get("description", f"步骤{step_id}")
-            arguments = step["arguments"]
-            arguments["_tenant"] = memory.get_tenant(session_id)
+            
 
             for dep_id in step.get("depends_on", []):
                 if dep_id in results:
