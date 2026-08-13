@@ -193,7 +193,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     browser_user = gr.BrowserState()   # 默认值为 None 或空字符串
     
     # 登录表单（初始可见）
-    with gr.Column(visible=True) as login_column:
+    with gr.Column(visible=False) as login_column:
         gr.Markdown("# 🔐 AI 智能体 - 请登录")
         username_input = gr.Textbox(label="用户名（小写，例如 alice）")
         pin_input = gr.Textbox(label="PIN 码", type="password")
