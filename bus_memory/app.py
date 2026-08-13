@@ -404,37 +404,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                 gr.update(),                       # 租户下拉保持不变
                 "❌ 用户名或 PIN 码错误",           # 错误消息
                 ""                                 # 清空用户显示信息
-            )
-
-    # 根据角色过滤工具集
-    from common.tools import (  # 需要导入所有工具函数
-        get_current_time, calculator, query_database, web_search,
-        execute_python, speech_to_text, analyze_file, fetch_webpage,
-        generate_image, ocr_image, add_event, list_events, delete_event,
-        recognize_table, send_email,
-    )
-    all_query_tools = { 
-        "get_current_time": get_current_time,
-        "calculator": calculator,
-        "query_database": query_database,
-        "list_events": list_events,
-        "web_search": web_search,
-        "fetch_webpage": fetch_webpage,
-        "ocr_image": ocr_image,
-        "recognize_table": recognize_table,
-        "analyze_file": analyze_file,
-        "speech_to_text": speech_to_text,
-    }  # 完整工具字典（与模块级相同）
-    all_command_tools = { 
-        "send_email": send_email,
-        "add_event": add_event,
-        "delete_event": delete_event,
-        "execute_python": execute_python,
-        "generate_image": generate_image,
-    }
-    filtered_query_tools = filter_tools_by_role(user["role"], all_query_tools)
-    filtered_command_tools = filter_tools_by_role(user["role"], all_command_tools)
-          
+            )    
 
     login_btn.click(
         fn=login,
