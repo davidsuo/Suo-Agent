@@ -211,15 +211,17 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
     user_info = get_user_info(session_id) if session_id else None
     role = user_info.get("role", "viewer") if user_info else "viewer"
 
-    tool_descriptions = {}
     for tool_meta in TOOLS_METADATA:
         name = tool_meta["function"]["name"]
         desc = tool_meta["function"]["description"]
-        tool_descriptions[name] = desc
 
-    available_tools_str = "\n".join(
-        [f"- {name}: {tool_descriptions.get(name, '')}" for name in TOOLS_METADATA if is_tool_allowed(role, name)]
-    )
+    # 生成可用工具列表（基于角色过滤）
+    available_tools_str = ""
+    for tool_meta in TOOLS_METADATA:
+        name = tool_meta["function"]["name"]
+        if is_tool_allowed(role, name):
+            desc = tool_meta["function"]["description"]
+            available_tools_str += f"- {name}: {desc}\n"
 
     system_content = SYSTEM_PROMPT.format(
         available_tools=available_tools_str,
