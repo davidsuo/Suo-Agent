@@ -282,30 +282,21 @@ with gr.Blocks(title="AI 智能体") as demo:
                 return gr.Dropdown(choices=tenants, value=memory.get_tenant(session_id))
             refresh_btn.click(refresh_tenants, None, tenant_dropdown)
 
-            def load_history(user):
-                if not user:
-                    return [], gr.Dropdown(choices=get_available_tenants(), value="default")
-                session_id = user["username"]
-                hist = memory.get_history(user["username"])
-                tenants = get_available_tenants()
-                return hist if hist else [], gr.Dropdown(choices=tenants, value=user["tenant"])
-                # 检查是否有持久化的用户信息
-                user = memory.get_user_info(session_id)
-                tenants = get_available_tenants()
+            def load_history():
+                user = memory.get_current_user()
                 if user:
-                    # 恢复登录状态
                     hist = memory.get_history(user["username"])
+                    tenants = get_available_tenants()
                     return (
                         user,                              # user_state
                         gr.update(visible=False),          # 隐藏登录框
                         gr.update(visible=True),           # 显示聊天框
                         hist if hist else [],              # 聊天记录
                         gr.Dropdown(choices=tenants, value=user["tenant"]),
-                        "",                                # 清空登录消息
+                        "",                                # 登录消息
                         f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**"
                     )
                 else:
-                    # 未登录状态
                     return (
                         None,
                         gr.update(visible=True),
@@ -315,10 +306,11 @@ with gr.Blocks(title="AI 智能体") as demo:
                         "",
                         ""
                     )
+
             demo.load(
                 fn=load_history,
-                inputs=[user_state],
-                outputs=[chatbot, tenant_dropdown]
+                inputs=None,
+                outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display]
             )
             
         with gr.Tab("Worker 监控"):
