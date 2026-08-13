@@ -31,7 +31,7 @@ from common.tools import (
 )
 from common.guardrails import input_guard, tool_call_guard, output_guard
 from common.pending_tools import pending, save_pending
-from common.auth import is_tool_allowed
+from common.auth import get_user_info, is_tool_allowed
 
 app = FastAPI()
 
@@ -171,8 +171,9 @@ def set_workers(query_worker, command_worker, tool_router):
 async def chat_core(session_id: str, query: str, query_worker, command_worker, TOOL_ROUTER, image_base64: str = None):
     print(f"[DEBUG] 收到请求: session_id={session_id}, query={query[:50]}...")
     print(f"[DEBUG] 当前 pending keys: {list(pending.keys())}")
-    current_user = memory.get_current_user()
-    role = current_user.get("role", "viewer") if current_user else "viewer"
+    # 根据 session_id（用户名）从数据库获取用户角色，确保隔离
+    user_info = get_user_info(session_id) if session_id else None
+    role = user_info.get("role", "viewer") if user_info else "viewer"
 
     is_safe, err_msg = input_guard(query)
     if not is_safe:
