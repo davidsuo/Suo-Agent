@@ -89,7 +89,7 @@ def get_available_tenants():
     return sorted(list(tenants))
 
 
-async def unified_handler(message, history, file, tenant_dropdown):
+async def unified_handler(message, history, file):
     # 获取当前登录用户（从全局状态或通过参数传递）
     # 由于 Gradio 的事件处理通常通过 inputs 传递 state，我们需要修改事件绑定
     # 暂时采用全局变量方式：在 login 函数中将用户信息存到 memory 中
@@ -231,7 +231,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                     choices=get_available_tenants(),
                     value=memory.get_tenant(SESSION_ID),  # 动态加载当前租户
                     label="租户切换",
-                    interactive=True,
+                    interactive=False,          # 禁止手动切换
                     scale=1
                 )
                 refresh_btn = gr.Button("刷新租户列表", size="sm", scale=0)
@@ -259,27 +259,22 @@ with gr.Blocks(title="AI 智能体") as demo:
                 )
             text_input.submit(
                 unified_handler,
-                [text_input, chatbot, file_upload_btn, tenant_dropdown],
+                [text_input, chatbot, file_upload_btn],
                 [chatbot, text_input, file_upload_btn]
             )
 
             file_upload_btn.upload(
                 unified_handler,
-                [text_input, chatbot, file_upload_btn, tenant_dropdown],
+                [text_input, chatbot, file_upload_btn],
                 [chatbot, text_input, file_upload_btn]
             )
 
             audio_input_btn.stop_recording(
                 unified_handler,
-                [text_input, chatbot, audio_input_btn, tenant_dropdown],
+                [text_input, chatbot, audio_input_btn],
                 [chatbot, text_input, audio_input_btn]
             )
 
-            tenant_dropdown.change(
-                on_tenant_change,
-                [tenant_dropdown],
-                [chatbot, tenant_dropdown]
-            )
             
             def refresh_tenants():
                 tenants = get_available_tenants()
