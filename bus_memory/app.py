@@ -23,7 +23,7 @@ from common.auth import init_users_db, authenticate, filter_tools_by_role  # 确
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)) + "/..")
 
-#session_id = "render_user"
+session_id = "render_user"
 
 bus = EventBus()
 
