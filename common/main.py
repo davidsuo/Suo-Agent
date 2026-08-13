@@ -172,8 +172,10 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
     print(f"[DEBUG] 收到请求: session_id={session_id}, query={query[:50]}...")
     print(f"[DEBUG] 当前 pending keys: {list(pending.keys())}")
     # 根据 session_id（用户名）从数据库获取用户角色，确保隔离
+    print(f"[权限调试] session_id={session_id}", flush=True)
     user_info = get_user_info(session_id) if session_id else None
     role = user_info.get("role", "viewer") if user_info else "viewer"
+    print(f"[权限调试] role={role}", flush=True)
 
     is_safe, err_msg = input_guard(query)
     if not is_safe:

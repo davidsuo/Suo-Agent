@@ -240,16 +240,14 @@ with gr.Blocks(title="AI 智能体") as demo:
                 )
             text_input.submit(
                 unified_handler,
-                [text_input, chatbot, file_upload_btn, user_state],
+                [text_input, chatbot, file_upload_btn, user_state],   # 最后一个必须是 user_state
                 [chatbot, text_input, file_upload_btn]
             )
-
             file_upload_btn.upload(
                 unified_handler,
                 [text_input, chatbot, file_upload_btn, user_state],
                 [chatbot, text_input, file_upload_btn]
             )
-
             audio_input_btn.stop_recording(
                 unified_handler,
                 [text_input, chatbot, audio_input_btn, user_state],
