@@ -9,11 +9,7 @@ DEPARTMENTS = ["营运部", "产品部", "客服部", "研发一部", "研发二
 # ================== RBAC 权限映射 ==================
 ROLE_PERMISSIONS = {
     "admin": ["*"],
-    "manager": [
-        "get_current_time", "calculator", "query_database", "list_events",
-        "add_event", "delete_event", "web_search", "fetch_webpage",
-        "analyze_file", "speech_to_text", "send_email"
-    ],
+    "manager": ["*"],   # 经理拥有所有权限，与管理员相同
     "developer": [
         "get_current_time", "calculator", "query_database", "execute_python",
         "web_search", "fetch_webpage", "generate_image", "analyze_file",
