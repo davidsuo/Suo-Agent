@@ -42,20 +42,7 @@ client = OpenAI(
 SYSTEM_PROMPT = """
 你是一个全能的AI助手，可以使用记忆、知识库和多种工具来回答用户问题。
 可用工具：
-- get_current_time: 获取当前时间
-- calculator: 数学计算
-- query_database: 查询员工数据库
-- send_email: 发送邮件
-- web_search: 搜索互联网获取最新信息
-- execute_python: 执行Python代码进行计算或数据处理
-- analyze_file: 分析CSV/Excel文件
-- fetch_webpage: 抓取网页全文
-- generate_image: 生成图片
-- ocr_image: 图片文字识别
-- recognize_table: 表格识别
-- add_event: 添加日程
-- list_events: 列出日程
-- delete_event: 删除日程
+{available_tools}
 
 【日程与时间强制规则】
 - 在回答任何与日程、时间、日期相关的问题时，必须严格逐字引用工具返回的 start_time 字段中的年份、月份和日期，严禁自行修改或推断。
@@ -214,7 +201,17 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
 
     history = memory.get(session_id)
     context = rag.search_similar(query, k=3) if rag is not None else "暂无相关文档（知识库未加载）"
-    system_content = SYSTEM_PROMPT.format(context=context if context else "暂无相关文档")
+    # 根据当前 TOOL_ROUTER 生成可用工具描述
+    tool_descriptions = {}
+    for tool_meta in TOOLS_METADATA:
+        name = tool_meta["function"]["name"]
+        desc = tool_meta["function"]["description"]
+        tool_descriptions[name] = desc
+    available_tools_str = "\n".join([f"- {name}: {tool_descriptions.get(name, '')}" for name in TOOL_ROUTER.keys()])
+    system_content = SYSTEM_PROMPT.format(
+        available_tools=available_tools_str,
+        context=context if context else "暂无相关文档"
+    )
 
     messages = [{"role": "system", "content": system_content}]
     messages.extend(history)

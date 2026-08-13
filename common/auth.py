@@ -67,3 +67,29 @@ def get_user_info(username: str) -> dict:
             "tenant": row[5] or row[0],
         }
     return None
+
+# ================== RBAC 权限映射 ==================
+ROLE_PERMISSIONS = {
+    "admin": ["*"],  # 所有工具
+    "manager": [
+        "get_current_time", "calculator", "query_database", "list_events",
+        "add_event", "delete_event", "web_search", "fetch_webpage",
+        "analyze_file", "speech_to_text", "send_email"
+    ],
+    "developer": [
+        "get_current_time", "calculator", "query_database", "execute_python",
+        "web_search", "fetch_webpage", "generate_image", "analyze_file",
+        "speech_to_text", "recognize_table", "ocr_image"
+    ],
+    "viewer": [
+        "get_current_time", "calculator", "query_database", "list_events",
+        "web_search", "analyze_file"
+    ],
+}
+
+def filter_tools_by_role(role: str, all_tools: dict) -> dict:
+    """根据角色过滤工具字典，返回允许的工具子集"""
+    allowed = ROLE_PERMISSIONS.get(role, [])
+    if allowed == ["*"]:
+        return all_tools.copy()
+    return {name: func for name, func in all_tools.items() if name in allowed}
