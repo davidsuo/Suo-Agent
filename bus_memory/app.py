@@ -350,46 +350,8 @@ with gr.Blocks(title="AI 智能体") as demo:
         user = authenticate(username, pin)
         if user:
             # 设置当前租户为该用户的租户
-            memory.set_user_info(session_id, user)
             memory.set_tenant(user["username"], user["tenant"])
             memory.set_current_user(user)   # 新增
-            # ===== 根据角色重建 Worker 和工具路由 =====
-            # 完整工具字典（与模块级定义的初始 Worker 工具一致）
-            full_query_tools = {
-                "get_current_time": get_current_time,
-                "calculator": calculator,
-                "query_database": query_database,
-                "list_events": list_events,
-                "web_search": web_search,
-                "fetch_webpage": fetch_webpage,
-                "ocr_image": ocr_image,
-                "recognize_table": recognize_table,
-                "analyze_file": analyze_file,
-                "speech_to_text": speech_to_text,
-            }
-            full_command_tools = {
-                "send_email": send_email,
-                "add_event": add_event,
-                "delete_event": delete_event,
-                "execute_python": execute_python,
-                "generate_image": generate_image,
-            }
-
-            filtered_query = filter_tools_by_role(user["role"], full_query_tools)
-            filtered_command = filter_tools_by_role(user["role"], full_command_tools)
-
-            # 重新创建全局 Worker
-            global query_worker, command_worker, TOOL_ROUTER
-            query_worker = QueryWorker("QueryWorker", filtered_query, bus)
-            command_worker = WorkerAgent("CommandWorker", filtered_command, bus)
-            TOOL_ROUTER = {}
-            for name in query_worker.tools:
-                TOOL_ROUTER[name] = query_worker
-            for name in command_worker.tools:
-                TOOL_ROUTER[name] = command_worker
-
-            # 注入到 common.main
-            set_workers(query_worker, command_worker, TOOL_ROUTER)
             
             hist = memory.get_history(user["username"])
             tenants = get_available_tenants()
