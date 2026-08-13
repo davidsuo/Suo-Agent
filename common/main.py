@@ -266,11 +266,12 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
         for step in plan:
             step_id = step["id"]
             tool_name = step["tool"]
-            current_user = memory.get_user_info(session_id)
-            role = current_user.get("role", "viewer") if current_user else "viewer"
+            # RBAC 权限检查
             if not is_tool_allowed(role, tool_name):
                 results[step_id] = f"⚠️ 您没有权限使用工具 {tool_name}。"
                 continue            
+            current_user = memory.get_user_info(session_id)
+            role = current_user.get("role", "viewer") if current_user else "viewer"
             step_desc = step.get("description", f"步骤{step_id}")
             arguments = step["arguments"]
             arguments["_tenant"] = memory.get_tenant(session_id)
@@ -472,18 +473,12 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
             msg = response.choices[0].message
             if msg.tool_calls:
                 messages.append(msg)
-                for tool_call in msg.tool_calls:
-                    if not is_tool_allowed(role, func_name):
-                        result = f"⚠️ 您没有权限使用工具 {func_name}。"
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "content": result
-                        })
-                        continue                    
+                for tool_call in msg.tool_calls:                    
                     func_name = tool_call.function.name
                     arguments = json.loads(tool_call.function.arguments)
                     arguments["_tenant"] = memory.get_tenant(session_id)
+                    
+                    
 
                     if func_name in ("ocr_image", "speech_to_text", "recognize_table"):
                         required_param = "image_path" if func_name != "speech_to_text" else "audio_file_path"
