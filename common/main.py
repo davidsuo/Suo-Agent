@@ -207,22 +207,23 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
 
     history = memory.get(session_id)
     context = rag.search_similar(query, k=3) if rag is not None else "暂无相关文档（知识库未加载）"
-    # 根据当前 TOOL_ROUTER 生成可用工具描述
+    # 根据当前用户角色过滤可用工具
+    user_info = get_user_info(session_id) if session_id else None
+    role = user_info.get("role", "viewer") if user_info else "viewer"
+
     tool_descriptions = {}
     for tool_meta in TOOLS_METADATA:
         name = tool_meta["function"]["name"]
         desc = tool_meta["function"]["description"]
         tool_descriptions[name] = desc
-    available_tools_str = "\n".join([f"- {name}: {tool_descriptions.get(name, '')}" for name in TOOL_ROUTER.keys()])
-    current_user = memory.get_user_info(session_id)
-    role = current_user.get("role", "viewer") if current_user else "viewer"
-    tool_descriptions = {}
-    for tool_meta in TOOLS_METADATA:
-        name = tool_meta["function"]["name"]
-        desc = tool_meta["function"]["description"]
-        tool_descriptions[name] = desc
+
     available_tools_str = "\n".join(
         [f"- {name}: {tool_descriptions.get(name, '')}" for name in TOOLS_METADATA if is_tool_allowed(role, name)]
+    )
+
+    system_content = SYSTEM_PROMPT.format(
+        available_tools=available_tools_str,
+        context=context if context else "暂无相关文档"
     )
     system_content = SYSTEM_PROMPT.format(
         available_tools=available_tools_str,
