@@ -83,7 +83,10 @@ def init_db():
         print("✅ 数据库 sample.db 已自动创建并插入示例数据。")
 
 def get_available_tenants():
-    return sorted(list(memory.all_tenants))
+    tenants = set(memory.all_tenants)
+    current = memory.get_tenant(SESSION_ID)
+    tenants.add(current)  # 确保当前租户在选项中
+    return sorted(list(tenants))
 
 
 async def unified_handler(message, history, file, tenant_dropdown):
@@ -132,34 +135,13 @@ async def unified_handler(message, history, file, tenant_dropdown):
         history.append({"role": "assistant", "content": answer})
         return history, "", None
 
+    # 拦截非法 #tenant 命令（租户切换由系统自动管理）
     if message and message.strip().startswith("#tenant"):
-        try:
-            parts = message.strip().split(maxsplit=1)
-            if len(parts) == 1:
-                current_tenant = memory.get_tenant(SESSION_ID)
-                answer = f"当前租户：{current_tenant}"
-                history.append({"role": "user", "content": message})
-                history.append({"role": "assistant", "content": answer})
-                return history, "", None
-            else:
-                new_tenant = parts[1].strip()
-                current_tenant = memory.get_tenant(SESSION_ID)
-                if history:
-                    memory.set_tenant(SESSION_ID, current_tenant)
-                    memory.set_history(SESSION_ID, history)
-                memory.set_tenant(SESSION_ID, new_tenant)
-                loaded_history = memory.get_history(SESSION_ID)
-                answer = f"已切换到租户：{new_tenant}。"
-                if loaded_history:
-                    answer += " 已恢复上次会话。"
-                    new_history = [{"role": "assistant", "content": answer}] + loaded_history
-                else:
-                    answer += " 会话已清空。"
-                    new_history = [{"role": "assistant", "content": answer}]
-                return new_history, "", None
-        except Exception as e:
-            print(f"[#tenant 处理异常] {e}", flush=True)
-            return history or [], f"租户切换失败: {e}", None
+        answer = "⚠️ 租户切换已由登录系统自动管理，无法手动更改。"
+        history = history or []
+        history.append({"role": "user", "content": message})
+        history.append({"role": "assistant", "content": answer})
+        return history, "", None
 
     # 文件处理
     if file is not None:
@@ -307,10 +289,11 @@ with gr.Blocks(title="AI 智能体") as demo:
             def load_history():
                 # 检查是否有持久化的用户信息
                 user = memory.get_user_info(SESSION_ID)
+                tenants = get_available_tenants()
                 if user:
                     # 恢复登录状态
                     hist = memory.get_history(SESSION_ID)
-                    tenants = get_available_tenants()
+                    
                     return (
                         user,                              # user_state
                         gr.update(visible=False),          # 隐藏登录框
