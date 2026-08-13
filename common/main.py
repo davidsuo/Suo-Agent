@@ -153,7 +153,7 @@ async def chat(request: ChatRequest):
     # 这里需要传入 query_worker, command_worker, TOOL_ROUTER，将在 app.py 中注入全局变量或通过依赖注入
     # 简便起见，我们使用全局变量 _query_worker, _command_worker, _tool_router，它们在 app.py 中被赋值
     global _query_worker, _command_worker, _tool_router
-    answer = await chat_core(request.session_id, request.query, _query_worker, _command_worker, _tool_router)
+    answer = await chat_core(session_id, message, query_worker, command_worker, TOOL_ROUTER)
     return {"answer": answer}
 
 # 全局占位，将由 app.py 设置
@@ -171,6 +171,8 @@ def set_workers(query_worker, command_worker, tool_router):
 async def chat_core(session_id: str, query: str, query_worker, command_worker, TOOL_ROUTER, image_base64: str = None):
     print(f"[DEBUG] 收到请求: session_id={session_id}, query={query[:50]}...")
     print(f"[DEBUG] 当前 pending keys: {list(pending.keys())}")
+    current_user = memory.get_current_user()
+    role = current_user.get("role", "viewer") if current_user else "viewer"
 
     is_safe, err_msg = input_guard(query)
     if not is_safe:
@@ -278,7 +280,11 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                     for key, val in arguments.items():
                         if isinstance(val, str):
                             arguments[key] = val.replace(f"{{step_{dep_id}_result}}", replacement)
-
+            
+            if not is_tool_allowed(role, tool_name):
+                results[step_id] = f"⚠️ 您没有权限使用工具 {tool_name}。"
+                continue            
+            
             if tool_name == "send_email":
                 email_args = arguments
                 continue
@@ -527,7 +533,17 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                             "content": result
                         })
                         continue  
-                        
+                    
+                    # RBAC 权限检查
+                    if not is_tool_allowed(role, func_name):
+                        result = f"⚠️ 您没有权限使用工具 {func_name}。"
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": result
+                        })
+                        continue
+                    
                     if func_name == "send_email":
                         if tool_call_guard(func_name):
                             pending[session_id] = {"tool_name": func_name, "arguments": arguments}

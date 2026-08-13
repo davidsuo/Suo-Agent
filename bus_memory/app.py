@@ -23,7 +23,7 @@ from common.auth import init_users_db, authenticate, filter_tools_by_role  # 确
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)) + "/..")
 
-SESSION_ID = "render_user"
+#session_id = "render_user"
 
 bus = EventBus()
 
@@ -82,18 +82,21 @@ def init_db():
 
 def get_available_tenants():
     tenants = set(memory.all_tenants)
-    current = memory.get_tenant(SESSION_ID)
+    current = memory.get_tenant(session_id)
     tenants.add(current)  # 确保当前租户在选项中
     return sorted(list(tenants))
 
 
-async def unified_handler(message, history, file):
-    # 获取当前登录用户（从全局状态或通过参数传递）
-    # 由于 Gradio 的事件处理通常通过 inputs 传递 state，我们需要修改事件绑定
-    # 暂时采用全局变量方式：在 login 函数中将用户信息存到 memory 中
-    # 最简单的方式：直接从 memory 获取当前租户对应的用户信息
-    current_user = memory.get_tenant(SESSION_ID)  # 将租户名作为用户名？需要调整
-    loaded = memory.get_history(SESSION_ID)
+async def unified_handler(message, history, file, user):
+    if not user:
+        # 未登录，返回空历史并提示
+        return [], "", None
+    # 使用用户名作为 session_id，确保隔离
+    session_id = user.get("username", "default")
+    # 动态设置当前租户（登录时已设置，但这里确保）
+    memory.set_tenant(session_id, user.get("tenant", session_id))
+    current_user = memory.get_tenant(session_id)  # 将租户名作为用户名？需要调整
+    loaded = memory.get_history(session_id)
     if loaded:
         if not history or len(history) < len(loaded):
             history = loaded
@@ -165,12 +168,12 @@ async def unified_handler(message, history, file):
 
         if ext in ('.wav', '.mp3', '.m4a', '.ogg'):
             history.append({"role": "user", "content": f"🎤 语音输入：{file_result}"})
-            answer = await chat_core(SESSION_ID, file_result, query_worker, command_worker, TOOL_ROUTER)
+            answer = await chat_core(session_id, file_result, query_worker, command_worker, TOOL_ROUTER)
             history.append({"role": "assistant", "content": answer})
-            memory.append(SESSION_ID, file_result, answer)
+            memory.append(session_id, file_result, answer)
             return history, "", None
         else:
-            memory.append(SESSION_ID, f"【上传文件：{file_name}】\n{file_result}", "")
+            memory.append(session_id, f"【上传文件：{file_name}】\n{file_result}", "")
             history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
             history.append({"role": "assistant", "content": "文件已就绪，您可以基于该内容提问。"})
             return history, "", None
@@ -181,7 +184,7 @@ async def unified_handler(message, history, file):
     display_msg = message
     history.append({"role": "user", "content": display_msg})
 
-    answer = await chat_core(SESSION_ID, message, query_worker, command_worker, TOOL_ROUTER)
+    answer = await chat_core(session_id, message, query_worker, command_worker, TOOL_ROUTER)
     history.append({"role": "assistant", "content": answer})
     return history, "", None
 
@@ -189,11 +192,11 @@ async def unified_handler(message, history, file):
 def on_tenant_change(new_tenant):
     try:
         if new_tenant:
-            current = memory.get_tenant(SESSION_ID)
+            current = memory.get_tenant(session_id)
             if new_tenant != current:
-                memory.set_tenant(SESSION_ID, current)
-                memory.set_tenant(SESSION_ID, new_tenant)
-                loaded_history = memory.get_history(SESSION_ID)
+                memory.set_tenant(session_id, current)
+                memory.set_tenant(session_id, new_tenant)
+                loaded_history = memory.get_history(session_id)
                 tenants = get_available_tenants()
                 if loaded_history:
                     return loaded_history, gr.Dropdown(choices=tenants, value=new_tenant)
@@ -227,7 +230,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             with gr.Row():
                 tenant_dropdown = gr.Dropdown(
                     choices=get_available_tenants(),
-                    value=memory.get_tenant(SESSION_ID),  # 动态加载当前租户
+                    value=memory.get_tenant(session_id),  # 动态加载当前租户
                     label="租户切换",
                     interactive=False,          # 禁止手动切换
                     scale=1
@@ -257,35 +260,41 @@ with gr.Blocks(title="AI 智能体") as demo:
                 )
             text_input.submit(
                 unified_handler,
-                [text_input, chatbot, file_upload_btn],
+                [text_input, chatbot, file_upload_btn, user_state],
                 [chatbot, text_input, file_upload_btn]
             )
 
             file_upload_btn.upload(
                 unified_handler,
-                [text_input, chatbot, file_upload_btn],
+                [text_input, chatbot, file_upload_btn, user_state],
                 [chatbot, text_input, file_upload_btn]
             )
 
             audio_input_btn.stop_recording(
                 unified_handler,
-                [text_input, chatbot, audio_input_btn],
+                [text_input, chatbot, audio_input_btn, user_state],
                 [chatbot, text_input, audio_input_btn]
             )
 
             
             def refresh_tenants():
                 tenants = get_available_tenants()
-                return gr.Dropdown(choices=tenants, value=memory.get_tenant(SESSION_ID))
+                return gr.Dropdown(choices=tenants, value=memory.get_tenant(session_id))
             refresh_btn.click(refresh_tenants, None, tenant_dropdown)
 
-            def load_history():
+            def load_history(user):
+                if not user:
+                    return [], gr.Dropdown(choices=get_available_tenants(), value="default")
+                session_id = user["username"]
+                hist = memory.get_history(user["username"])
+                tenants = get_available_tenants()
+                return hist if hist else [], gr.Dropdown(choices=tenants, value=user["tenant"])
                 # 检查是否有持久化的用户信息
-                user = memory.get_user_info(SESSION_ID)
+                user = memory.get_user_info(session_id)
                 tenants = get_available_tenants()
                 if user:
                     # 恢复登录状态
-                    hist = memory.get_history(SESSION_ID)
+                    hist = memory.get_history(user["username"])
                     return (
                         user,                              # user_state
                         gr.update(visible=False),          # 隐藏登录框
@@ -308,7 +317,8 @@ with gr.Blocks(title="AI 智能体") as demo:
                     )
             demo.load(
                 fn=load_history,
-                outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display]
+                inputs=[user_state],
+                outputs=[chatbot, tenant_dropdown]
             )
             
         with gr.Tab("Worker 监控"):
@@ -344,8 +354,9 @@ with gr.Blocks(title="AI 智能体") as demo:
         user = authenticate(username, pin)
         if user:
             # 设置当前租户为该用户的租户
-            memory.set_user_info(SESSION_ID, user)
-            memory.set_tenant(SESSION_ID, user["tenant"])
+            memory.set_user_info(session_id, user)
+            memory.set_tenant(user["username"], user["tenant"])
+            memory.set_current_user(user)   # 新增
             # ===== 根据角色重建 Worker 和工具路由 =====
             # 完整工具字典（与模块级定义的初始 Worker 工具一致）
             full_query_tools = {
@@ -384,7 +395,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             # 注入到 common.main
             set_workers(query_worker, command_worker, TOOL_ROUTER)
             
-            hist = memory.get_history(SESSION_ID)
+            hist = memory.get_history(user["username"])
             tenants = get_available_tenants()
             return (
                 user,                                     # 更新 user_state
@@ -413,23 +424,22 @@ with gr.Blocks(title="AI 智能体") as demo:
     )       
 
 
-    def logout():
-        # 清除当前用户状态，但保留租户和聊天历史
-        memory.clear_user_info(SESSION_ID)
-        memory.set_user_info(SESSION_ID, {})
+    def logout(user):
+        if user:
+            memory.clear_user_info(user["username"])
         return (
-            None,                              # user_state 置空
-            gr.update(visible=True),           # 显示登录框
-            gr.update(visible=False),          # 隐藏聊天框
-            gr.update(),                       # 聊天记录保持不变
-            gr.update(),                       # 租户下拉保持不变
-            "",                                # 清空登录消息
-            ""                                 # 清空用户显示
+            None,
+            gr.update(visible=True),
+            gr.update(visible=False),
+            gr.update(),
+            gr.update(),
+            "",
+            ""
         )
 
     logout_btn.click(
         fn=logout,
-        inputs=[],
+        inputs=[user_state],
         outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display]
     )
            
