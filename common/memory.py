@@ -84,6 +84,11 @@ class ConversationMemory:
 
     def get_current_user(self):
         return self.current_user
+    
+    def clear_user_info(self, session_id=None):
+        """清除当前登录用户信息（可选参数 session_id 保持兼容）"""
+        self.current_user = None
+        self._save_to_file()    
 
 # 全局单例
 memory = ConversationMemory()
