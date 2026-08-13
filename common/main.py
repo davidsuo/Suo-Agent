@@ -286,6 +286,11 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                 results[step_id] = f"⚠️ 您没有权限使用工具 {tool_name}。"
                 continue            
             
+            # RBAC 权限检查（规划模式）
+            if not is_tool_allowed(role, tool_name):
+                results[step_id] = f"⚠️ 您没有权限使用工具 {tool_name}。"
+                continue
+            
             if tool_name == "send_email":
                 email_args = arguments
                 continue
@@ -468,6 +473,14 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
             if msg.tool_calls:
                 messages.append(msg)
                 for tool_call in msg.tool_calls:
+                    if not is_tool_allowed(role, func_name):
+                        result = f"⚠️ 您没有权限使用工具 {func_name}。"
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": result
+                        })
+                        continue                    
                     func_name = tool_call.function.name
                     arguments = json.loads(tool_call.function.arguments)
                     arguments["_tenant"] = memory.get_tenant(session_id)

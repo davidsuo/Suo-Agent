@@ -284,7 +284,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             refresh_btn.click(refresh_tenants, None, tenant_dropdown)
 
             def load_history(browser_username):
-                if browser_username:   # 如果浏览器存储了用户名
+                if browser_username:
                     user = get_user_info(browser_username)
                     if user:
                         hist = memory.get_history(user["username"])
@@ -297,7 +297,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                             gr.Dropdown(choices=tenants, value=user["tenant"]),
                             "",
                             f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**",
-                            browser_username
+                            browser_username   # 保持不变
                         )
                 # 未登录状态
                 return (
@@ -308,12 +308,12 @@ with gr.Blocks(title="AI 智能体") as demo:
                     gr.Dropdown(choices=get_available_tenants(), value="default"),
                     "",
                     "",
-                    ""
+                    ""   # 清空浏览器状态
                 )
 
             demo.load(
                 fn=load_history,
-                inputs=None,
+                inputs=[browser_user],
                 outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, browser_user]
             )
             
