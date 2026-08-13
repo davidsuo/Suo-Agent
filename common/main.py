@@ -171,16 +171,13 @@ def set_workers(query_worker, command_worker, tool_router):
 async def chat_core(session_id: str, query: str, query_worker, command_worker, TOOL_ROUTER, image_base64: str = None):
     print(f"[DEBUG] 收到请求: session_id={session_id}, query={query[:50]}...")
     print(f"[DEBUG] 当前 pending keys: {list(pending.keys())}")
-    # 根据 session_id（用户名）从数据库获取用户角色，确保隔离
-    print(f"[权限调试] session_id={session_id}", flush=True)
-    user_info = get_user_info(session_id) if session_id else None
-    role = user_info.get("role", "viewer") if user_info else "viewer"
-    print(f"[权限调试] role={role}", flush=True)
 
+    # 输入护栏
     is_safe, err_msg = input_guard(query)
     if not is_safe:
         return err_msg
 
+    # 惰性启动 Worker
     if not query_worker.is_running:
         asyncio.create_task(query_worker.run_loop())
         query_worker.is_running = True
@@ -189,6 +186,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
         command_worker.is_running = True
     print("Workers ready: QueryWorker, CommandWorker")
 
+    # 检查确认回复
     if session_id in pending and "确认" in query.strip():
         print(f"[确认] 执行待处理工具 for session {session_id}")
         tool_info = pending.pop(session_id)
@@ -205,28 +203,27 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
         memory.append(session_id, "确认执行工具", result)
         return output_guard(result)
 
+    # 获取历史与知识库上下文
     history = memory.get(session_id)
     context = rag.search_similar(query, k=3) if rag is not None else "暂无相关文档（知识库未加载）"
-    # 根据当前用户角色过滤可用工具
+
+    # 获取当前用户角色（基于 session_id 查询数据库）
     user_info = get_user_info(session_id) if session_id else None
     role = user_info.get("role", "viewer") if user_info else "viewer"
+    print(f"[权限调试] session_id={session_id}, role={role}")
 
+    # 构建可用工具列表（按角色过滤）
+    tool_descriptions = {}
     for tool_meta in TOOLS_METADATA:
         name = tool_meta["function"]["name"]
         desc = tool_meta["function"]["description"]
+        tool_descriptions[name] = desc
 
-    # 生成可用工具列表（基于角色过滤）
     available_tools_str = ""
-    for tool_meta in TOOLS_METADATA:
-        name = tool_meta["function"]["name"]
+    for name in tool_descriptions:
         if is_tool_allowed(role, name):
-            desc = tool_meta["function"]["description"]
-            available_tools_str += f"- {name}: {desc}\n"
+            available_tools_str += f"- {name}: {tool_descriptions[name]}\n"
 
-    system_content = SYSTEM_PROMPT.format(
-        available_tools=available_tools_str,
-        context=context if context else "暂无相关文档"
-    )
     system_content = SYSTEM_PROMPT.format(
         available_tools=available_tools_str,
         context=context if context else "暂无相关文档"
@@ -247,6 +244,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
         user_message = {"role": "user", "content": query}
     messages.append(user_message)
 
+    # 尝试生成任务计划
     plan = None
     try:
         plan = await generate_plan(query, messages[:5], client)
@@ -262,6 +260,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
     image_output = None
 
     if plan:
+        # ========== 规划引擎执行模式（Saga 补偿版） ==========
         results = {}
         email_args = None
         completed_steps = []
@@ -274,31 +273,20 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
             step_desc = step.get("description", f"步骤{step_id}")
             arguments = step["arguments"]
             arguments["_tenant"] = memory.get_tenant(session_id)
-            
-            # RBAC 权限检查
-            if not is_tool_allowed(role, tool_name):
-                results[step_id] = f"⚠️ 您没有权限使用工具 {tool_name}。"
-                continue            
-            current_user = memory.get_user_info(session_id)
-            role = current_user.get("role", "viewer") if current_user else "viewer"
-            
 
+            # 处理参数中的占位符替换（{step_X_result}）
             for dep_id in step.get("depends_on", []):
                 if dep_id in results:
                     replacement = str(results[dep_id])
                     for key, val in arguments.items():
                         if isinstance(val, str):
                             arguments[key] = val.replace(f"{{step_{dep_id}_result}}", replacement)
-            
-            if not is_tool_allowed(role, tool_name):
-                results[step_id] = f"⚠️ 您没有权限使用工具 {tool_name}。"
-                continue            
-            
+
             # RBAC 权限检查（规划模式）
             if not is_tool_allowed(role, tool_name):
                 results[step_id] = f"⚠️ 您没有权限使用工具 {tool_name}。"
                 continue
-            
+
             if tool_name == "send_email":
                 email_args = arguments
                 continue
@@ -312,16 +300,14 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                     raw_result = res.get("result", res.get("error")) if res else "未知错误"
 
                     if "error" in res or "失败" in str(raw_result) or "错误" in str(raw_result):
-                        # -------- Saga 补偿回滚 --------
+                        # Saga 补偿
                         print(f"[Saga] 步骤{step_id}失败，开始补偿...")
-                        # 构建步骤列表
                         steps_summary = []
                         for comp_step, comp_args, comp_result in completed_steps:
                             comp_desc = comp_step.get("description", f"步骤{comp_step['id']}")
                             steps_summary.append(f"✅ {comp_desc}")
                         steps_summary.append(f"❌ {step_desc}（遇到问题）")
 
-                        # 执行补偿
                         compensation_msgs = []
                         for comp_step, comp_args, comp_result in reversed(completed_steps):
                             comp_func_name = comp_step.get("tool")
@@ -330,10 +316,8 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                                     comp_msg = COMPENSATIONS[comp_func_name](**comp_args, result=comp_result)
                                     desc = comp_step.get("description", "未知步骤")
                                     compensation_msgs.append(f"🔄 {desc} 已回滚")
-                                    print(f"[Saga] 补偿 {comp_func_name}: {comp_msg}")
                                 except Exception as comp_exc:
                                     compensation_msgs.append(f"🔄 回滚失败: {comp_exc}")
-                                    print(f"[Saga] 补偿失败: {comp_exc}")
 
                         answer = "任务执行情况：\n" + "\n".join(steps_summary)
                         if compensation_msgs:
@@ -354,21 +338,9 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
 
                 except asyncio.TimeoutError:
                     print(f"[Saga] 步骤{step_id}超时，开始补偿...")
-                    steps_summary = []
-                    for comp_step, comp_args, comp_result in completed_steps:
-                        comp_desc = comp_step.get("description", f"步骤{comp_step['id']}")
-                        steps_summary.append(f"✅ {comp_desc}")
+                    steps_summary = [f"✅ {comp_step.get('description', f'步骤{comp_step['id']}')}" for comp_step, _, _ in completed_steps]
                     steps_summary.append(f"⏱️ {step_desc}（超时）")
-                    compensation_msgs = []
-                    for comp_step, comp_args, comp_result in reversed(completed_steps):
-                        comp_func_name = comp_step.get("tool")
-                        if comp_func_name in COMPENSATIONS:
-                            try:
-                                COMPENSATIONS[comp_func_name](**comp_args, result=comp_result)
-                                desc = comp_step.get("description", "未知步骤")
-                                compensation_msgs.append(f"🔄 {desc} 已回滚")
-                            except Exception:
-                                pass
+                    compensation_msgs = [f"🔄 {comp_step.get('description', '未知步骤')} 已回滚" for comp_step, _, _ in completed_steps if comp_step.get("tool") in COMPENSATIONS]
                     answer = "任务执行情况：\n" + "\n".join(steps_summary)
                     if compensation_msgs:
                         answer += "\n\n" + "\n".join(compensation_msgs)
@@ -383,21 +355,9 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
 
                 except Exception as e:
                     print(f"[Saga] 步骤{step_id}异常，开始补偿: {e}")
-                    steps_summary = []
-                    for comp_step, comp_args, comp_result in completed_steps:
-                        comp_desc = comp_step.get("description", f"步骤{comp_step['id']}")
-                        steps_summary.append(f"✅ {comp_desc}")
+                    steps_summary = [f"✅ {comp_step.get('description', f'步骤{comp_step['id']}')}" for comp_step, _, _ in completed_steps]
                     steps_summary.append(f"❌ {step_desc}（系统异常）")
-                    compensation_msgs = []
-                    for comp_step, comp_args, comp_result in reversed(completed_steps):
-                        comp_func_name = comp_step.get("tool")
-                        if comp_func_name in COMPENSATIONS:
-                            try:
-                                COMPENSATIONS[comp_func_name](**comp_args, result=comp_result)
-                                desc = comp_step.get("description", "未知步骤")
-                                compensation_msgs.append(f"🔄 {desc} 已回滚")
-                            except Exception:
-                                pass
+                    compensation_msgs = [f"🔄 {comp_step.get('description', '未知步骤')} 已回滚" for comp_step, _, _ in completed_steps if comp_step.get("tool") in COMPENSATIONS]
                     answer = "任务执行情况：\n" + "\n".join(steps_summary)
                     if compensation_msgs:
                         answer += "\n\n" + "\n".join(compensation_msgs)
@@ -452,18 +412,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
             memory.append(session_id, query, answer)
             return answer
     else:
-        # 智能时间注入：如果用户询问时间，提供准确北京时间并禁止工具调用
-        time_keywords = ["几点", "时间", "几时", "现在时间", "当前时间", "什么时间", "时刻", "钟"]
-        if any(kw in query for kw in time_keywords):
-            try:
-                current_time = get_current_time()
-                # 将准确时间直接嵌入用户消息末尾
-                query = f"{query}（当前准确北京时间：{current_time}）"
-                # 追加系统指令，严禁模型调用 get_current_time 工具
-                messages.append({"role": "system", "content": f"[系统指令] 你必须使用提供的时间回答用户，严禁调用 get_current_time 工具。当前准确时间是 {current_time}。"})
-                print(f"[时间注入] 已更新时间上下文: {current_time}")
-            except Exception as e:
-                print(f"[时间注入] 获取失败: {e}")        
+        # ========== 常规单步/多工具调用模式 ==========
         for _ in range(8):
             try:
                 response = client.chat.completions.create(
@@ -480,12 +429,20 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
             msg = response.choices[0].message
             if msg.tool_calls:
                 messages.append(msg)
-                for tool_call in msg.tool_calls:                    
+                for tool_call in msg.tool_calls:
                     func_name = tool_call.function.name
                     arguments = json.loads(tool_call.function.arguments)
                     arguments["_tenant"] = memory.get_tenant(session_id)
-                    
-                    
+
+                    # RBAC 权限检查（常规模式）
+                    if not is_tool_allowed(role, func_name):
+                        result = f"⚠️ 您没有权限使用工具 {func_name}。"
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": result
+                        })
+                        continue
 
                     if func_name in ("ocr_image", "speech_to_text", "recognize_table"):
                         required_param = "image_path" if func_name != "speech_to_text" else "audio_file_path"
@@ -499,67 +456,6 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                         messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": result})
                         continue
 
-                    # 获取当前用户角色
-                    current_user = memory.get_user_info(session_id)
-                    role = current_user.get("role", "viewer") if current_user else "viewer"
-                    if not is_tool_allowed(role, func_name):
-                        result = f"⚠️ 您没有权限使用工具 {func_name}。"
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "content": result
-                        })
-                        continue
-
-                    if func_name == "get_current_time":
-                        # 检查系统是否已注入准确时间
-                        injected_time = None
-                        for m in reversed(messages):
-                            # 兼容 ChatCompletionMessage 对象和 dict
-                            role = m.get("role") if isinstance(m, dict) else m.role
-                            content = m.get("content", "") if isinstance(m, dict) else (m.content or "")
-                            if role == "system" and "当前准确时间是" in content:
-                                import re
-                                match = re.search(r'当前准确时间是 (.+?)$', content)
-                                if match:
-                                    injected_time = match.group(1)
-                                break
-                        if injected_time:
-                            result = injected_time
-                        else:
-                            try:
-                                result = get_current_time()
-                            except Exception as e:
-                                result = f"获取时间失败: {e}"
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "content": result
-                        })
-                        continue
-
-                    # 获取当前用户角色
-                    current_user = memory.get_user_info(session_id)
-                    role = current_user.get("role", "viewer") if current_user else "viewer"
-                    if not is_tool_allowed(role, func_name):
-                        result = f"⚠️ 您没有权限使用工具 {func_name}。"
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "content": result
-                        })
-                        continue  
-                    
-                    # RBAC 权限检查
-                    if not is_tool_allowed(role, func_name):
-                        result = f"⚠️ 您没有权限使用工具 {func_name}。"
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "content": result
-                        })
-                        continue
-                    
                     if func_name == "send_email":
                         if tool_call_guard(func_name):
                             pending[session_id] = {"tool_name": func_name, "arguments": arguments}
