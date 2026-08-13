@@ -211,7 +211,7 @@ def on_tenant_change(new_tenant):
 
 with gr.Blocks(title="AI 智能体") as demo:
     user_state = gr.State(value=None)  # 存储当前登录用户信息
-    browser_user = gr.BrowserState(default="")   # 存储当前浏览器登录的用户名
+    browser_user = gr.BrowserState()   # 默认值为 None 或空字符串
     
     # 登录表单（初始可见）
     with gr.Column(visible=True) as login_column:
@@ -284,20 +284,20 @@ with gr.Blocks(title="AI 智能体") as demo:
             refresh_btn.click(refresh_tenants, None, tenant_dropdown)
 
             def load_history(browser_username):
-                if browser_username:
-                    user = get_user_info(browser_username)   # 从数据库获取用户信息
+                if browser_username:   # 如果浏览器存储了用户名
+                    user = get_user_info(browser_username)
                     if user:
                         hist = memory.get_history(user["username"])
                         tenants = get_available_tenants()
                         return (
-                            user,                              # user_state
+                            user,
                             gr.update(visible=False),
                             gr.update(visible=True),
                             hist if hist else [],
                             gr.Dropdown(choices=tenants, value=user["tenant"]),
                             "",
                             f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**",
-                            browser_username                   # 保持浏览器状态
+                            browser_username
                         )
                 # 未登录状态
                 return (
@@ -308,7 +308,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                     gr.Dropdown(choices=get_available_tenants(), value="default"),
                     "",
                     "",
-                    ""                                       # 清空浏览器状态
+                    ""
                 )
 
             demo.load(
