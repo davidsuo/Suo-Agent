@@ -27,6 +27,8 @@ SESSION_ID = "render_user"
 
 bus = EventBus()
 
+global query_worker, command_worker, TOOL_ROUTER
+
 # Worker 工具集
 query_worker_tools = {
     "get_current_time": get_current_time,
@@ -401,7 +403,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     filtered_command_tools = filter_tools_by_role(user["role"], all_command_tools)
 
     # 重新创建 Worker
-    global query_worker, command_worker, TOOL_ROUTER
+    #global query_worker, command_worker, TOOL_ROUTER
     query_worker = QueryWorker("QueryWorker", filtered_query_tools, bus)
     command_worker = WorkerAgent("CommandWorker", filtered_command_tools, bus)
     TOOL_ROUTER = {}
