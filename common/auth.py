@@ -91,5 +91,5 @@ def filter_tools_by_role(role: str, all_tools: dict) -> dict:
     """根据角色过滤工具字典，返回允许的工具子集"""
     allowed = ROLE_PERMISSIONS.get(role, [])
     if allowed == ["*"]:
-        return all_tools.copy()
-    return {name: func for name, func in all_tools.items() if name in allowed}
+        return True
+    return tool_name in allowed

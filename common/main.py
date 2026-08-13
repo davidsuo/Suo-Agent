@@ -31,6 +31,7 @@ from common.tools import (
 )
 from common.guardrails import input_guard, tool_call_guard, output_guard
 from common.pending_tools import pending, save_pending
+from common.auth import is_tool_allowed
 
 app = FastAPI()
 
@@ -208,6 +209,16 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
         desc = tool_meta["function"]["description"]
         tool_descriptions[name] = desc
     available_tools_str = "\n".join([f"- {name}: {tool_descriptions.get(name, '')}" for name in TOOL_ROUTER.keys()])
+    current_user = memory.get_user_info(session_id)
+    role = current_user.get("role", "viewer") if current_user else "viewer"
+    tool_descriptions = {}
+    for tool_meta in TOOLS_METADATA:
+        name = tool_meta["function"]["name"]
+        desc = tool_meta["function"]["description"]
+        tool_descriptions[name] = desc
+    available_tools_str = "\n".join(
+        [f"- {name}: {tool_descriptions.get(name, '')}" for name in TOOLS_METADATA if is_tool_allowed(role, name)]
+    )
     system_content = SYSTEM_PROMPT.format(
         available_tools=available_tools_str,
         context=context if context else "暂无相关文档"
@@ -252,6 +263,11 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
         for step in plan:
             step_id = step["id"]
             tool_name = step["tool"]
+            current_user = memory.get_user_info(session_id)
+            role = current_user.get("role", "viewer") if current_user else "viewer"
+            if not is_tool_allowed(role, tool_name):
+                results[step_id] = f"⚠️ 您没有权限使用工具 {tool_name}。"
+                continue            
             step_desc = step.get("description", f"步骤{step_id}")
             arguments = step["arguments"]
             arguments["_tenant"] = memory.get_tenant(session_id)
@@ -461,6 +477,18 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                         messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": result})
                         continue
 
+                    # 获取当前用户角色
+                    current_user = memory.get_user_info(session_id)
+                    role = current_user.get("role", "viewer") if current_user else "viewer"
+                    if not is_tool_allowed(role, func_name):
+                        result = f"⚠️ 您没有权限使用工具 {func_name}。"
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": result
+                        })
+                        continue
+
                     if func_name == "get_current_time":
                         # 检查系统是否已注入准确时间
                         injected_time = None
@@ -487,7 +515,19 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                             "content": result
                         })
                         continue
-                    
+
+                    # 获取当前用户角色
+                    current_user = memory.get_user_info(session_id)
+                    role = current_user.get("role", "viewer") if current_user else "viewer"
+                    if not is_tool_allowed(role, func_name):
+                        result = f"⚠️ 您没有权限使用工具 {func_name}。"
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": result
+                        })
+                        continue  
+                        
                     if func_name == "send_email":
                         if tool_call_guard(func_name):
                             pending[session_id] = {"tool_name": func_name, "arguments": arguments}
