@@ -19,15 +19,13 @@ from common.tools import (
 from bus_memory.event_bus import EventBus
 from common.agents_memory import WorkerAgent, QueryWorker
 
-from common.auth import init_users_db, authenticate   # 确保导入 authenticate 和 init_users_db
+from common.auth import init_users_db, authenticate, filter_tools_by_role  # 确保导入 authenticate 和 init_users_db 以及 filter_tools_by_role
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)) + "/..")
 
 SESSION_ID = "render_user"
 
 bus = EventBus()
-
-global query_worker, command_worker, TOOL_ROUTER
 
 # Worker 工具集
 query_worker_tools = {
@@ -52,11 +50,9 @@ command_worker_tools = {
 
 query_worker = QueryWorker("QueryWorker", query_worker_tools, bus)
 command_worker = WorkerAgent("CommandWorker", command_worker_tools, bus)
-
 TOOL_ROUTER = {}
 for name in query_worker.tools: TOOL_ROUTER[name] = query_worker
 for name in command_worker.tools: TOOL_ROUTER[name] = command_worker
-
 set_workers(query_worker, command_worker, TOOL_ROUTER)
 
 def init_db():
@@ -290,7 +286,6 @@ with gr.Blocks(title="AI 智能体") as demo:
                 if user:
                     # 恢复登录状态
                     hist = memory.get_history(SESSION_ID)
-                    
                     return (
                         user,                              # user_state
                         gr.update(visible=False),          # 隐藏登录框
@@ -351,6 +346,44 @@ with gr.Blocks(title="AI 智能体") as demo:
             # 设置当前租户为该用户的租户
             memory.set_user_info(SESSION_ID, user)
             memory.set_tenant(SESSION_ID, user["tenant"])
+            # ===== 根据角色重建 Worker 和工具路由 =====
+            # 完整工具字典（与模块级定义的初始 Worker 工具一致）
+            full_query_tools = {
+                "get_current_time": get_current_time,
+                "calculator": calculator,
+                "query_database": query_database,
+                "list_events": list_events,
+                "web_search": web_search,
+                "fetch_webpage": fetch_webpage,
+                "ocr_image": ocr_image,
+                "recognize_table": recognize_table,
+                "analyze_file": analyze_file,
+                "speech_to_text": speech_to_text,
+            }
+            full_command_tools = {
+                "send_email": send_email,
+                "add_event": add_event,
+                "delete_event": delete_event,
+                "execute_python": execute_python,
+                "generate_image": generate_image,
+            }
+
+            filtered_query = filter_tools_by_role(user["role"], full_query_tools)
+            filtered_command = filter_tools_by_role(user["role"], full_command_tools)
+
+            # 重新创建全局 Worker
+            global query_worker, command_worker, TOOL_ROUTER
+            query_worker = QueryWorker("QueryWorker", filtered_query, bus)
+            command_worker = WorkerAgent("CommandWorker", filtered_command, bus)
+            TOOL_ROUTER = {}
+            for name in query_worker.tools:
+                TOOL_ROUTER[name] = query_worker
+            for name in command_worker.tools:
+                TOOL_ROUTER[name] = command_worker
+
+            # 注入到 common.main
+            set_workers(query_worker, command_worker, TOOL_ROUTER)
+            
             hist = memory.get_history(SESSION_ID)
             tenants = get_available_tenants()
             return (
@@ -401,16 +434,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     }
     filtered_query_tools = filter_tools_by_role(user["role"], all_query_tools)
     filtered_command_tools = filter_tools_by_role(user["role"], all_command_tools)
-
-    # 重新创建 Worker
-    #global query_worker, command_worker, TOOL_ROUTER
-    query_worker = QueryWorker("QueryWorker", filtered_query_tools, bus)
-    command_worker = WorkerAgent("CommandWorker", filtered_command_tools, bus)
-    TOOL_ROUTER = {}
-    for name in query_worker.tools: TOOL_ROUTER[name] = query_worker
-    for name in command_worker.tools: TOOL_ROUTER[name] = command_worker
-    set_workers(query_worker, command_worker, TOOL_ROUTER)            
-   
+          
 
     login_btn.click(
         fn=login,
