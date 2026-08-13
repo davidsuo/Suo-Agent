@@ -89,7 +89,7 @@ def get_available_tenants():
 
 async def unified_handler(message, history, file, user):
     if not user:
-        return [], "", None   # 未登录，忽略输入
+        return history, "", None
 
     session_id = user.get("username", "default")
     # 设置租户（确保与登录时一致）
