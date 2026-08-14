@@ -366,6 +366,8 @@ with gr.Blocks(title="AI 智能体") as demo:
                 history.append({"role": "assistant", "content": answer})
                 return history, "", None, file_result, answer
             else:
+                # 将文件内容保存到用户记忆（模型后续可见），但不在界面显示
+                memory.append(session_id, f"【上传文件：{file_name}】\n{file_result}", "")
                 history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
                 history.append({"role": "assistant", "content": "文件已就绪，您可以基于该内容提问。"})
                 return history, "", None, "", ""
