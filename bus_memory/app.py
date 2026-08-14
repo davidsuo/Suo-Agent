@@ -86,9 +86,6 @@ def get_available_tenants():
     tenants.add(current)  # 确保当前租户在选项中
     return sorted(list(tenants))
 
-    last_user_message = gr.State("")    # 存储最近一次用户问题
-    last_assistant_message = gr.State("")  # 存储最近一次助手回复
-
 async def handle_feedback(feedback, user_msg_state, assistant_msg_state, user_state):
     if not user_state:
         return "⚠️ 请先登录。"
@@ -200,48 +197,51 @@ def on_tenant_change(new_tenant):
 
 
 with gr.Blocks(title="AI 智能体") as demo:
-    user_state = gr.State(value=None)  # 存储当前登录用户信息
-    browser_user = gr.BrowserState()   # 默认值为 None 或空字符串
-    
-    # 登录表单（初始可见）
+    # ================= 全局状态 =================
+    user_state = gr.State(value=None)          # 当前登录用户信息
+    browser_user = gr.BrowserState()           # 浏览器级用户名持久化
+    last_user_message = gr.State("")           # 最近一次用户问题
+    last_assistant_message = gr.State("")      # 最近一次助手回复
+    feedback_up = gr.State("up")               # 好评状态
+    feedback_down = gr.State("down")           # 差评状态
+
+    # ================= 登录界面 =================
     with gr.Column(visible=False) as login_column:
         gr.Markdown("# 🔐 AI 智能体 - 请登录")
-        username_input = gr.Textbox(label="用户名（小写，例如 alice）")
+        username_input = gr.Textbox(label="用户名（小写）")
         pin_input = gr.Textbox(label="PIN 码", type="password")
         login_btn = gr.Button("登录")
         login_msg = gr.Markdown("")
-    
-    # 主聊天界面（登录后可见）
+
+    # ================= 主聊天界面 =================
     with gr.Column(visible=False) as chat_column:
-        with gr.Row():
-            user_display = gr.Markdown("")  # 显示当前用户名
-            logout_btn = gr.Button("退出登录", size="sm")        
         with gr.Tab("聊天"):
-            gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具）")  
+            gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具）")
+
             with gr.Row():
                 tenant_dropdown = gr.Dropdown(
                     choices=get_available_tenants(),
-                    value=memory.get_tenant(session_id),  # 动态加载当前租户
-                    label="租户切换",
+                    value=memory.get_tenant(SESSION_ID),
+                    label="当前租户",
                     interactive=False,          # 禁止手动切换
                     scale=1
                 )
                 refresh_btn = gr.Button("刷新租户列表", size="sm", scale=0)
-            
-            chatbot = gr.Chatbot(label="对话", height=500, value=[]) 
 
+            # 用户信息与退出按钮
             with gr.Row():
-                up_btn = gr.Button("👍 有帮助")
-                down_btn = gr.Button("👎 无帮助")
-                feedback_msg = gr.Markdown("")            
-        
+                user_display = gr.Markdown("")
+                logout_btn = gr.Button("退出登录", size="sm")
+
+            chatbot = gr.Chatbot(label="对话", height=500, value=[])
+
             with gr.Row():
                 text_input = gr.Textbox(
                     label="输入文字（可用 /logs 查看日志）",
                     placeholder="在这里输入问题或指令...",
                     scale=4
                 )
-            
+
             with gr.Row():
                 file_upload_btn = gr.UploadButton(
                     "📁 上传文件",
@@ -254,141 +254,62 @@ with gr.Blocks(title="AI 智能体") as demo:
                     type="filepath",
                     scale=1
                 )
-            text_input.submit(
-                unified_handler,
-                [text_input, chatbot, file_upload_btn, user_state],   # 最后一个必须是 user_state
-                [chatbot, text_input, file_upload_btn, last_user_message, last_assistant_message]
-            )
-            file_upload_btn.upload(
-                unified_handler,
-                [text_input, chatbot, file_upload_btn, user_state],
-                [chatbot, text_input, file_upload_btn, last_user_message, last_assistant_message]
-            )
-            audio_input_btn.stop_recording(
-                unified_handler,
-                [text_input, chatbot, audio_input_btn, user_state],
-                [chatbot, text_input, audio_input_btn, last_user_message, last_assistant_message]
-            )
 
-            up_btn.click(
-                fn=handle_feedback,
-                inputs=[gr.State("up"), last_user_message, last_assistant_message, user_state],
-                outputs=[feedback_msg]
-            )
-            down_btn.click(
-                fn=handle_feedback,
-                inputs=[gr.State("down"), last_user_message, last_assistant_message, user_state],
-                outputs=[feedback_msg]
-            )
-            
-            def refresh_tenants():
-                tenants = get_available_tenants()
-                return gr.Dropdown(choices=tenants, value=memory.get_tenant(session_id))
-            refresh_btn.click(refresh_tenants, None, tenant_dropdown)
+            # 反馈按钮行
+            with gr.Row():
+                up_btn = gr.Button("👍 有帮助")
+                down_btn = gr.Button("👎 无帮助")
+                feedback_msg = gr.Markdown("")
 
-            def load_history(browser_username):
-                if browser_username:
-                    user = get_user_info(browser_username)
-                    if user:
-                        hist = memory.get_history(user["username"])
-                        tenants = get_available_tenants()
-                        return (
-                            user,
-                            gr.update(visible=False),
-                            gr.update(visible=True),
-                            hist if hist else [],
-                            gr.Dropdown(choices=tenants, value=user["tenant"]),
-                            "",
-                            f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**",
-                            browser_username
-                        )
-                # 未登录状态
-                return (
-                    None,
-                    gr.update(visible=True),
-                    gr.update(visible=False),
-                    [],
-                    gr.Dropdown(choices=get_available_tenants(), value="default"),
-                    "",
-                    "",
-                    ""
-                )
-
-            demo.load(
-                fn=load_history,
-                inputs=[browser_user],
-                outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, browser_user]
-            )
-            
         with gr.Tab("Worker 监控"):
             gr.Markdown("## 实时 Worker 状态")
             refresh_btn2 = gr.Button("刷新")
             status_table = gr.Dataframe(
                 headers=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度", "平均耗时(s)", "错误率"],
                 interactive=False
-            )    
-            
-            def refresh_status():
-                workers = [query_worker, command_worker]
-                data = []
-                for w in workers:
-                    stats = w.get_stats()
-                    data.append([
-                        stats["name"],
-                        str(stats["is_running"]),
-                        stats["task_count"],
-                        stats["error_count"],
-                        stats["queue_size"],
-                        stats["avg_time"],
-                        stats["error_rate"]
-                    ])
-                return pd.DataFrame(data, columns=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度", "平均耗时(s)", "错误率"])
-            
-            refresh_btn2.click(fn=refresh_status, outputs=status_table)
-            status_table.value = refresh_status()
+            )
 
-    # 登录处理函数
+    # ================= 登录函数 =================
     def login(username, pin):
-        from common.auth import authenticate
-        user = authenticate(username, pin)
+        user = authenticate(username.strip().lower(), pin)
         if user:
-            # 设置当前租户为该用户的租户
-            memory.set_tenant(user["username"], user["tenant"])
-            
-            hist = memory.get_history(user["username"])
+            # 设置当前用户和租户
+            session_id = user["username"]
+            memory.set_tenant(session_id, user["tenant"])
+            memory.set_current_user(user)
+            hist = memory.get_history(session_id)
             tenants = get_available_tenants()
             return (
-                user,                                     # 更新 user_state
-                gr.update(visible=False),                 # 隐藏登录框
-                gr.update(visible=True),                  # 显示聊天框
-                hist if hist else [],                      # 加载历史记录
-                gr.Dropdown(choices=tenants, value=user["tenant"]),  # 更新租户下拉
+                user,
+                gr.update(visible=False),          # 隐藏登录框
+                gr.update(visible=True),           # 显示聊天框
+                hist if hist else [],
+                gr.Dropdown(choices=tenants, value=user["tenant"]),
                 f"✅ 登录成功，欢迎 {user['display_name']}！",
-                f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**",  # 新增
-                user["username"]      # 新增：保存到浏览器状态
+                f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**",
+                user["username"]                   # 保存到 browser_user
             )
         else:
             return (
-                None,                              # user_state 保持空
-                gr.update(visible=True),           # 登录框保持可见
-                gr.update(visible=False),          # 聊天框保持隐藏
-                [],                                # 聊天记录保持空
-                gr.update(),                       # 租户下拉保持不变
-                "❌ 用户名或 PIN 码错误",           # 错误消息
-                "",                                 # 清空用户显示信息
-                ""                      # 新增：清空浏览器状态
-            )    
+                None,
+                gr.update(visible=True),
+                gr.update(visible=False),
+                [],
+                gr.update(),
+                "❌ 用户名或 PIN 码错误",
+                "",
+                ""                                # 清空 browser_user
+            )
 
     login_btn.click(
         fn=login,
         inputs=[username_input, pin_input],
         outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, browser_user]
-    )       
+    )
 
-
-    def logout(user):
-        if user:
-            memory.clear_user_info(user["username"])
+    # ================= 退出函数 =================
+    def logout():
+        memory.set_current_user(None)
         return (
             None,
             gr.update(visible=True),
@@ -397,14 +318,204 @@ with gr.Blocks(title="AI 智能体") as demo:
             gr.update(),
             "",
             "",
-            ""                     # 新增：清空浏览器状态
+            ""                                # 清空 browser_user
         )
 
     logout_btn.click(
         fn=logout,
-        inputs=[user_state],
+        inputs=[],
         outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, browser_user]
     )
+
+    # ================= 页面加载自动恢复登录 =================
+    def load_history(browser_username):
+        if browser_username:
+            user = get_user_info(browser_username)
+            if user:
+                session_id = user["username"]
+                memory.set_tenant(session_id, user["tenant"])
+                memory.set_current_user(user)
+                hist = memory.get_history(session_id)
+                tenants = get_available_tenants()
+                return (
+                    user,
+                    gr.update(visible=False),
+                    gr.update(visible=True),
+                    hist if hist else [],
+                    gr.Dropdown(choices=tenants, value=user["tenant"]),
+                    "",
+                    f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**",
+                    browser_username
+                )
+        # 未登录状态
+        return (
+            None,
+            gr.update(visible=True),
+            gr.update(visible=False),
+            [],
+            gr.Dropdown(choices=get_available_tenants(), value="default"),
+            "",
+            "",
+            ""
+        )
+
+    demo.load(
+        fn=load_history,
+        inputs=[browser_user],
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, browser_user]
+    )
+
+    # ================= 主处理函数（文本、文件、音频） =================
+    async def unified_handler(message, history, file, user):
+        if not user:
+            return history or [], "", None, "", ""
+
+        session_id = user.get("username", "default")
+        memory.set_tenant(session_id, user.get("tenant", session_id))
+
+        # 处理 /logs 命令
+        if message and message.strip().lower() == "/logs":
+            try:
+                if os.path.exists("plan_log.json"):
+                    with open("plan_log.json", "r", encoding="utf-8") as f:
+                        lines = f.readlines()
+                    valid_entries = []
+                    for line in lines:
+                        try:
+                            entry = json.loads(line.strip())
+                            if isinstance(entry, dict):
+                                valid_entries.append(entry)
+                        except json.JSONDecodeError:
+                            continue
+                    if not valid_entries:
+                        answer = "暂无规划日志。"
+                    else:
+                        recent = valid_entries[-3:] if len(valid_entries) > 3 else valid_entries
+                        logs_display = "**最近规划日志：**\n\n"
+                        for idx, entry in enumerate(recent, 1):
+                            logs_display += f"记录{idx} | 时间: {entry.get('timestamp', '未知')}\n"
+                            logs_display += f"用户需求: {entry.get('user_query', '未知')}\n"
+                            if 'plan' in entry:
+                                logs_display += f"步骤数: {len(entry['plan'])} 步\n"
+                            results = entry.get('results', {})
+                            for step_id, result in results.items():
+                                logs_display += f"  → 步骤{step_id}: {str(result)[:100]}...\n"
+                            logs_display += "\n"
+                        answer = logs_display
+                else:
+                    answer = "暂无规划日志文件。"
+            except Exception as e:
+                answer = f"读取日志失败: {e}"
+            history = history or []
+            history.append({"role": "user", "content": "/logs"})
+            history.append({"role": "assistant", "content": answer})
+            return history, "", None, "", ""
+
+        # 文件处理
+        if file is not None:
+            file_path = file if isinstance(file, str) else (file.name if hasattr(file, 'name') else str(file))
+            ext = os.path.splitext(file_path)[1].lower()
+            file_name = os.path.basename(file_path)
+            loop = asyncio.get_event_loop()
+            file_result = ""
+
+            if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif'):
+                if message and "表格" in message:
+                    file_result = await loop.run_in_executor(None, recognize_table, file_path)
+                else:
+                    file_result = await loop.run_in_executor(None, ocr_image, file_path)
+            elif ext in ('.csv', '.xlsx', '.xls'):
+                file_result = await loop.run_in_executor(None, analyze_file, file_path)
+            elif ext in ('.wav', '.mp3', '.m4a', '.ogg'):
+                file_result = await loop.run_in_executor(None, speech_to_text, file_path)
+            else:
+                file_result = "不支持的文件类型"
+
+            file_result = str(file_result)
+            history = history or []
+
+            if ext in ('.wav', '.mp3', '.m4a', '.ogg'):
+                history.append({"role": "user", "content": f"🎤 语音输入：{file_result}"})
+                answer = await chat_core(session_id, file_result, query_worker, command_worker, TOOL_ROUTER)
+                history.append({"role": "assistant", "content": answer})
+                memory.append(session_id, file_result, answer)
+                return history, "", None, file_result, answer
+            else:
+                memory.append(session_id, f"【上传文件：{file_name}】\n{file_result}", "")
+                history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
+                history.append({"role": "assistant", "content": "文件已就绪，您可以基于该内容提问。"})
+                return history, "", None, "", ""
+
+        # 普通文本处理
+        if not message or not message.strip():
+            return history or [], "", None, "", ""
+
+        display_msg = message
+        history = history or []
+        history.append({"role": "user", "content": display_msg})
+
+        answer = await chat_core(session_id, message, query_worker, command_worker, TOOL_ROUTER)
+        history.append({"role": "assistant", "content": answer})
+        memory.append(session_id, message, answer)
+        return history, "", None, message, answer
+
+    # 绑定文本、文件、音频事件
+    text_input.submit(
+        unified_handler,
+        [text_input, chatbot, file_upload_btn, user_state],
+        [chatbot, text_input, file_upload_btn, last_user_message, last_assistant_message]
+    )
+    file_upload_btn.upload(
+        unified_handler,
+        [text_input, chatbot, file_upload_btn, user_state],
+        [chatbot, text_input, file_upload_btn, last_user_message, last_assistant_message]
+    )
+    audio_input_btn.stop_recording(
+        unified_handler,
+        [text_input, chatbot, audio_input_btn, user_state],
+        [chatbot, text_input, audio_input_btn, last_user_message, last_assistant_message]
+    )
+
+    # ================= 反馈处理 =================
+    async def handle_feedback(feedback, user_msg_state, assistant_msg_state, user_state):
+        if not user_state:
+            return "⚠️ 请先登录。"
+        if not user_msg_state or not assistant_msg_state:
+            return "⚠️ 暂无可以评价的对话。"
+        from common.feedback import save_feedback
+        save_feedback(user_state["username"], user_msg_state, assistant_msg_state, feedback)
+        return f"感谢您的反馈！({feedback})"
+
+    up_btn.click(
+        fn=handle_feedback,
+        inputs=[feedback_up, last_user_message, last_assistant_message, user_state],
+        outputs=[feedback_msg]
+    )
+    down_btn.click(
+        fn=handle_feedback,
+        inputs=[feedback_down, last_user_message, last_assistant_message, user_state],
+        outputs=[feedback_msg]
+    )
+
+    # ================= Worker 监控刷新 =================
+    def refresh_status():
+        workers = [query_worker, command_worker]
+        data = []
+        for w in workers:
+            stats = w.get_stats()
+            data.append([
+                stats["name"],
+                str(stats["is_running"]),
+                stats["task_count"],
+                stats["error_count"],
+                stats["queue_size"],
+                stats["avg_time"],
+                stats["error_rate"]
+            ])
+        return pd.DataFrame(data, columns=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度", "平均耗时(s)", "错误率"])
+
+    refresh_btn2.click(fn=refresh_status, outputs=status_table)
+    status_table.value = refresh_status()
            
 
 if __name__ == "__main__":
