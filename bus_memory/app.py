@@ -364,10 +364,8 @@ with gr.Blocks(title="AI 智能体") as demo:
                 history.append({"role": "user", "content": f"🎤 语音输入：{file_result}"})
                 answer = await chat_core(session_id, file_result, query_worker, command_worker, TOOL_ROUTER)
                 history.append({"role": "assistant", "content": answer})
-                memory.append(session_id, file_result, answer)
                 return history, "", None, file_result, answer
             else:
-                memory.append(session_id, f"【上传文件：{file_name}】\n{file_result}", "")
                 history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
                 history.append({"role": "assistant", "content": "文件已就绪，您可以基于该内容提问。"})
                 return history, "", None, "", ""
@@ -382,7 +380,6 @@ with gr.Blocks(title="AI 智能体") as demo:
 
         answer = await chat_core(session_id, message, query_worker, command_worker, TOOL_ROUTER)
         history.append({"role": "assistant", "content": answer})
-        memory.append(session_id, message, answer)
         return history, "", None, message, answer
 
     # 事件绑定
@@ -452,7 +449,6 @@ with gr.Blocks(title="AI 智能体") as demo:
 if __name__ == "__main__":
     init_users_db()
     init_db()
-    memory.load_from_file()
     init_calendar()
     loop = asyncio.get_event_loop()
     loop.create_task(query_worker.run_loop())
