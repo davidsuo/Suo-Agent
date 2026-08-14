@@ -251,6 +251,15 @@ with gr.Blocks(title="AI 智能体") as demo:
                 up_btn = gr.Button("👍 有帮助")
                 down_btn = gr.Button("👎 无帮助")
                 feedback_msg = gr.Markdown("")
+                
+        with gr.Tab("系统健康"):
+            gr.Markdown("## 🏥 系统健康仪表板")
+            health_refresh_btn = gr.Button("刷新数据")
+            health_summary_md = gr.Markdown("加载中...")
+            health_tool_table = gr.Dataframe(
+                headers=["工具名称", "调用次数"],
+                interactive=False
+            )
 
         with gr.Tab("Worker 监控"):
             gr.Markdown("## 实时 Worker 状态")
@@ -259,6 +268,41 @@ with gr.Blocks(title="AI 智能体") as demo:
                 headers=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度", "平均耗时(s)", "错误率"],
                 interactive=False
             )
+            
+    def update_health_dashboard():
+        from common.health import get_system_health
+        health = get_system_health()
+
+        # 汇总信息 Markdown
+        summary = f"""
+            **📊 总体统计**
+            - 总任务数：{health['total_tasks']}
+            - 成功任务：{health['success_tasks']} | 失败任务：{health['failed_tasks']}
+            - 成功率：{health['success_rate']}%
+            - 活跃用户（24h）：{health['active_users']} | 总用户：{health['total_users']}
+            - 反馈总数：{health['total_feedback']}（👍 {health['up_feedback']} / 👎 {health['down_feedback']}）
+        """
+
+        # 工具调用排行 DataFrame
+        tool_data = []
+        for tool, count in health['sorted_tools']:
+            tool_data.append([tool, count])
+        if not tool_data:
+            tool_data = [["暂无数据", 0]]
+
+        import pandas as pd
+        tool_df = pd.DataFrame(tool_data, columns=["工具名称", "调用次数"])
+
+        return summary, tool_df
+
+    health_refresh_btn.click(
+        fn=update_health_dashboard,
+        inputs=[],
+        outputs=[health_summary_md, health_tool_table]
+    )
+    # 初始加载
+    health_refresh_btn.click(fn=update_health_dashboard, inputs=[], outputs=[health_summary_md, health_tool_table])    
+            
 
     # ================= 登录函数 =================
     def login(username, pin):
