@@ -86,6 +86,17 @@ def get_available_tenants():
     tenants.add(current)  # 确保当前租户在选项中
     return sorted(list(tenants))
 
+    last_user_message = gr.State("")    # 存储最近一次用户问题
+    last_assistant_message = gr.State("")  # 存储最近一次助手回复
+
+async def handle_feedback(feedback, user_msg_state, assistant_msg_state, user_state):
+    if not user_state:
+        return "⚠️ 请先登录。"
+    if not user_msg_state or not assistant_msg_state:
+        return "⚠️ 暂无可以评价的对话。"
+    from common.feedback import save_feedback
+    save_feedback(user_state["username"], user_msg_state, assistant_msg_state, feedback)
+    return f"感谢您的反馈！({feedback})"
 
 async def unified_handler(message, history, file, user):
     if not user:
@@ -165,7 +176,7 @@ async def unified_handler(message, history, file, user):
 
     answer = await chat_core(session_id, message, query_worker, command_worker, TOOL_ROUTER)
     history.append({"role": "assistant", "content": answer})
-    return history, "", None
+    return history, "", None, message, answer   # 多返回两个状态值
 
 
 def on_tenant_change(new_tenant):
@@ -217,7 +228,12 @@ with gr.Blocks(title="AI 智能体") as demo:
                 )
                 refresh_btn = gr.Button("刷新租户列表", size="sm", scale=0)
             
-            chatbot = gr.Chatbot(label="对话", height=500, value=[])    
+            chatbot = gr.Chatbot(label="对话", height=500, value=[]) 
+
+            with gr.Row():
+                up_btn = gr.Button("👍 有帮助")
+                down_btn = gr.Button("👎 无帮助")
+                feedback_msg = gr.Markdown("")            
         
             with gr.Row():
                 text_input = gr.Textbox(
@@ -241,19 +257,29 @@ with gr.Blocks(title="AI 智能体") as demo:
             text_input.submit(
                 unified_handler,
                 [text_input, chatbot, file_upload_btn, user_state],   # 最后一个必须是 user_state
-                [chatbot, text_input, file_upload_btn]
+                [chatbot, text_input, file_upload_btn, last_user_message, last_assistant_message]
             )
             file_upload_btn.upload(
                 unified_handler,
                 [text_input, chatbot, file_upload_btn, user_state],
-                [chatbot, text_input, file_upload_btn]
+                [chatbot, text_input, file_upload_btn, last_user_message, last_assistant_message]
             )
             audio_input_btn.stop_recording(
                 unified_handler,
                 [text_input, chatbot, audio_input_btn, user_state],
-                [chatbot, text_input, audio_input_btn]
+                [chatbot, text_input, audio_input_btn, last_user_message, last_assistant_message]
             )
 
+            up_btn.click(
+                fn=handle_feedback,
+                inputs=[gr.State("up"), last_user_message, last_assistant_message, user_state],
+                outputs=[feedback_msg]
+            )
+            down_btn.click(
+                fn=handle_feedback,
+                inputs=[gr.State("down"), last_user_message, last_assistant_message, user_state],
+                outputs=[feedback_msg]
+            )
             
             def refresh_tenants():
                 tenants = get_available_tenants()
