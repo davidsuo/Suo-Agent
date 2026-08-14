@@ -1,4 +1,10 @@
-# tools.py
+# common/tools.py
+"""
+智能体工具函数库
+
+包含所有可供智能体调用的工具函数及其元数据。
+每个工具函数都设计为同步、可直接执行的，并返回字符串结果。
+"""
 import sqlite3
 import smtplib
 import os
@@ -8,6 +14,8 @@ import traceback
 import requests
 import base64
 import json
+import re
+import time
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from ddgs import DDGS
@@ -15,22 +23,39 @@ from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo  # Python 3.9+ 内置
 
+# ==================== 通用辅助函数 ====================
+def _request_with_retry(method: str, url: str, retries: int = 2, **kwargs):
+    """
+    带重试的 HTTP 请求。
+    返回 Response 对象或 None（如果所有尝试都失败）。
+    """
+    for attempt in range(retries + 1):
+        try:
+            resp = requests.request(method, url, timeout=kwargs.pop("timeout", 15), **kwargs)
+            return resp
+        except (requests.Timeout, requests.ConnectionError) as e:
+            if attempt == retries:
+                return None
+            time.sleep(1)
+    return None
 
-# 最近上传的文件路径（用于 analyze_file 自动使用）
-last_uploaded_file = None
+# ==================== 基础工具 ====================
+def get_current_time() -> str:
+    """返回当前东八区（北京时间）日期和时间"""
+    try:
+        now = datetime.now(ZoneInfo("Asia/Shanghai"))
+    except Exception:
+        # 如果 zoneinfo 失败，手动计算 UTC+8
+        now = datetime.utcnow() + timedelta(hours=8)
+    return now.strftime("%Y-%m-%d %H:%M:%S")
 
-# ========== 基础工具 ==========
-
-# ---------- 计算器  (calculator) ----------
-def calculator(expression: str):
+def calculator(expression: str) -> str:
     """安全计算数学表达式，支持单行纯数字或包含换行的数字列表（自动求和）"""
     try:
-        # 如果表达式包含换行，尝试提取每行中的数字并求和
         if '\n' in expression:
             lines = expression.strip().split('\n')
             numbers = []
             for line in lines:
-                # 提取行中的数字（忽略字母、符号等）
                 cleaned = ''.join(c for c in line if c.isdigit() or c in '.-')
                 if cleaned:
                     try:
@@ -39,10 +64,8 @@ def calculator(expression: str):
                         continue
             if not numbers:
                 return "错误：表达式中未找到有效数字"
-            total = sum(numbers)
-            return str(total)
+            return str(sum(numbers))
         else:
-            # 单行表达式，移除逗号后计算
             expression = expression.replace(",", "")
             allowed_chars = set("0123456789+-*/().% ^")
             if not all(c in allowed_chars for c in expression.replace(" ", "")):
@@ -51,30 +74,17 @@ def calculator(expression: str):
             return str(result)
     except Exception as e:
         return f"计算出错: {e}"
-        
-# ---------- 获取当前的日期和时间  (get_current_time) ----------
-def get_current_time():
-    """返回当前东八区（北京时间）日期和时间"""
-    try:
-        now = datetime.now(ZoneInfo("Asia/Shanghai"))
-    except Exception:
-        # 如果 zoneinfo 失败，手动计算 UTC+8
-        now = datetime.utcnow() + timedelta(hours=8)
-    return now.strftime("%Y-%m-%d %H:%M:%S")
-        
-# ---------- 查询数据库  (query_database) ----------
-def query_database(sql: str):
+
+def query_database(sql: str) -> str:
     """查询 SQLite 数据库，仅允许 SELECT"""
-    db_path = "sample.db"
     if not sql.strip().upper().startswith("SELECT"):
         return "错误：仅允许执行 SELECT 查询"
     try:
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute(sql)
-        rows = cursor.fetchall()
-        columns = [desc[0] for desc in cursor.description] if cursor.description else []
-        conn.close()
+        with sqlite3.connect("sample.db") as conn:
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            rows = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description] if cursor.description else []
         if not rows:
             return "查询结果为空"
         result = " | ".join(columns) + "\n"
@@ -82,9 +92,9 @@ def query_database(sql: str):
         return result
     except Exception as e:
         return f"数据库查询错误: {e}"
-        
-# ---------- 发送邮件  (send_email) ----------
-def send_email(to_email: str, subject: str, body: str, **kwargs):
+
+def send_email(to_email: str, subject: str, body: str, **kwargs) -> str:
+    """通过 Mailgun 发送邮件"""
     api_key = os.getenv("MAILGUN_API_KEY")
     domain = os.getenv("MAILGUN_DOMAIN")
     from_email = os.getenv("EMAIL_FROM")
@@ -100,34 +110,32 @@ def send_email(to_email: str, subject: str, body: str, **kwargs):
         "text": body
     }
     try:
-        resp = requests.post(url, auth=auth, data=data, timeout=10)
-        if resp.status_code == 200:
+        resp = _request_with_retry("POST", url, retries=2, auth=auth, data=data, timeout=10)
+        if resp and resp.status_code == 200:
             return f"邮件已成功发送给 {to_email}"
         else:
-            return f"邮件发送失败: {resp.status_code} {resp.text[:200]}"
+            return f"邮件发送失败: {resp.status_code if resp else '无响应'}"
     except Exception as e:
         return f"邮件发送错误: {e}"
 
-# ---------- 网页搜索 (DDGS) ----------
-def web_search(query: str, max_results: int = 5):
+def web_search(query: str, max_results: int = 5) -> str:
     """使用 DDGS 搜索互联网"""
     try:
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=max_results))
-            if not results:
-                return "未找到相关搜索结果。"
-            formatted = []
-            for r in results:
-                title = r.get("title", "")
-                href = r.get("href", "")
-                body = r.get("body", "")
-                formatted.append(f"标题: {title}\n链接: {href}\n摘要: {body}\n")
-            return "\n".join(formatted)
+        if not results:
+            return "未找到相关搜索结果。"
+        formatted = []
+        for r in results:
+            title = r.get("title", "")
+            href = r.get("href", "")
+            body = r.get("body", "")
+            formatted.append(f"标题: {title}\n链接: {href}\n摘要: {body}\n")
+        return "\n".join(formatted)
     except Exception as e:
         return f"搜索失败: {e}"
 
-# ---------- 安全 Python 执行器 ----------
-def execute_python(code: str):
+def execute_python(code: str) -> str:
     """在受限沙箱中执行 Python 代码，返回输出"""
     safe_builtins = {
         "print": print, "range": range, "len": len, "int": int, "float": float,
@@ -148,9 +156,9 @@ def execute_python(code: str):
     finally:
         sys.stdout = old_stdout
 
-# ---------- 百度语音转写 ----------
+# ==================== 百度语音转写 ====================
 def get_baidu_access_token() -> str:
-    """获取百度 access_token"""
+    """获取百度 AI 开放平台 access_token（用于语音识别）"""
     api_key = os.getenv("BAIDU_ASR_API_KEY")
     secret_key = os.getenv("BAIDU_ASR_SECRET_KEY")
     if not api_key or not secret_key:
@@ -162,9 +170,10 @@ def get_baidu_access_token() -> str:
         "client_secret": secret_key
     }
     try:
-        resp = requests.get(url, params=params, timeout=10)
-        data = resp.json()
-        return data.get("access_token", "")
+        resp = _request_with_retry("GET", url, retries=1, params=params, timeout=10)
+        if resp:
+            return resp.json().get("access_token", "")
+        return ""
     except Exception:
         return ""
 
@@ -221,24 +230,26 @@ def speech_to_text(audio_file_path: str) -> str:
         "lan": "zh"
     }
     try:
-        resp = requests.post(url, json=payload, timeout=15)
-        data = resp.json()
-        if data.get("err_no") == 0:
-            return "".join(data.get("result", []))
+        resp = _request_with_retry("POST", url, retries=1, json=payload, timeout=15)
+        if resp:
+            data = resp.json()
+            if data.get("err_no") == 0:
+                return "".join(data.get("result", []))
+            else:
+                return f"语音识别失败: {data.get('err_msg', '未知错误')}"
         else:
-            return f"语音识别失败: {data.get('err_msg', '未知错误')}"
+            return "语音识别失败: 网络错误"
     except Exception as e:
         return f"语音识别请求错误: {e}"
 
-# ---------- 文件分析（自动使用最近文件） ----------
-def analyze_file(file_path: str = None) -> str:
-    global last_uploaded_file
+# ==================== 文件分析 ====================
+def analyze_file(file_path: str) -> str:
+    """
+    分析 CSV 或 Excel 文件，必须显式提供路径。
+    返回摘要信息，包括行列数、列名、前几行和数值统计。
+    """
     if not file_path:
-        if last_uploaded_file:
-            file_path = last_uploaded_file
-        else:
-            return "错误：没有已上传的文件，请先上传文件。"
-
+        return "错误：请提供文件路径。"
     try:
         import pandas as pd
         if file_path.endswith('.csv'):
@@ -252,7 +263,6 @@ def analyze_file(file_path: str = None) -> str:
         info = f"文件分析结果：\n- 行数: {rows}\n- 列数: {len(df.columns)}\n"
         info += f"- 列名: {', '.join(df.columns.tolist())}\n"
 
-        # 大文件（>500行）仅展示前3行和关键统计
         if rows > 500:
             info += "\n⚠️ 文件较大，仅展示前3行和关键信息。\n"
             info += f"数据类型:\n{df.dtypes.to_string()}\n\n"
@@ -283,18 +293,15 @@ def analyze_file(file_path: str = None) -> str:
     except Exception as e:
         return f"文件分析失败: {e}"
 
-# ---------- 图像生成 (Stable Diffusion via Replicate) ----------
+# ==================== 图像生成 ====================
 def generate_image(prompt: str, negative_prompt: str = "") -> str:
-    """使用 Stability AI 生成图片，返回图片的 base64 数据或错误信息"""
+    """使用 Stability AI 生成图片，返回 base64 数据"""
     api_key = os.getenv("STABILITY_API_KEY")
     if not api_key:
         return "图像生成未配置（缺少 STABILITY_API_KEY）"
 
     url = "https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Accept": "application/json"
-    }
+    headers = {"Authorization": f"Bearer {api_key}", "Accept": "application/json"}
     payload = {
         "text_prompts": [
             {"text": prompt, "weight": 1.0},
@@ -306,60 +313,60 @@ def generate_image(prompt: str, negative_prompt: str = "") -> str:
         "width": 1024,
         "height": 1024,
     }
-
     try:
-        resp = requests.post(url, json=payload, headers=headers, timeout=30)
-        data = resp.json()
-        if resp.status_code == 200 and "artifacts" in data:
-            # 返回第一张图片的 base64 编码
-            img_b64 = data["artifacts"][0]["base64"]
-            return f"图片已生成（base64）：![生成图片](data:image/png;base64,{img_b64})"
+        resp = _request_with_retry("POST", url, retries=1, json=payload, headers=headers, timeout=30)
+        if resp and resp.status_code == 200:
+            data = resp.json()
+            if "artifacts" in data:
+                img_b64 = data["artifacts"][0]["base64"]
+                return f"图片已生成（base64）：![生成图片](data:image/png;base64,{img_b64})"
+            else:
+                return f"图像生成失败: {data.get('message', '未知错误')}"
         else:
-            return f"图像生成失败: {data.get('message', '未知错误')}"
+            return f"图像生成失败: 无响应"
     except Exception as e:
         return f"图像生成错误: {e}"
 
-# ---------- 网页抓取 (WebScraperWorker) ----------
+# ==================== 网页抓取 ====================
 def fetch_webpage(url: str) -> str:
     """抓取指定网页的文本内容，返回前 3000 字符"""
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
-        resp = requests.get(url, headers=headers, timeout=10)
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        resp = _request_with_retry("GET", url, retries=1, headers=headers, timeout=10)
+        if not resp:
+            return "网页抓取失败: 网络错误"
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "lxml")
-        # 移除脚本和样式
         for tag in soup(["script", "style", "nav", "footer", "header"]):
             tag.decompose()
         text = soup.get_text(separator="\n", strip=True)
-        return text[:3000]  # 限制长度，避免超出 token 限制
+        return text[:3000]
     except Exception as e:
         return f"网页抓取失败: {e}"
-        
-# ---------- 识别图片文字 (OCRWorker) ----------
-def ocr_image(image_path: str) -> str:
-    """使用百度文字识别 API 提取图片中的文字"""
+
+# ==================== OCR 文字识别 ====================
+def get_ocr_token() -> str:
+    """获取百度 OCR 所需的 access_token（与 ASR 共用凭据）"""
     api_key = os.getenv("BAIDU_OCR_API_KEY") or os.getenv("BAIDU_ASR_API_KEY")
     secret_key = os.getenv("BAIDU_OCR_SECRET_KEY") or os.getenv("BAIDU_ASR_SECRET_KEY")
     if not api_key or not secret_key:
-        return "OCR 未配置（缺少百度 OCR API Key/Secret Key）"
-
-    # 获取 access_token（可以复用语音识别的 token 函数，但为清晰可单独写或直接调用）
-    def get_ocr_token():
-        url = "https://aip.baidubce.com/oauth/2.0/token"
-        params = {"grant_type": "client_credentials", "client_id": api_key, "client_secret": secret_key}
-        try:
-            resp = requests.get(url, params=params, timeout=10)
+        return ""
+    url = "https://aip.baidubce.com/oauth/2.0/token"
+    params = {"grant_type": "client_credentials", "client_id": api_key, "client_secret": secret_key}
+    try:
+        resp = _request_with_retry("GET", url, retries=1, params=params, timeout=10)
+        if resp:
             return resp.json().get("access_token", "")
-        except Exception:
-            return ""
+        return ""
+    except Exception:
+        return ""
 
+def ocr_image(image_path: str) -> str:
+    """使用百度通用文字识别 API 提取图片文字"""
     token = get_ocr_token()
     if not token:
-        return "OCR 鉴权失败"
+        return "OCR 鉴权失败（缺少百度 OCR 凭据）"
 
-    # 读取图片并 base64 编码
     try:
         with open(image_path, "rb") as f:
             img_base64 = base64.b64encode(f.read()).decode("utf-8")
@@ -374,181 +381,21 @@ def ocr_image(image_path: str) -> str:
     }
     params = {"access_token": token}
     try:
-        resp = requests.post(url, data=payload, params=params, timeout=15)
-        data = resp.json()
-        if "words_result" in data:
-            texts = [item["words"] for item in data["words_result"]]
-            return "\n".join(texts)
-        else:
-            return f"OCR 识别失败: {data.get('error_msg', '未知错误')}"
-    except Exception as e:
-        return f"OCR 请求错误: {e}"
-
-    # 调用通用文字识别接口
-    ocr_url = "https://aip.baidubce.com/rest/2.0/ocr/v1/general_basic"
-    headers = {"Content-Type": "application/x-www-form-urlencoded"}
-    payload = {
-        "access_token": access_token,
-        "image": img_base64,
-        "language_type": "CHN_ENG"  # 中英文混合
-    }
-    try:
-        resp = requests.post(ocr_url, data=payload, headers=headers, timeout=15)
-        data = resp.json()
-        if data.get("error_code"):
-            return f"OCR 失败: {data.get('error_msg')}"
-        words_result = data.get("words_result", [])
-        if not words_result:
-            return "未识别到文字。"
-        texts = [item["words"] for item in words_result]
-        return "\n".join(texts)
-    except Exception as e:
-        return f"OCR 请求错误: {e}"
-
-# ---------- 新增日程管理 ----------
-import sqlite3
-def init_calendar():
-    conn = sqlite3.connect("calendar.db")
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS events
-                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  title TEXT,
-                  start_time TEXT,
-                  end_time TEXT,
-                  description TEXT)''')
-    # 添加 tenant 列（如果不存在）
-    try:
-        c.execute("ALTER TABLE events ADD COLUMN tenant TEXT DEFAULT 'default'")
-    except sqlite3.OperationalError:
-        pass   # 列已存在，忽略错误
-    # 将旧数据的 tenant 设为 default（避免 null）
-    c.execute("UPDATE events SET tenant = 'default' WHERE tenant IS NULL")
-    conn.commit()
-    conn.close()
-    
-# ---------- 添加事件 ----------
-def add_event(title: str, start_time: str, end_time: str = "", description: str = "", _tenant: str = "default") -> str:
-    import re
-    match = re.search(r'(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})', start_time)
-    if not match:
-        return f"添加日程失败: start_time 格式错误，实际收到: {start_time}"
-    clean_start = match.group(1)
-    init_calendar()
-    try:
-        conn = sqlite3.connect("calendar.db")
-        c = conn.cursor()
-        c.execute("INSERT INTO events (title, start_time, end_time, description, tenant) VALUES (?,?,?,?,?)",
-                  (title, clean_start, end_time, description, _tenant))
-        event_id = c.lastrowid
-        conn.commit()
-        conn.close()
-        return f"日程已添加 (ID:{event_id})：{title} 于 {clean_start} (租户:{_tenant})"
-    except Exception as e:
-        return f"添加日程失败: {e}"
-        
-# ---------- 列举事件 ----------
-def list_events(date: str = "", _tenant: str = "default") -> str:
-    init_calendar()
-    # 提取标准日期（YYYY-MM-DD），若无法提取则查询全部
-    import re
-    if date:
-        match = re.match(r'(\d{4}-\d{2}-\d{2})', date)
-        if match:
-            date = match.group(1)   # 提取到的标准日期
-        else:
-            date = ""                # 无效格式，查询全部
-    try:
-        conn = sqlite3.connect("calendar.db")
-        c = conn.cursor()
-        if date:
-            c.execute("SELECT id, title, start_time, end_time, description FROM events WHERE tenant=? AND start_time LIKE ? ORDER BY start_time",
-                      (_tenant, date + "%"))
-        else:
-            c.execute("SELECT id, title, start_time, end_time, description FROM events WHERE tenant=? ORDER BY start_time",
-                      (_tenant,))
-        rows = c.fetchall()
-        conn.close()
-        print(f"[list_events] 租户:{_tenant} 查询日期:{date or '全部'} 结果数:{len(rows)}")
-        if not rows and date:
-            # 指定日期为空，列出最近5条所有日程（按租户过滤）
-            conn2 = sqlite3.connect("calendar.db")
-            c2 = conn2.cursor()
-            c2.execute("SELECT id, title, start_time FROM events WHERE tenant=? ORDER BY start_time DESC LIMIT 5", (_tenant,))
-            recent = c2.fetchall()
-            conn2.close()
-            if recent:
-                recent_text = "\n".join([f"ID:{r[0]} {r[1]} @ {r[2]}" for r in recent])
-                return f"查询日期 {date} 暂无日程。但系统中有以下最近日程：\n{recent_text}"
+        resp = _request_with_retry("POST", url, retries=1, data=payload, params=params, timeout=15)
+        if resp:
+            data = resp.json()
+            if "words_result" in data:
+                return "\n".join([item["words"] for item in data["words_result"]])
             else:
-                return "暂无任何日程。"
-        if not rows:
-            return "暂无日程。"
-        result = "日程列表：\n"
-        for row in rows:
-            result += f"ID:{row[0]} | {row[1]} | 开始:{row[2]} | 结束:{row[3]} | {row[4]}\n"
-        return result
-    except Exception as e:
-        print(f"[list_events] 异常: {e}")
-        return f"查询日程失败: {e}"
-        
-# ---------- 删除事件 ----------
-def delete_event(event_id: int, _tenant: str = "default") -> str:
-    init_calendar()
-    try:
-        conn = sqlite3.connect("calendar.db")
-        c = conn.cursor()
-        # 先查询原数据（用于补偿）
-        c.execute("SELECT id, title, start_time, end_time, description FROM events WHERE id=? AND tenant=?", (event_id, _tenant))
-        row = c.fetchone()
-        if not row:
-            return f"日程 {event_id} 不存在或不属于当前租户"
-        # 保存原始数据用于补偿
-        deleted_event = {
-            "id": row[0], "title": row[1], "start_time": row[2],
-            "end_time": row[3], "description": row[4]
-        }
-        c.execute("DELETE FROM events WHERE id=? AND tenant=?", (event_id, _tenant))
-        conn.commit()
-        conn.close()
-        return f"日程 {event_id} 已删除。原始数据: {json.dumps(deleted_event)}"
-    except Exception as e:
-        return f"删除失败: {e}"
-
-def compensate_delete_event(event_id: int, **kwargs):
-    """补偿删除日程：重新插入被删除的日程"""
-    result = kwargs.get("result", "")
-    try:
-        # 从结果中提取原始日程数据
-        import re
-        match = re.search(r'原始数据: ({.*})', result)
-        if match:
-            data = json.loads(match.group(1))
-            # 重新添加日程
-            return add_event(data["title"], data["start_time"], data["end_time"], data["description"])
+                return f"OCR 识别失败: {data.get('error_msg', '未知错误')}"
         else:
-            return f"补偿：无法恢复日程 {event_id}，原始数据丢失"
+            return "OCR 识别失败: 网络错误"
     except Exception as e:
-        return f"补偿失败: {e}"
-        
-        
-# ---------- 图片表格识别 ----------
-# 获取 OCR Token
-def get_ocr_token():
-    api_key = os.getenv("BAIDU_OCR_API_KEY") or os.getenv("BAIDU_ASR_API_KEY")
-    secret_key = os.getenv("BAIDU_OCR_SECRET_KEY") or os.getenv("BAIDU_ASR_SECRET_KEY")
-    if not api_key or not secret_key:
-        return ""
-    url = "https://aip.baidubce.com/oauth/2.0/token"
-    params = {"grant_type": "client_credentials", "client_id": api_key, "client_secret": secret_key}
-    try:
-        resp = requests.get(url, params=params, timeout=10)
-        return resp.json().get("access_token", "")
-    except Exception:
-        return ""
-        
-# ---------- 识别图片中的表格 ----------
+        return f"OCR 请求错误: {e}"
+
+# ==================== 表格识别 ====================
 def recognize_table(image_path: str) -> str:
-    """使用百度表格文字识别 V2 接口，返回表格文本（按行列重排，去除空列）"""
+    """使用百度表格文字识别 V2 接口，返回清洗后的表格文本"""
     token = get_ocr_token()
     if not token:
         return "表格识别未配置或鉴权失败"
@@ -560,14 +407,12 @@ def recognize_table(image_path: str) -> str:
         return f"图片读取失败: {e}"
 
     url = "https://aip.baidubce.com/rest/2.0/ocr/v1/table"
-    data = {
-        "image": img_b64,
-        "return_excel": "false",
-        "cell_contents": "true"
-    }
+    data = {"image": img_b64, "return_excel": "false", "cell_contents": "true"}
     params = {"access_token": token}
     try:
-        resp = requests.post(url, data=data, params=params, timeout=30)
+        resp = _request_with_retry("POST", url, retries=1, data=data, params=params, timeout=30)
+        if not resp:
+            return "表格识别失败: 网络错误"
         result = resp.json()
         print("[表格识别] 百度原始响应:", json.dumps(result, ensure_ascii=False)[:800], flush=True)
     except Exception as e:
@@ -587,25 +432,15 @@ def recognize_table(image_path: str) -> str:
             if not cells:
                 continue
 
-            max_row = 0
-            max_col = 0
-            for cell in cells:
-                r = cell.get("row_end", cell.get("row_start", 0))
-                c = cell.get("col_end", cell.get("col_start", 0))
-                if r > max_row:
-                    max_row = r
-                if c > max_col:
-                    max_col = c
-
+            max_row = max((cell.get("row_end", cell.get("row_start", 0)) for cell in cells), default=0)
+            max_col = max((cell.get("col_end", cell.get("col_start", 0)) for cell in cells), default=0)
             grid = [["" for _ in range(max_col + 1)] for _ in range(max_row + 1)]
 
             for cell in cells:
                 r_start = cell.get("row_start", 0)
                 c_start = cell.get("col_start", 0)
-                words = cell.get("words", "")
-                grid[r_start][c_start] = words
+                grid[r_start][c_start] = cell.get("words", "")
 
-            # 清洗行：去除尾部连续空列，忽略全空行
             cleaned_rows = []
             for row in grid:
                 while row and row[-1] == "":
@@ -616,24 +451,156 @@ def recognize_table(image_path: str) -> str:
             if not cleaned_rows:
                 continue
 
-            table_text = ""
-            for row in cleaned_rows:
-                table_text += ",".join(row) + "\n"
-
+            table_text = "\n".join([",".join(row) for row in cleaned_rows])
             all_tables_text += f"表格 {table_idx+1}:\n{table_text}\n"
 
         return all_tables_text if all_tables_text else "未识别到表格内容"
     except Exception as e:
         return f"表格数据解析失败: {e}"
-        
 
-# ---------- 视觉理解 (Describle image) ----------
-def describe_image(image_path: str) -> str:
-    """当前视觉理解服务暂不可用，返回提示"""
-    return "视觉理解服务暂不可用，请稍后重试。如需提取文字，可使用 OCR 功能。"
-                
+# ==================== 日程管理 ====================
+def init_calendar() -> None:
+    """初始化日历数据库，确保表和 tenant 列存在"""
+    with sqlite3.connect("calendar.db") as conn:
+        c = conn.cursor()
+        c.execute('''CREATE TABLE IF NOT EXISTS events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        title TEXT,
+                        start_time TEXT,
+                        end_time TEXT,
+                        description TEXT,
+                        tenant TEXT DEFAULT 'default')''')
+        columns = [row[1] for row in c.execute("PRAGMA table_info(events)")]
+        if "tenant" not in columns:
+            c.execute("ALTER TABLE events ADD COLUMN tenant TEXT DEFAULT 'default'")
+        c.execute("UPDATE events SET tenant = 'default' WHERE tenant IS NULL")
+        conn.commit()
 
-# ---------- 工具元数据 ----------
+def add_event(title: str, start_time: str, end_time: str = "", description: str = "", _tenant: str = "default") -> str:
+    """添加日程，start_time 必须为 YYYY-MM-DD HH:MM 格式"""
+    match = re.search(r'(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})', start_time)
+    if not match:
+        return f"添加日程失败: start_time 格式错误，实际收到: {start_time}"
+    clean_start = match.group(1)
+    init_calendar()
+    try:
+        with sqlite3.connect("calendar.db") as conn:
+            c = conn.cursor()
+            c.execute("INSERT INTO events (title, start_time, end_time, description, tenant) VALUES (?,?,?,?,?)",
+                      (title, clean_start, end_time, description, _tenant))
+            event_id = c.lastrowid
+            conn.commit()
+        return f"日程已添加 (ID:{event_id})：{title} 于 {clean_start} (租户:{_tenant})"
+    except Exception as e:
+        return f"添加日程失败: {e}"
+
+def list_events(date: str = "", _tenant: str = "default") -> str:
+    """列出指定租户的日程，可按日期过滤"""
+    init_calendar()
+    if date:
+        match = re.match(r'(\d{4}-\d{2}-\d{2})', date)
+        if match:
+            date = match.group(1)
+        else:
+            date = ""
+    try:
+        with sqlite3.connect("calendar.db") as conn:
+            c = conn.cursor()
+            if date:
+                c.execute("SELECT id, title, start_time, end_time, description FROM events WHERE tenant=? AND start_time LIKE ? ORDER BY start_time",
+                          (_tenant, date + "%"))
+            else:
+                c.execute("SELECT id, title, start_time, end_time, description FROM events WHERE tenant=? ORDER BY start_time",
+                          (_tenant,))
+            rows = c.fetchall()
+        print(f"[list_events] 租户:{_tenant} 查询日期:{date or '全部'} 结果数:{len(rows)}")
+        if not rows and date:
+            with sqlite3.connect("calendar.db") as conn2:
+                c2 = conn2.cursor()
+                c2.execute("SELECT id, title, start_time FROM events WHERE tenant=? ORDER BY start_time DESC LIMIT 5", (_tenant,))
+                recent = c2.fetchall()
+            if recent:
+                recent_text = "\n".join([f"ID:{r[0]} {r[1]} @ {r[2]}" for r in recent])
+                return f"查询日期 {date} 暂无日程。但系统中有以下最近日程：\n{recent_text}"
+            else:
+                return "暂无任何日程。"
+        if not rows:
+            return "暂无日程。"
+        result = "日程列表：\n"
+        for row in rows:
+            result += f"ID:{row[0]} | {row[1]} | 开始:{row[2]} | 结束:{row[3]} | {row[4]}\n"
+        return result
+    except Exception as e:
+        print(f"[list_events] 异常: {e}")
+        return f"查询日程失败: {e}"
+
+def delete_event(event_id: int, _tenant: str = "default") -> str:
+    """删除日程，返回原始数据用于补偿"""
+    init_calendar()
+    try:
+        with sqlite3.connect("calendar.db") as conn:
+            c = conn.cursor()
+            c.execute("SELECT id, title, start_time, end_time, description FROM events WHERE id=? AND tenant=?", (event_id, _tenant))
+            row = c.fetchone()
+            if not row:
+                return f"日程 {event_id} 不存在或不属于当前租户"
+            deleted_event = {"id": row[0], "title": row[1], "start_time": row[2], "end_time": row[3], "description": row[4]}
+            c.execute("DELETE FROM events WHERE id=? AND tenant=?", (event_id, _tenant))
+            conn.commit()
+        return f"日程 {event_id} 已删除。原始数据: {json.dumps(deleted_event)}"
+    except Exception as e:
+        return f"删除失败: {e}"
+
+# ==================== Saga 补偿函数 ====================
+def compensate_add_event(title: str, start_time: str, end_time: str = "", description: str = "", **kwargs):
+    result = kwargs.get("result", "")
+    match = re.search(r'ID:(\d+)', result)
+    if match:
+        event_id = int(match.group(1))
+        return delete_event(event_id)
+    return f"无法找到日程ID，请手动检查「{title}」"
+
+def compensate_send_email(to_email: str, subject: str, body: str, **kwargs):
+    try:
+        with open("email_failures.log", "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.now()}] 邮件发送失败: 收件人={to_email}, 主题={subject}\n")
+        return f"补偿：邮件发送至 {to_email} 失败，已记录到日志。"
+    except Exception as e:
+        return f"补偿记录失败: {e}"
+
+def compensate_execute_python(code: str, **kwargs):
+    try:
+        with open("code_failures.log", "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.now()}] 代码执行失败:\n{code}\n")
+        return "补偿：代码执行错误已记录。"
+    except Exception as e:
+        return f"补偿记录失败: {e}"
+
+def compensate_delete_event(event_id: int, **kwargs):
+    result = kwargs.get("result", "")
+    match = re.search(r'原始数据: ({.*})', result)
+    if match:
+        data = json.loads(match.group(1))
+        return add_event(data["title"], data["start_time"], data["end_time"], data["description"])
+    return f"补偿：无法恢复日程 {event_id}，原始数据丢失"
+
+def compensate_generate_image(prompt: str, **kwargs):
+    try:
+        with open("image_failures.log", "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.now()}] 图像生成失败: {prompt}\n")
+        return "补偿：图像生成失败已记录。"
+    except Exception as e:
+        return f"补偿记录失败: {e}"
+
+COMPENSATIONS = {
+    "send_email": compensate_send_email,
+    "add_event": compensate_add_event,
+    "execute_python": compensate_execute_python,
+    "delete_event": compensate_delete_event,
+    "generate_image": compensate_generate_image,
+}
+
+# ==================== 工具元数据 ====================
 TOOLS_METADATA = [
     {
         "type": "function",
@@ -734,15 +701,13 @@ TOOLS_METADATA = [
         "type": "function",
         "function": {
             "name": "analyze_file",
-            "description": "分析用户上传的 CSV 或 Excel 文件，返回摘要信息。若未提供文件路径，则自动分析最近上传的文件。",
+            "description": "分析用户上传的 CSV 或 Excel 文件，返回摘要信息。",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "file_path": {
-                        "type": "string",
-                        "description": "上传文件的本地路径（可选，不填则使用最近上传的文件）"
-                    }
-                }
+                    "file_path": {"type": "string", "description": "上传文件的本地路径"}
+                },
+                "required": ["file_path"]
             }
         }
     },
@@ -750,14 +715,11 @@ TOOLS_METADATA = [
         "type": "function",
         "function": {
             "name": "fetch_webpage",
-            "description": "抓取指定 URL 的网页文本内容，返回前 3000 个字符。用于获取网页全文以深入分析。",
+            "description": "抓取指定 URL 的网页文本内容，返回前 3000 个字符。",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "要抓取的网页 URL"
-                    }
+                    "url": {"type": "string", "description": "要抓取的网页 URL"}
                 },
                 "required": ["url"]
             }
@@ -771,8 +733,8 @@ TOOLS_METADATA = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "prompt": {"type": "string", "description": "图片的英文描述（中文可能识别不佳，建议使用英文）"},
-                    "negative_prompt": {"type": "string", "description": "可选的负面提示，描述不希望出现的内容"}
+                    "prompt": {"type": "string", "description": "图片的英文描述"},
+                    "negative_prompt": {"type": "string", "description": "可选的负面提示"}
                 },
                 "required": ["prompt"]
             }
@@ -850,75 +812,10 @@ TOOLS_METADATA = [
                 "required": ["image_path"]
             }
         }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "describe_image",
-            "description": "描述图片的内容，返回英文描述。",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "image_path": {"type": "string", "description": "图片文件的本地路径"}
-                },
-                "required": ["image_path"]
-            }
-        }
     }
 ]
 
-
-# ===================== Saga 补偿函数（可执行回滚） =====================
-def compensate_add_event(title: str, start_time: str, end_time: str = "", description: str = "", **kwargs):
-    result = kwargs.get("result", "")
-    import re
-    match = re.search(r'ID:(\d+)', result)
-    if match:
-        event_id = int(match.group(1))
-        return delete_event(event_id)
-    else:
-        return f"无法找到日程ID，请手动检查「{title}」"
-
-def compensate_send_email(to_email: str, subject: str, body: str, **kwargs):
-    """补偿发送邮件：记录到日志文件，通知用户"""
-    import datetime
-    try:
-        with open("email_failures.log", "a", encoding="utf-8") as f:
-            f.write(f"[{datetime.datetime.now()}] 邮件发送失败: 收件人={to_email}, 主题={subject}\n")
-        return f"补偿：邮件发送至 {to_email} 失败，已记录到日志。"
-    except Exception as e:
-        return f"补偿记录失败: {e}"
-
-def compensate_execute_python(code: str, **kwargs):
-    """补偿代码执行：记录错误日志（不改变状态）"""
-    import datetime
-    try:
-        with open("code_failures.log", "a", encoding="utf-8") as f:
-            f.write(f"[{datetime.datetime.now()}] 代码执行失败:\n{code}\n")
-        return "补偿：代码执行错误已记录。"
-    except Exception as e:
-        return f"补偿记录失败: {e}"
-
-def compensate_generate_image(prompt: str, **kwargs):
-    """图像生成失败补偿：记录日志（生成操作无真正副作用）"""
-    import datetime
-    try:
-        with open("image_failures.log", "a", encoding="utf-8") as f:
-            f.write(f"[{datetime.datetime.now()}] 图像生成失败: {prompt}\n")
-        return "补偿：图像生成失败已记录。"
-    except Exception as e:
-        return f"补偿记录失败: {e}"
-
-COMPENSATIONS = {
-    "send_email": compensate_send_email,
-    "add_event": compensate_add_event,
-    "execute_python": compensate_execute_python,
-    "delete_event": compensate_delete_event,   # 新增
-    "generate_image": compensate_generate_image,
-}
-
-
-# ---------- 工具名称到函数的映射 ----------
+# ==================== 工具映射 ====================
 AVAILABLE_TOOLS = {
     "get_current_time": get_current_time,
     "calculator": calculator,
@@ -934,10 +831,5 @@ AVAILABLE_TOOLS = {
     "add_event": add_event,
     "list_events": list_events,
     "delete_event": delete_event,
-    "recognize_table": recognize_table,   
-    "describe_image": describe_image,    
+    "recognize_table": recognize_table,
 }
-
-        
-
-
