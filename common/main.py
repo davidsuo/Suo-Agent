@@ -2,7 +2,7 @@
 import sys, os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import json, asyncio, uuid, traceback, re
+import json, asyncio, traceback, re, datetime, time
 from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
@@ -10,7 +10,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from openai import OpenAI
-import datetime, time 
+
 from common.memory import memory
 try:
     from common import rag
@@ -33,8 +33,8 @@ from common.guardrails import input_guard, tool_call_guard, output_guard
 from common.pending_tools import pending, save_pending
 from common.auth import get_user_info, is_tool_allowed
 
+# ==================== 全局应用与模型客户端 ====================
 app = FastAPI()
-
 client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
     base_url="https://api.deepseek.com"
@@ -42,7 +42,7 @@ client = OpenAI(
 
 SYSTEM_PROMPT = """
 你是一个全能的AI助手，可以使用记忆、知识库和多种工具来回答用户问题。
-可用工具：
+当前你可用的工具如下：
 {available_tools}
 
 【日程与时间强制规则】
@@ -69,6 +69,69 @@ SYSTEM_PROMPT = """
 {context}
 """
 
+# ==================== 日志辅助函数 ====================
+def _is_error_result(result) -> bool:
+    """根据结果字符串判断是否失败"""
+    return ("错误" in str(result)) or ("失败" in str(result))
+
+def enhanced_log_plan(session_id, user_query, plan, results, step_times, final_status, total_time, completed_steps=None):
+    """记录规划模式执行日志（含用户、角色、状态等）"""
+    user_info = get_user_info(session_id) if session_id else None
+    username = user_info.get("username", "unknown") if user_info else "unknown"
+    role = user_info.get("role", "unknown") if user_info else "unknown"
+
+    entry = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "session_id": session_id,
+        "username": username,
+        "role": role,
+        "user_query": user_query,
+        "plan": plan,
+        "results": {str(k): str(v)[:300] for k, v in results.items()},
+        "step_times": step_times,
+        "final_status": final_status,
+        "total_time": round(total_time, 3),
+    }
+    if completed_steps is not None:
+        entry["completed_steps"] = [
+            {"tool": s[0]["tool"], "description": s[0].get("description"), "result": str(s[2])[:200]}
+            for s in completed_steps
+        ]
+
+    try:
+        with open("plan_log.json", "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        print(f"[规划审计] 计划执行已记录: user={username}, role={role}, status={final_status}", flush=True)
+    except Exception as e:
+        print(f"[规划审计] 写入失败: {e}", flush=True)
+
+def simple_log_tool(session_id, user_query, tool_name, arguments, result):
+    """记录常规模式下的单个工具调用"""
+    user_info = get_user_info(session_id) if session_id else None
+    username = user_info.get("username", "unknown") if user_info else "unknown"
+    role = user_info.get("role", "unknown") if user_info else "unknown"
+    status = "success" if not _is_error_result(result) else "failed"
+
+    entry = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "session_id": session_id,
+        "username": username,
+        "role": role,
+        "user_query": user_query,
+        "tool": tool_name,
+        "arguments": {k: v for k, v in arguments.items() if k != "_tenant"},
+        "result": str(result)[:300],
+        "status": status,
+        "mode": "regular"
+    }
+    try:
+        with open("plan_log.json", "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        print(f"[审计] 工具调用已记录: user={username}, role={role}, tool={tool_name}, status={status}", flush=True)
+    except Exception as e:
+        print(f"[审计] 写入失败: {e}", flush=True)
+
+# ==================== FastAPI 路由（备用） ====================
 class ChatRequest(BaseModel):
     session_id: str = "default"
     query: str
@@ -102,73 +165,17 @@ def home():
     </body>
     </html>
     """
-    
-def enhanced_log_plan(session_id, user_query, plan, results, step_times, final_status, total_time, completed_steps=None):
-    user_info = get_user_info(session_id) if session_id else None
-    username = user_info.get("username", "unknown") if user_info else "unknown"
-    role = user_info.get("role", "unknown") if user_info else "unknown"
-
-    entry = {
-        "timestamp": datetime.datetime.now().isoformat(),
-        "session_id": session_id,
-        "username": username,
-        "role": role,
-        "user_query": user_query,
-        "plan": plan,
-        "results": {str(k): str(v)[:300] for k, v in results.items()},
-        "step_times": step_times,
-        "final_status": final_status,
-        "total_time": round(total_time, 3),
-    }
-    if completed_steps is not None:
-        entry["completed_steps"] = [{"tool": s[0]["tool"], "description": s[0].get("description"), "result": str(s[2])[:200]} for s in completed_steps]
-
-    try:
-        with open("plan_log.json", "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        print(f"[规划审计] 计划执行已记录: user={username}, role={role}, status={final_status}", flush=True)
-    except Exception as e:
-        print(f"[规划审计] 写入失败: {e}", flush=True)
-
-
-def simple_log_tool(session_id, user_query, tool_name, arguments, result):
-    """记录常规模式下的工具调用，包含用户和角色信息"""
-    # 获取用户信息（session_id 通常为用户名）
-    user_info = get_user_info(session_id) if session_id else None
-    username = user_info.get("username", "unknown") if user_info else "unknown"
-    role = user_info.get("role", "unknown") if user_info else "unknown"
-    # 根据结果字符串判断状态
-    status = "success" if ("错误" not in str(result) and "失败" not in str(result)) else "failed"
-
-    entry = {
-        "timestamp": datetime.datetime.now().isoformat(),
-        "session_id": session_id,
-        "username": username,
-        "role": role,
-        "user_query": user_query,
-        "tool": tool_name,
-        "arguments": {k: v for k, v in arguments.items() if k != "_tenant"},
-        "result": str(result)[:300],
-        "status": status,
-        "mode": "regular"
-    }
-    try:
-        with open("plan_log.json", "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        print(f"[审计] 工具调用已记录: user={username}, role={role}, tool={tool_name}, status={status}", flush=True)
-    except Exception as e:
-        print(f"[审计] 写入失败: {e}", flush=True)
-
 
 @app.post("/chat")
 async def chat(request: ChatRequest):
-    # 这里需要传入 query_worker, command_worker, TOOL_ROUTER，将在 app.py 中注入全局变量或通过依赖注入
-    # 简便起见，我们使用全局变量 _query_worker, _command_worker, _tool_router，它们在 app.py 中被赋值
+    """备用 API 端点，使用全局 Worker 实例"""
     global _query_worker, _command_worker, _tool_router
-    answer = await chat_core(session_id, message, query_worker, command_worker, TOOL_ROUTER)
+    if _query_worker is None or _command_worker is None or _tool_router is None:
+        return {"answer": "系统未初始化"}
+    answer = await chat_core(request.session_id, request.query, _query_worker, _command_worker, _tool_router)
     return {"answer": answer}
 
-# 全局占位，将由 app.py 设置
+# 全局占位，由 set_workers 设置
 _query_worker = None
 _command_worker = None
 _tool_router = None
@@ -179,7 +186,7 @@ def set_workers(query_worker, command_worker, tool_router):
     _command_worker = command_worker
     _tool_router = tool_router
 
-# ========== 核心聊天逻辑 ==========
+# ==================== 核心聊天逻辑 ====================
 async def chat_core(session_id: str, query: str, query_worker, command_worker, TOOL_ROUTER, image_base64: str = None):
     print(f"[DEBUG] 收到请求: session_id={session_id}, query={query[:50]}...")
     print(f"[DEBUG] 当前 pending keys: {list(pending.keys())}")
@@ -198,7 +205,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
         command_worker.is_running = True
     print("Workers ready: QueryWorker, CommandWorker")
 
-    # 检查确认回复
+    # 确认回复处理
     if session_id in pending and "确认" in query.strip():
         print(f"[确认] 执行待处理工具 for session {session_id}")
         tool_info = pending.pop(session_id)
@@ -219,12 +226,12 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
     history = memory.get(session_id)
     context = rag.search_similar(query, k=3) if rag is not None else "暂无相关文档（知识库未加载）"
 
-    # 获取当前用户角色（基于 session_id 查询数据库）
+    # 获取用户角色（基于用户名查询，确保隔离）
     user_info = get_user_info(session_id) if session_id else None
     role = user_info.get("role", "viewer") if user_info else "viewer"
     print(f"[权限调试] session_id={session_id}, role={role}")
 
-    # 构建可用工具列表（按角色过滤）
+    # 构建当前角色可用的工具列表
     tool_descriptions = {}
     for tool_meta in TOOLS_METADATA:
         name = tool_meta["function"]["name"]
@@ -272,7 +279,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
     image_output = None
 
     if plan:
-        # ========== 规划引擎执行模式（Saga 补偿版） ==========
+        # ========== 规划引擎执行模式（Saga 补偿） ==========
         results = {}
         email_args = None
         completed_steps = []
@@ -286,7 +293,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
             arguments = step["arguments"]
             arguments["_tenant"] = memory.get_tenant(session_id)
 
-            # 处理参数中的占位符替换（{step_X_result}）
+            # 参数占位符替换
             for dep_id in step.get("depends_on", []):
                 if dep_id in results:
                     replacement = str(results[dep_id])
@@ -311,21 +318,20 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                     res = await target_worker.send_task(task)
                     raw_result = res.get("result", res.get("error")) if res else "未知错误"
 
-                    if "error" in res or "失败" in str(raw_result) or "错误" in str(raw_result):
-                        # Saga 补偿
+                    if "error" in res or _is_error_result(raw_result):
+                        # Saga 失败补偿
                         print(f"[Saga] 步骤{step_id}失败，开始补偿...")
                         steps_summary = []
-                        for comp_step, comp_args, comp_result in completed_steps:
-                            comp_desc = comp_step.get("description", f"步骤{comp_step['id']}")
-                            steps_summary.append(f"✅ {comp_desc}")
+                        for comp_step, _, _ in completed_steps:
+                            steps_summary.append(f"✅ {comp_step.get('description', f'步骤{comp_step['id']}')}")
                         steps_summary.append(f"❌ {step_desc}（遇到问题）")
 
                         compensation_msgs = []
-                        for comp_step, comp_args, comp_result in reversed(completed_steps):
+                        for comp_step, _, comp_result in reversed(completed_steps):
                             comp_func_name = comp_step.get("tool")
                             if comp_func_name in COMPENSATIONS:
                                 try:
-                                    comp_msg = COMPENSATIONS[comp_func_name](**comp_args, result=comp_result)
+                                    comp_msg = COMPENSATIONS[comp_func_name](**comp_step.get("arguments", {}), result=comp_result)
                                     desc = comp_step.get("description", "未知步骤")
                                     compensation_msgs.append(f"🔄 {desc} 已回滚")
                                 except Exception as comp_exc:
@@ -449,11 +455,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                     # RBAC 权限检查（常规模式）
                     if not is_tool_allowed(role, func_name):
                         result = f"⚠️ 您没有权限使用工具 {func_name}。"
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "content": result
-                        })
+                        messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": result})
                         continue
 
                     if func_name in ("ocr_image", "speech_to_text", "recognize_table"):
@@ -498,7 +500,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                             raw_result = "工具执行超时，请稍后重试。"
                         except Exception as e:
                             raw_result = f"工具调用失败: {e}"
-                        if func_name == "generate_image" and not str(raw_result).startswith("图像生成"):
+                        if func_name == "generate_image" and not raw_result.startswith("图像生成"):
                             image_output = raw_result
                             result = "图片已生成，将在最终回答中展示。"
                         else:
@@ -507,11 +509,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                     else:
                         result = f"未找到工具 {func_name}"
 
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": result
-                    })
+                    messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": result})
                 continue
             else:
                 answer = msg.content
@@ -525,7 +523,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
         memory.append(session_id, query, answer)
         return answer
 
-# ========== 规划生成函数 ==========
+# ==================== 规划生成函数 ====================
 async def generate_plan(user_query, history, client):
     try:
         prompt = f"""
@@ -583,4 +581,3 @@ async def generate_plan(user_query, history, client):
     except Exception as e:
         print(f"[规划引擎] 生成计划失败: {e}")
         return None
-        
