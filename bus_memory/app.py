@@ -366,53 +366,53 @@ with gr.Blocks(title="AI 智能体") as demo:
 
         # 处理 /logs 命令
         if message and message.strip().lower() == "/logs":
-        try:
-            if os.path.exists("plan_log.json"):
-                with open("plan_log.json", "r", encoding="utf-8") as f:
-                    lines = f.readlines()
-                valid_entries = []
-                for line in lines:
-                    try:
-                        entry = json.loads(line.strip())
-                        if isinstance(entry, dict):
-                            valid_entries.append(entry)
-                    except json.JSONDecodeError:
-                        continue
-                if not valid_entries:
-                    answer = "暂无规划日志。"
+            try:
+                if os.path.exists("plan_log.json"):
+                    with open("plan_log.json", "r", encoding="utf-8") as f:
+                        lines = f.readlines()
+                    valid_entries = []
+                    for line in lines:
+                        try:
+                            entry = json.loads(line.strip())
+                            if isinstance(entry, dict):
+                                valid_entries.append(entry)
+                        except json.JSONDecodeError:
+                            continue
+                    if not valid_entries:
+                        answer = "暂无规划日志。"
+                    else:
+                        recent = valid_entries[-5:] if len(valid_entries) > 5 else valid_entries
+                        logs_display = "**📋 最近操作日志（审计）**\n\n"
+                        for idx, entry in enumerate(recent, 1):
+                            timestamp = entry.get('timestamp', '未知')
+                            username = entry.get('username', '未知')
+                            role = entry.get('role', '未知')
+                            mode = entry.get('mode', '规划')
+                            status = entry.get('status', entry.get('final_status', '未知'))
+                            user_query = entry.get('user_query', '')
+                            # 显示简要信息
+                            logs_display += f"**记录{idx}** | 时间: {timestamp}\n"
+                            logs_display += f"用户: {username} | 角色: {role} | 模式: {mode} | 状态: {status}\n"
+                            logs_display += f"请求: {user_query[:80]}\n"
+                            # 如果是常规模式，显示工具和结果摘要
+                            if mode == "regular":
+                                tool = entry.get('tool', '')
+                                result = entry.get('result', '')
+                                logs_display += f"工具: {tool} | 结果: {result[:60]}\n"
+                            else:
+                                # 规划模式显示步骤数
+                                plan = entry.get('plan', [])
+                                logs_display += f"步骤数: {len(plan)}\n"
+                            logs_display += "\n"
+                        answer = logs_display
                 else:
-                    recent = valid_entries[-5:] if len(valid_entries) > 5 else valid_entries
-                    logs_display = "**📋 最近操作日志（审计）**\n\n"
-                    for idx, entry in enumerate(recent, 1):
-                        timestamp = entry.get('timestamp', '未知')
-                        username = entry.get('username', '未知')
-                        role = entry.get('role', '未知')
-                        mode = entry.get('mode', '规划')
-                        status = entry.get('status', entry.get('final_status', '未知'))
-                        user_query = entry.get('user_query', '')
-                        # 显示简要信息
-                        logs_display += f"**记录{idx}** | 时间: {timestamp}\n"
-                        logs_display += f"用户: {username} | 角色: {role} | 模式: {mode} | 状态: {status}\n"
-                        logs_display += f"请求: {user_query[:80]}\n"
-                        # 如果是常规模式，显示工具和结果摘要
-                        if mode == "regular":
-                            tool = entry.get('tool', '')
-                            result = entry.get('result', '')
-                            logs_display += f"工具: {tool} | 结果: {result[:60]}\n"
-                        else:
-                            # 规划模式显示步骤数
-                            plan = entry.get('plan', [])
-                            logs_display += f"步骤数: {len(plan)}\n"
-                        logs_display += "\n"
-                    answer = logs_display
-            else:
-                answer = "暂无规划日志文件。"
-        except Exception as e:
-            answer = f"读取日志失败: {e}"
-        history = history or []
-        history.append({"role": "user", "content": "/logs"})
-        history.append({"role": "assistant", "content": answer})
-        return history, "", None, "", ""
+                    answer = "暂无规划日志文件。"
+            except Exception as e:
+                answer = f"读取日志失败: {e}"
+            history = history or []
+            history.append({"role": "user", "content": "/logs"})
+            history.append({"role": "assistant", "content": answer})
+            return history, "", None, "", ""
 
         # 文件处理
         if file is not None:
