@@ -86,15 +86,6 @@ def get_available_tenants():
     tenants.add(current)  # 确保当前租户在选项中
     return sorted(list(tenants))
 
-async def handle_feedback(feedback, user_msg_state, assistant_msg_state, user_state):
-    if not user_state:
-        return "⚠️ 请先登录。"
-    if not user_msg_state or not assistant_msg_state:
-        return "⚠️ 暂无可以评价的对话。"
-    from common.feedback import save_feedback
-    save_feedback(user_state["username"], user_msg_state, assistant_msg_state, feedback)
-    return f"感谢您的反馈！({feedback})"
-
 async def unified_handler(message, history, file, user):
     if not user:
         return history, "", None
@@ -478,13 +469,18 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     # ================= 反馈处理 =================
     async def handle_feedback(feedback, user_msg_state, assistant_msg_state, user_state):
+        print(f"[反馈按钮] 触发，feedback={feedback}, user={user_state}, user_msg={user_msg_state[:30]}...", flush=True)
         if not user_state:
             return "⚠️ 请先登录。"
         if not user_msg_state or not assistant_msg_state:
             return "⚠️ 暂无可以评价的对话。"
-        from common.feedback import save_feedback
-        save_feedback(user_state["username"], user_msg_state, assistant_msg_state, feedback)
-        return f"感谢您的反馈！({feedback})"
+        try:
+            from common.feedback import save_feedback
+            save_feedback(user_state["username"], user_msg_state, assistant_msg_state, feedback)
+            return f"感谢您的反馈！({feedback})"
+        except Exception as e:
+            print(f"[反馈错误] {e}", flush=True)
+            return f"反馈保存失败: {e}"
 
     up_btn.click(
         fn=handle_feedback,

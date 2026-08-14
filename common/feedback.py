@@ -5,7 +5,6 @@
 """
 
 import json
-import os
 from datetime import datetime
 
 FEEDBACK_FILE = "feedback_log.json"
