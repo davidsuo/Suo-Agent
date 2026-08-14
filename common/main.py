@@ -104,10 +104,15 @@ def home():
     """
     
 def enhanced_log_plan(session_id, user_query, plan, results, step_times, final_status, total_time, completed_steps=None):
+    user_info = get_user_info(session_id) if session_id else None
+    username = user_info.get("username", "unknown") if user_info else "unknown"
+    role = user_info.get("role", "unknown") if user_info else "unknown"
+
     entry = {
         "timestamp": datetime.datetime.now().isoformat(),
         "session_id": session_id,
-        "tenant": memory.get_tenant(session_id),
+        "username": username,
+        "role": role,
         "user_query": user_query,
         "plan": plan,
         "results": {str(k): str(v)[:300] for k, v in results.items()},
@@ -121,31 +126,38 @@ def enhanced_log_plan(session_id, user_query, plan, results, step_times, final_s
     try:
         with open("plan_log.json", "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        print("[规划日志] 增强日志已写入", flush=True)
+        print(f"[规划审计] 计划执行已记录: user={username}, role={role}, status={final_status}", flush=True)
     except Exception as e:
-        print(f"[规划日志] 写入失败: {e}", flush=True)
-        import traceback
-        traceback.print_exc()  
+        print(f"[规划审计] 写入失败: {e}", flush=True)
 
 
 def simple_log_tool(session_id, user_query, tool_name, arguments, result):
-    """记录非规划模式的工具调用"""
+    """记录常规模式下的工具调用，包含用户和角色信息"""
+    # 获取用户信息（session_id 通常为用户名）
+    user_info = get_user_info(session_id) if session_id else None
+    username = user_info.get("username", "unknown") if user_info else "unknown"
+    role = user_info.get("role", "unknown") if user_info else "unknown"
+    # 根据结果字符串判断状态
+    status = "success" if ("错误" not in str(result) and "失败" not in str(result)) else "failed"
+
     entry = {
-        "timestamp": datetime.datetime.now().isoformat(),   # 注意这里是 datetime.datetime
+        "timestamp": datetime.datetime.now().isoformat(),
         "session_id": session_id,
-        "tenant": memory.get_tenant(session_id),
+        "username": username,
+        "role": role,
         "user_query": user_query,
         "tool": tool_name,
         "arguments": {k: v for k, v in arguments.items() if k != "_tenant"},
         "result": str(result)[:300],
+        "status": status,
         "mode": "regular"
     }
     try:
         with open("plan_log.json", "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        print("[日志] 常规工具调用已记录", flush=True)
+        print(f"[审计] 工具调用已记录: user={username}, role={role}, tool={tool_name}, status={status}", flush=True)
     except Exception as e:
-        print(f"[日志] 记录失败: {e}", flush=True)
+        print(f"[审计] 写入失败: {e}", flush=True)
 
 
 @app.post("/chat")
