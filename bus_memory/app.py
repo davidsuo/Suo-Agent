@@ -232,7 +232,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         fn=login,
         inputs=[username_input, pin_input],
         outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display],
-        js="(username, pin) => { if (username) { sessionStorage.setItem('suo_user', username); } return [username, pin]; }"
+        js="(username, pin) => { if (username) { sessionStorage.setItem('suo_user', username); const url = new URL(window.location); url.searchParams.set('user', username); window.history.replaceState({}, '', url); } return [username, pin]; }"
     )
 
     # ================= 退出函数 =================
