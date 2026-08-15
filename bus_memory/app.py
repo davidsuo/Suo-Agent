@@ -346,9 +346,9 @@ with gr.Blocks(title="AI 智能体") as demo:
             file_result = ""
 
             if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif'):
-                if message and "表格" in message:
-                    file_result = await asyncio.to_thread(recognize_table, file_path)
-                else:
+                # 优先尝试表格识别，如果失败则用通用 OCR
+                file_result = await asyncio.to_thread(recognize_table, file_path)
+                if "失败" in file_result or "错误" in file_result or not file_result.strip():
                     file_result = await asyncio.to_thread(ocr_image, file_path)
             elif ext in ('.csv', '.xlsx', '.xls'):
                 file_result = await asyncio.to_thread(analyze_file, file_path)

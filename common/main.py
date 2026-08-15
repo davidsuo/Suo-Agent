@@ -262,7 +262,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
             file_context = file_context[:max_file_context_len] + "\n...（文件内容过长，已截断）"
         messages.append({
             "role": "system", 
-            "content": f"【当前最新上传的文件内容】\n{file_context[:5000]}"
+            "content": f"【强制指令】以下是用户最新上传的文件内容，你必须严格基于该内容回答用户的问题，禁止使用其他数据源（如数据库、网络搜索）。文件内容如下：\n{file_context[:5000]}"
         })
 
     if image_base64:
