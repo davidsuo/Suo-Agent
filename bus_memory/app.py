@@ -87,6 +87,7 @@ def get_available_tenants():
 with gr.Blocks(title="AI 智能体") as demo:
     # ---------- 全局状态 ----------
     user_state = gr.State(value=None)              # 当前登录用户信息
+    session_user_input = gr.Textbox(visible=False)   # 用于接收 sessionStorage 中的用户名
     last_user_message = gr.State("")
     last_assistant_message = gr.State("")
     feedback_up = gr.State("up")
@@ -190,6 +191,16 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     # ================= 登录函数 =================
     def login(username, pin):
+        if not username or not pin:
+            return (
+                None,
+                gr.update(visible=True),
+                gr.update(visible=False),
+                [],
+                gr.update(),
+                "❌ 请输入用户名和 PIN 码",
+                ""
+            )
         user = authenticate(username.strip().lower(), pin)
         if user:
             session_id = user["username"]
@@ -220,7 +231,8 @@ with gr.Blocks(title="AI 智能体") as demo:
     login_btn.click(
         fn=login,
         inputs=[username_input, pin_input],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display]
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display],
+        js="(username, pin) => { if (username) { sessionStorage.setItem('suo_user', username); } }"
     )
 
     # ================= 退出函数 =================
@@ -239,11 +251,30 @@ with gr.Blocks(title="AI 智能体") as demo:
     logout_btn.click(
         fn=logout,
         inputs=[],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display]
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display],
+        js="() => { sessionStorage.removeItem('suo_user'); }"
     )
 
     # ================= 页面加载自动恢复登录 =================
     def load_history(session_username):
+        if session_username:
+            user = get_user_info(session_username)
+            if user:
+                session_id = user["username"]
+                memory.set_tenant(session_id, user["tenant"])
+                memory.set_current_user(user)
+                hist = memory.get_history(session_id)
+                tenants = get_available_tenants()
+                return (
+                    user,
+                    gr.update(visible=False),
+                    gr.update(visible=True),
+                    hist if hist else [],
+                    gr.Dropdown(choices=tenants, value=user["tenant"]),
+                    "",
+                    f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**"
+                )
+        # 未登录状态
         return (
             None,
             gr.update(visible=True),
@@ -256,8 +287,9 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     demo.load(
         fn=load_history,
-        inputs=[],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display]
+        inputs=[session_user_input],
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display],
+        js="() => sessionStorage.getItem('suo_user') || ''"
     )
 
     # ================= 主处理函数（文本、文件、音频） =================
