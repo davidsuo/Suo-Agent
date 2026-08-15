@@ -468,7 +468,20 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                             messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": str(result)})
                             continue
 
-                    if func_name in ("ocr_image", "recognize_table", "analyze_file") and any("【上传文件：" in (msg.get("content", "") if isinstance(msg.get("content", ""), str) else "") for msg in messages if msg["role"] == "user"):
+                    # 检查历史中是否已有文件内容
+                    has_file_content = False
+                    for m in messages:
+                        if isinstance(m, dict):
+                            role = m.get("role", "")
+                            content = m.get("content", "")
+                        else:
+                            role = getattr(m, "role", "")
+                            content = getattr(m, "content", "") or ""
+                        if role == "user" and "【上传文件：" in str(content):
+                            has_file_content = True
+                            break
+
+                    if func_name in ("ocr_image", "recognize_table", "analyze_file") and has_file_content:
                         result = "文件内容已在对话历史中，请直接基于该内容回答，不要调用工具。"
                         messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": result})
                         continue
