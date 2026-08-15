@@ -232,7 +232,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         fn=login,
         inputs=[username_input, pin_input],
         outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display],
-        js="(username, pin) => { if (username) { sessionStorage.setItem('suo_user', username); } }"
+        js="(username, pin) => { if (username) { sessionStorage.setItem('suo_user', username); } return [username, pin]; }"
     )
 
     # ================= 退出函数 =================
@@ -289,7 +289,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         fn=load_history,
         inputs=[session_user_input],
         outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display],
-        js="() => sessionStorage.getItem('suo_user') || ''"
+        js="() => { const user = sessionStorage.getItem('suo_user') || ''; return [user]; }"
     )
 
     # ================= 主处理函数（文本、文件、音频） =================
