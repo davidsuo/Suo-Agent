@@ -87,7 +87,6 @@ def get_available_tenants():
 with gr.Blocks(title="AI 智能体") as demo:
     # ---------- 全局状态 ----------
     user_state = gr.State(value=None)              # 当前登录用户信息
-    session_user_input = gr.Textbox(visible=False) # 用于从 sessionStorage 恢复用户
     last_user_message = gr.State("")
     last_assistant_message = gr.State("")
     feedback_up = gr.State("up")
@@ -191,21 +190,6 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     # ================= 登录函数 =================
     def login(username, pin):
-        # 防御性检查，避免空值导致 AttributeError
-        if not isinstance(username, str):
-            username = ""
-        if not isinstance(pin, str):
-            pin = ""
-        if not username.strip() or not pin.strip():
-            return (
-                None,
-                gr.update(visible=True),
-                gr.update(visible=False),
-                [],
-                gr.update(),
-                "❌ 请输入用户名和 PIN 码",
-                ""
-            )
         user = authenticate(username.strip().lower(), pin)
         if user:
             session_id = user["username"]
@@ -236,8 +220,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     login_btn.click(
         fn=login,
         inputs=[username_input, pin_input],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display],
-        js="(username, pin) => { if (username) { const url = new URL(window.location); url.searchParams.set('user', username); window.history.replaceState({}, '', url); sessionStorage.setItem('suo_user', username); } }"
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display]
     )
 
     # ================= 退出函数 =================
@@ -256,8 +239,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     logout_btn.click(
         fn=logout,
         inputs=[],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display],
-        js="() => { sessionStorage.removeItem('suo_user'); const url = new URL(window.location); url.searchParams.delete('user'); window.history.replaceState({}, '', url); }"
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display]
     )
 
     # ================= 页面加载自动恢复登录 =================
@@ -291,9 +273,8 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     demo.load(
         fn=load_history,
-        inputs=[session_user_input],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display],
-        js="() => sessionStorage.getItem('suo_user') || ''"
+        inputs=[session_user_input],      # 此处可以保留组件，但不会通过 JS 填充
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display]
     )
 
     # ================= 主处理函数（文本、文件、音频） =================
