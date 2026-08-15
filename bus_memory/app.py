@@ -191,6 +191,21 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     # ================= 登录函数 =================
     def login(username, pin):
+        # 防御性检查，避免空值导致 AttributeError
+        if not isinstance(username, str):
+            username = ""
+        if not isinstance(pin, str):
+            pin = ""
+        if not username.strip() or not pin.strip():
+            return (
+                None,
+                gr.update(visible=True),
+                gr.update(visible=False),
+                [],
+                gr.update(),
+                "❌ 请输入用户名和 PIN 码",
+                ""
+            )
         user = authenticate(username.strip().lower(), pin)
         if user:
             session_id = user["username"]
