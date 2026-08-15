@@ -6,7 +6,7 @@ import gradio as gr
 import asyncio
 import json
 import pandas as pd
-from common.main import chat_core, set_workers
+from common.main import chat_core, set_workers, simple_log_tool
 from common.memory import memory
 from common.tools import (
     get_current_time, calculator,
@@ -19,7 +19,6 @@ from common.tools import (
 from bus_memory.event_bus import EventBus
 from common.agents_memory import WorkerAgent, QueryWorker
 from common.auth import init_users_db, authenticate, get_user_info
-from common.main import simple_log_tool
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)) + "/..")
 
@@ -369,6 +368,8 @@ with gr.Blocks(title="AI 智能体") as demo:
             else:
                 # 将文件内容保存到专用上下文字段，不在聊天历史显示
                 memory.set_file_context(session_id, f"【上传文件：{file_name}】\n{file_result}")
+                # 记录文件上传操作到审计日志
+                simple_log_tool(session_id, file_name, "file_upload", {"file_name": file_name}, "文件上传成功")
                 history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
                 history.append({"role": "assistant", "content": "文件已就绪，您可以基于该内容提问。"})
                 return history, "", None, "", ""
