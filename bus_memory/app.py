@@ -367,11 +367,8 @@ with gr.Blocks(title="AI 智能体") as demo:
                 history.append({"role": "assistant", "content": answer})
                 return history, "", None, file_result, answer
             else:
-                # 保存文件内容到记忆
-                memory.append(session_id, f"【上传文件：{file_name}】\n{file_result}", "")
-                # 记录文件上传操作到审计日志（工具名统一为 file_upload）
-                from common.main import simple_log_tool  # 确保导入
-                simple_log_tool(session_id, file_name, "file_upload", {"file_name": file_name}, "文件上传成功")
+                # 将文件内容保存到专用上下文字段，不在聊天历史显示
+                memory.set_file_context(session_id, f"【上传文件：{file_name}】\n{file_result}")
                 history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
                 history.append({"role": "assistant", "content": "文件已就绪，您可以基于该内容提问。"})
                 return history, "", None, "", ""

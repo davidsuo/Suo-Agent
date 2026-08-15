@@ -251,14 +251,17 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
     messages = [{"role": "system", "content": system_content}]
     messages.extend(history)
 
+    # 注入当前会话的文件上下文（如果存在）
+    file_context = memory.get_file_context(session_id)
+    if file_context:
+        # 截断过长的内容，防止上下文溢出
+        max_file_context_len = 5000
+        if len(file_context) > max_file_context_len:
+            file_context = file_context[:max_file_context_len] + "\n...（文件内容过长，已截断）"
+        messages.append({"role": "system", "content": f"[文件内容]\n{file_context}"})
+
     if image_base64:
-        user_message = {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": query},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}
-            ]
-        }
+        user_message = {...}
     else:
         user_message = {"role": "user", "content": query}
     messages.append(user_message)

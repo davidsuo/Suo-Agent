@@ -26,6 +26,7 @@ class ConversationMemory:
         self.current_user: Optional[Dict[str, str]] = None
         self._lock = threading.Lock()          # 保护共享状态
         self.load_from_file()
+        self.file_contexts: Dict[str, str] = {}
 
     # ================== 持久化核心 ==================
     def _save_to_file(self) -> None:
@@ -35,6 +36,7 @@ class ConversationMemory:
             "tenant_map": self.tenant_map,
             "all_tenants": list(self.all_tenants),
             "current_user": self.current_user,
+            "file_contexts": self.file_contexts,
         }
         try:
             # 先写入临时文件，再原子替换，避免进程中断导致文件损坏
@@ -59,6 +61,7 @@ class ConversationMemory:
             loaded_tenants = data.get("all_tenants", ["default"])
             self.all_tenants = set(loaded_tenants) if loaded_tenants else {"default"}
             self.current_user = data.get("current_user", None)
+            self.file_contexts = data.get("file_contexts", {})
             print(f"[Memory] 加载成功，租户映射: {self.tenant_map}, 会话键数量: {len(self.sessions)}")
         except Exception as e:
             print(f"[Memory] 加载失败: {e}，将使用空记忆并可能覆盖旧文件")
@@ -74,6 +77,16 @@ class ConversationMemory:
     def get_tenant(self, session_id: str) -> str:
         """获取会话ID对应的租户，默认 'default'"""
         return self.tenant_map.get(session_id, "default")
+        
+    def set_file_context(self, session_id: str, content: str) -> None:
+        """设置某个会话的文件内容（仅供模型使用，不显示在聊天历史）"""
+        with self._lock:
+            self.file_contexts[session_id] = content
+            self._save_to_file()
+
+    def get_file_context(self, session_id: str) -> str:
+        """获取某个会话的文件内容，若不存在返回空字符串"""
+        return self.file_contexts.get(session_id, "")
 
     # ================== 会话历史管理 ==================
     def _get_session_key(self, session_id: str) -> str:
