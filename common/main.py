@@ -60,6 +60,8 @@ SYSTEM_PROMPT = """
 
 【文件处理规则】当用户上传文件后，对话历史中会出现以“【上传文件：...】”开头的消息，该消息包含文件内容。如果用户要求提取文字、分析表格、识别内容等，你必须直接使用该消息中的文件内容回答，严禁调用 ocr_image、recognize_table 或 analyze_file 等工具。仅在对话历史中不存在文件内容时才调用工具。
 
+**新增规则**：如果用户在短时间内上传了多个文件，你必须始终基于**最近一次上传的文件内容**回答用户的问题，除非用户明确提到了之前的文件名或内容。系统会在每次提问时提供当前最新的文件内容作为系统消息，请优先使用该内容。
+
 【时间查询强制规则】
 - 每当用户询问当前时间、现在几点、什么时间等类似问题时，你必须立即调用 get_current_time 工具获取最新的北京时间，严禁直接从对话历史或记忆中提取之前的时间。
 - 即使上一轮对话刚刚询问过时间，本轮也必须重新调用工具。
@@ -258,7 +260,10 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
         max_file_context_len = 5000
         if len(file_context) > max_file_context_len:
             file_context = file_context[:max_file_context_len] + "\n...（文件内容过长，已截断）"
-        messages.append({"role": "system", "content": f"[文件内容]\n{file_context}"})
+        messages.append({
+            "role": "system", 
+            "content": f"【当前最新上传的文件内容】\n{file_context[:5000]}"
+        })
 
     if image_base64:
         user_message = {...}
