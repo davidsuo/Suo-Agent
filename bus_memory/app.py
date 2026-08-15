@@ -244,23 +244,6 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     # ================= 页面加载自动恢复登录 =================
     def load_history(session_username):
-        if session_username:
-            user = get_user_info(session_username)
-            if user:
-                session_id = user["username"]
-                memory.set_tenant(session_id, user["tenant"])
-                memory.set_current_user(user)
-                hist = memory.get_history(session_id)
-                tenants = get_available_tenants()
-                return (
-                    user,
-                    gr.update(visible=False),
-                    gr.update(visible=True),
-                    hist if hist else [],
-                    gr.Dropdown(choices=tenants, value=user["tenant"]),
-                    "",
-                    f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**"
-                )
         return (
             None,
             gr.update(visible=True),
@@ -273,7 +256,7 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     demo.load(
         fn=load_history,
-        inputs=[session_user_input],      # 此处可以保留组件，但不会通过 JS 填充
+        inputs=[],
         outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display]
     )
 
