@@ -86,8 +86,8 @@ def get_available_tenants():
 # ================= Gradio 界面 =================
 with gr.Blocks(title="AI 智能体") as demo:
     # ---------- 全局状态 ----------
-    user_state = gr.State(value=None)
-    browser_user = gr.BrowserState()
+    user_state = gr.State(value=None)              # 当前登录用户信息
+    session_user_input = gr.Textbox(visible=False) # 用于从 sessionStorage 恢复用户
     last_user_message = gr.State("")
     last_assistant_message = gr.State("")
     feedback_up = gr.State("up")
@@ -205,8 +205,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                 hist if hist else [],
                 gr.Dropdown(choices=tenants, value=user["tenant"]),
                 f"✅ 登录成功，欢迎 {user['display_name']}！",
-                f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**",
-                user["username"]
+                f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**"
             )
         else:
             return (
@@ -216,14 +215,14 @@ with gr.Blocks(title="AI 智能体") as demo:
                 [],
                 gr.update(),
                 "❌ 用户名或 PIN 码错误",
-                "",
                 ""
             )
 
     login_btn.click(
         fn=login,
         inputs=[username_input, pin_input],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, browser_user]
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display],
+        js="(username, pin) => { if (username) { const url = new URL(window.location); url.searchParams.set('user', username); window.history.replaceState({}, '', url); sessionStorage.setItem('suo_user', username); } }"
     )
 
     # ================= 退出函数 =================
@@ -236,20 +235,20 @@ with gr.Blocks(title="AI 智能体") as demo:
             gr.update(),
             gr.update(),
             "",
-            "",
             ""
         )
 
     logout_btn.click(
         fn=logout,
         inputs=[],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, browser_user]
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display],
+        js="() => { sessionStorage.removeItem('suo_user'); const url = new URL(window.location); url.searchParams.delete('user'); window.history.replaceState({}, '', url); }"
     )
 
-    # ================= 页面加载恢复登录 =================
-    def load_history(browser_username):
-        if browser_username:
-            user = get_user_info(browser_username)
+    # ================= 页面加载自动恢复登录 =================
+    def load_history(session_username):
+        if session_username:
+            user = get_user_info(session_username)
             if user:
                 session_id = user["username"]
                 memory.set_tenant(session_id, user["tenant"])
@@ -263,8 +262,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                     hist if hist else [],
                     gr.Dropdown(choices=tenants, value=user["tenant"]),
                     "",
-                    f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**",
-                    browser_username
+                    f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**"
                 )
         return (
             None,
@@ -273,17 +271,17 @@ with gr.Blocks(title="AI 智能体") as demo:
             [],
             gr.Dropdown(choices=get_available_tenants(), value="default"),
             "",
-            "",
             ""
         )
 
     demo.load(
         fn=load_history,
-        inputs=[browser_user],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, browser_user]
+        inputs=[session_user_input],
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display],
+        js="() => sessionStorage.getItem('suo_user') || ''"
     )
 
-    # ================= 主处理函数 =================
+    # ================= 主处理函数（文本、文件、音频） =================
     async def unified_handler(message, history, file, user):
         if not user:
             return history or [], "", None, "", ""
@@ -346,9 +344,9 @@ with gr.Blocks(title="AI 智能体") as demo:
             file_result = ""
 
             if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif'):
-                # 优先尝试表格识别，如果失败则用通用 OCR
-                file_result = await asyncio.to_thread(recognize_table, file_path)
-                if "失败" in file_result or "错误" in file_result or not file_result.strip():
+                if message and "表格" in message:
+                    file_result = await asyncio.to_thread(recognize_table, file_path)
+                else:
                     file_result = await asyncio.to_thread(ocr_image, file_path)
             elif ext in ('.csv', '.xlsx', '.xls'):
                 file_result = await asyncio.to_thread(analyze_file, file_path)
@@ -358,6 +356,10 @@ with gr.Blocks(title="AI 智能体") as demo:
                 file_result = "不支持的文件类型"
 
             file_result = str(file_result)
+            # 无论文件类型，都保存为最新文件上下文
+            memory.set_file_context(session_id, f"【上传文件：{file_name}】\n{file_result}")
+            simple_log_tool(session_id, file_name, "file_upload", {"file_name": file_name}, "文件上传成功")
+
             history = history or []
 
             if ext in ('.wav', '.mp3', '.m4a', '.ogg'):
@@ -366,10 +368,6 @@ with gr.Blocks(title="AI 智能体") as demo:
                 history.append({"role": "assistant", "content": answer})
                 return history, "", None, file_result, answer
             else:
-                # 将文件内容保存到专用上下文字段，不在聊天历史显示
-                memory.set_file_context(session_id, f"【上传文件：{file_name}】\n{file_result}")
-                # 记录文件上传操作到审计日志
-                simple_log_tool(session_id, file_name, "file_upload", {"file_name": file_name}, "文件上传成功")
                 history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
                 history.append({"role": "assistant", "content": "文件已就绪，您可以基于该内容提问。"})
                 return history, "", None, "", ""
@@ -403,7 +401,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         [chatbot, text_input, audio_input_btn, last_user_message, last_assistant_message]
     )
 
-    # 反馈处理
+    # ================= 反馈处理 =================
     async def handle_feedback(feedback, user_msg_state, assistant_msg_state, user_state):
         print(f"[反馈按钮] 触发，feedback={feedback}, user={user_state}, user_msg={user_msg_state[:30]}...", flush=True)
         if not user_state:
@@ -429,7 +427,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         outputs=[feedback_msg]
     )
 
-    # Worker 监控刷新
+    # ================= Worker 监控刷新 =================
     def refresh_status():
         workers = [query_worker, command_worker]
         data = []
