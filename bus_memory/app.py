@@ -19,6 +19,7 @@ from common.tools import (
 from bus_memory.event_bus import EventBus
 from common.agents_memory import WorkerAgent, QueryWorker
 from common.auth import init_users_db, authenticate, get_user_info
+from common.workflows import add_workflow, list_workflows
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)) + "/..")
 
@@ -163,6 +164,47 @@ with gr.Blocks(title="AI 智能体") as demo:
                 headers=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度", "平均耗时(s)", "错误率"],
                 interactive=False
             )
+            
+        with gr.Tab("工作流管理"):
+            gr.Markdown("## 🧩 低代码工作流配置")
+            gr.Markdown("仅管理员可配置。定义工作流后，在聊天中可说“执行工作流 xxx”来调用。")
+            workflow_name_input = gr.Textbox(label="工作流名称")
+            workflow_desc_input = gr.Textbox(label="描述")
+            workflow_steps_input = gr.Textbox(label="步骤 JSON", placeholder='[{"tool": "get_current_time", "arguments": {}}, {"tool": "web_search", "arguments": {"query": "今日新闻"}}]')
+            workflow_create_btn = gr.Button("创建工作流")
+            workflow_create_msg = gr.Markdown("")
+            
+            workflow_list = gr.Dataframe(headers=["名称", "描述", "创建者", "创建时间"], interactive=False)
+            refresh_workflow_btn = gr.Button("刷新列表")
+
+            def create_workflow(name, desc, steps_json, user):
+                if not user or user.get("role") != "admin":
+                    return "❌ 只有管理员可以创建工作流。"
+                try:
+                    steps = json.loads(steps_json)
+                    if not isinstance(steps, list):
+                        return "❌ 步骤必须是 JSON 数组。"
+                    ok = add_workflow(name, desc, steps, user["username"])
+                    if ok:
+                        return f"✅ 工作流 {name} 已创建。"
+                    else:
+                        return "❌ 工作流名称已存在。"
+                except Exception as e:
+                    return f"❌ 步骤 JSON 解析失败: {e}"
+
+            workflow_create_btn.click(
+                fn=create_workflow,
+                inputs=[workflow_name_input, workflow_desc_input, workflow_steps_input, user_state],
+                outputs=[workflow_create_msg]
+            )
+
+            def refresh_workflows():
+                workflows = list_workflows()
+                return pd.DataFrame(workflows, columns=["名称", "描述", "创建者", "创建时间"])
+
+            refresh_workflow_btn.click(fn=refresh_workflows, outputs=workflow_list)
+            workflow_list.value = refresh_workflows()
+            
 
     # ================= 健康仪表板更新函数 =================
     def update_health_dashboard():

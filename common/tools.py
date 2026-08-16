@@ -632,6 +632,12 @@ def compensate_generate_image(prompt: str, **kwargs):
         return "补偿：图像生成失败已记录。"
     except Exception as e:
         return f"补偿记录失败: {e}"
+        
+# ================== 低代码工作流执行 ==================
+def execute_workflow_tool(name: str, extra_params: Optional[Dict[str, Any]] = None) -> str:
+    """执行预定义的工作流"""
+    from common.workflows import execute_workflow
+    return execute_workflow(name, extra_params=extra_params)
 
 COMPENSATIONS = {
     "send_email": compensate_send_email,
