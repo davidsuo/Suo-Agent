@@ -87,7 +87,7 @@ def get_available_tenants():
     return sorted(list(memory.all_tenants))
     
 
-# ================= 自定义 JavaScript =================
+# ================= 自定义 JavaScript（仅用于按住空格录音） =================
 voice_script = """
 <script>
 (function() {
@@ -112,7 +112,6 @@ voice_script = """
         }
 
         e.preventDefault();
-        console.log('空格键按下，准备录音');
         isRecording = true; audioChunks = []; showStatus('🎤 正在录音...');
 
         try {
@@ -128,8 +127,9 @@ voice_script = """
                 if (fileInput) {
                     const dt = new DataTransfer(); dt.items.add(file); fileInput.files = dt.files;
                     fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-                    console.log('已触发文件上传事件');
-                } else { console.error('未找到隐藏的 file input'); }
+                } else {
+                    console.error('未找到隐藏的 file input');
+                }
                 mediaRecorder.stream.getTracks().forEach(track => track.stop());
                 mediaRecorder = null;
             };
@@ -149,86 +149,6 @@ voice_script = """
 </script>
 """
 
-drag_drop_script = """
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const dropZone = document.getElementById('drop-zone');
-    const spinner = document.getElementById('upload-spinner');
-    const fileInputWrapper = document.getElementById('drop-file-input');
-    const fileInput = fileInputWrapper ? fileInputWrapper.querySelector('input[type="file"]') : null;
-
-    if (!dropZone || !fileInput) {
-        console.warn('拖拽上传组件未找到');
-        return;
-    }
-
-    function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
-
-    // 阻止浏览器默认打开文件
-    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-        dropZone.addEventListener(eventName, preventDefaults, false);
-        document.body.addEventListener(eventName, preventDefaults, false);
-    });
-
-    // 高亮拖拽区域
-    ['dragenter', 'dragover'].forEach(eventName => {
-        dropZone.addEventListener(eventName, highlight, false);
-    });
-    ['dragleave', 'drop'].forEach(eventName => {
-        dropZone.addEventListener(eventName, unhighlight, false);
-    });
-
-    function highlight(e) { dropZone.classList.add('highlight'); }
-    function unhighlight(e) { dropZone.classList.remove('highlight'); }
-
-    // 处理拖拽文件
-    dropZone.addEventListener('drop', handleDrop, false);
-
-    function handleDrop(e) {
-        const files = e.dataTransfer.files;
-        if (files.length > 0) {
-            const file = files[0];
-            // 显示 spinner
-            if (spinner) spinner.style.display = 'inline-block';
-            // 将文件赋给隐藏的文件输入
-            const dt = new DataTransfer();
-            dt.items.add(file);
-            fileInput.files = dt.files;
-            fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-            console.log('文件已拖拽上传:', file.name);
-        }
-    }
-
-    // 处理粘贴文件（Ctrl+V）
-    document.addEventListener('paste', function(e) {
-        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-        for (let i = 0; i < items.length; i++) {
-            if (items[i].kind === 'file') {
-                const file = items[i].getAsFile();
-                if (spinner) spinner.style.display = 'inline-block';
-                const dt = new DataTransfer();
-                dt.items.add(file);
-                fileInput.files = dt.files;
-                fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-                console.log('文件已粘贴上传:', file.name);
-                e.preventDefault(); // 阻止默认粘贴
-                break;
-            }
-        }
-    });
-
-    // 上传完成后隐藏 spinner（检测到“文件已就绪”文本）
-    const observer = new MutationObserver(function(mutations) {
-        if (document.body.innerText.includes('文件已就绪')) {
-            if (spinner) spinner.style.display = 'none';
-        }
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-});
-</script>
-"""
-
-# ================= Gradio 界面 =================
 with gr.Blocks(title="AI 智能体") as demo:
     # ---------- 全局状态 ----------
     user_state = gr.State(value=None)
@@ -267,55 +187,28 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
-            # 拖拽上传区域：包含 spinner、输入框和隐藏文件组件
-            with gr.Column(elem_id="drop-zone"):
-                # 旋转提示
-                spinner_html = gr.HTML("""
-                <div id="upload-spinner" style="display:none; position:absolute; top:5px; left:5px; z-index:10;">
-                    <span class="loader"></span> 处理中...
-                </div>
-                <style>
-                .loader {
-                    border: 3px solid #f3f3f3;
-                    border-radius: 50%;
-                    border-top: 3px solid #3498db;
-                    width: 15px;
-                    height: 15px;
-                    animation: spin 1s linear infinite;
-                    display: inline-block;
-                }
-                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-                </style>
-                """)
+            # 文件上传区域（原生拖拽+点击）
+            file_upload_input = gr.File(
+                label="📎 拖拽文件到这里，或点击上传",
+                file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
+                type="filepath",
+                scale=1
+            )
 
-                text_input = gr.Textbox(
-                    label="输入文字（可用 /logs 查看日志）",
-                    placeholder="发消息或按住空格说话，松开发送...",
-                    scale=4
-                )
+            # 输入框
+            text_input = gr.Textbox(
+                label="输入文字（可用 /logs 查看日志）",
+                placeholder="发消息或按住空格说话，松开发送...",
+                scale=4
+            )
 
-                # 隐藏的文件组件，用于接收拖拽的文件
-                drop_file_input = gr.File(
-                    visible=True,
-                    type="filepath",
-                    elem_id="drop-file-input",
-                    label=""
-                )
-
-                # 另一个隐藏的文件组件，用于接收按住空格录音
-                voice_file_input = gr.File(
-                    visible=True,
-                    type="filepath",
-                    elem_id="voice-file-input",
-                    label=""
-                )
-
-            with gr.Row():
-                file_upload_btn = gr.UploadButton(
-                    "📁 上传文件",
-                    file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
-                    scale=0
-                )
+            # 隐藏的语音文件输入（用于按住空格录音）
+            voice_file_input = gr.File(
+                visible=True,
+                type="filepath",
+                elem_id="voice-file-input",
+                label=""
+            )
 
             with gr.Row():
                 up_btn = gr.Button("👍 有帮助")
@@ -491,7 +384,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         js="() => sessionStorage.getItem('suo_user') || ''"
     )
 
-    # ================= 主处理函数 =================
+    # ================= 主处理函数（文本、文件、音频） =================
     async def unified_handler(message, history, file, user):
         if not user:
             return history or [], "", None, "", ""
@@ -597,23 +490,18 @@ with gr.Blocks(title="AI 智能体") as demo:
     # 事件绑定
     text_input.submit(
         unified_handler,
-        [text_input, chatbot, file_upload_btn, user_state],
-        [chatbot, text_input, file_upload_btn, last_user_message, last_assistant_message]
+        [text_input, chatbot, file_upload_input, user_state],
+        [chatbot, text_input, file_upload_input, last_user_message, last_assistant_message]
     )
-    file_upload_btn.upload(
+    file_upload_input.upload(
         unified_handler,
-        [text_input, chatbot, file_upload_btn, user_state],
-        [chatbot, text_input, file_upload_btn, last_user_message, last_assistant_message]
+        [text_input, chatbot, file_upload_input, user_state],
+        [chatbot, text_input, file_upload_input, last_user_message, last_assistant_message]
     )
     voice_file_input.upload(
         unified_handler,
         [text_input, chatbot, voice_file_input, user_state],
         [chatbot, text_input, voice_file_input, last_user_message, last_assistant_message]
-    )
-    drop_file_input.upload(
-        unified_handler,
-        [text_input, chatbot, drop_file_input, user_state],
-        [chatbot, text_input, drop_file_input, last_user_message, last_assistant_message]
     )
 
     # 反馈处理
@@ -700,28 +588,9 @@ if __name__ == "__main__":
         server_name="0.0.0.0",
         server_port=port,
         theme=gr.themes.Soft(),
-        head=voice_script + drag_drop_script,
+        head=voice_script,
         css="""
             #voice-file-input { display: none; }
-            #drop-file-input { display: none; }
-            #drop-zone {
-                position: relative;
-                border: 2px dashed #ccc;
-                border-radius: 8px;
-                padding: 8px;
-                min-height: 80px;
-                background-color: #fafafa;
-            }
-            #drop-zone.highlight {
-                background-color: #f0f8ff;
-                border-color: #3498db;
-            }
-            #upload-spinner {
-                position: absolute;
-                top: 5px;
-                left: 5px;
-                z-index: 10;
-            }
         """
     )
 
