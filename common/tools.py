@@ -245,8 +245,8 @@ def speech_to_text(audio_file_path: str) -> str:
 # ==================== 文件分析 ====================
 def analyze_file(file_path: str) -> str:
     """
-    分析 CSV 或 Excel 文件，必须显式提供路径。
-    返回摘要信息，包括行列数、列名、前几行和数值统计。
+    分析 CSV 或 Excel 文件，返回摘要信息。
+    如果检测到日期列和价格列，自动计算按月份/季度的汇总统计。
     """
     if not file_path:
         return "错误：请提供文件路径。"
@@ -263,32 +263,54 @@ def analyze_file(file_path: str) -> str:
         info = f"文件分析结果：\n- 行数: {rows}\n- 列数: {len(df.columns)}\n"
         info += f"- 列名: {', '.join(df.columns.tolist())}\n"
 
+        # 大文件仅展示前几行
         if rows > 500:
             info += "\n⚠️ 文件较大，仅展示前3行和关键信息。\n"
             info += f"数据类型:\n{df.dtypes.to_string()}\n\n"
             info += "前3行数据:\n"
             info += df.head(3).to_string(index=False)
-            if 'price' in df.columns:
-                max_price = df['price'].max()
-                max_row = df[df['price'] == max_price]
-                if 'coffee_name' in df.columns:
-                    top_names = max_row['coffee_name'].unique()
-                    info += f"\n\n🏆 最贵咖啡价格: {max_price}，品种: {', '.join(top_names)}"
-                else:
-                    info += f"\n\n🏆 最高价格: {max_price}"
-            return info
+        else:
+            info += f"数据类型:\n{df.dtypes.to_string()}\n\n"
+            info += "前5行数据:\n"
+            info += df.head(5).to_string(index=False)
 
-        info += f"数据类型:\n{df.dtypes.to_string()}\n\n"
-        info += "前5行数据:\n"
-        info += df.head(5).to_string(index=False)
+        # 数值列统计
         num_cols = df.select_dtypes(include='number')
         if not num_cols.empty:
             info += "\n\n数值列统计:\n"
             info += num_cols.describe().to_string()
-            if 'price' in df.columns and 'coffee_name' in df.columns:
-                max_price = df['price'].max()
-                top_coffee = df[df['price'] == max_price]['coffee_name'].unique()
-                info += f"\n\n🏆 最贵咖啡: {', '.join(top_coffee)}，价格: {max_price}"
+
+        # 智能汇总：检测日期列和价格列
+        date_col = None
+        for col in df.columns:
+            col_lower = col.lower()
+            if 'date' in col_lower or '日期' in col_lower or 'time' in col_lower:
+                date_col = col
+                break
+        price_col = None
+        for col in df.columns:
+            if 'price' in col.lower() or '价格' in col.lower() or 'amount' in col.lower() or '收入' in col.lower():
+                price_col = col
+                break
+        if not price_col and len(num_cols.columns) > 0:
+            # 如果没有明显的价格列，但存在数值列，选择第一个数值列作为度量
+            price_col = num_cols.columns[0]
+
+        if date_col and price_col:
+            try:
+                # 将日期列转换为日期时间
+                df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+                # 提取月份和季度
+                df['__month'] = df[date_col].dt.to_period('M')
+                df['__quarter'] = df[date_col].dt.to_period('Q')
+                # 按月份和季度汇总
+                monthly_sum = df.groupby('__month')[price_col].sum().to_string()
+                quarterly_sum = df.groupby('__quarter')[price_col].sum().to_string()
+                info += f"\n\n按月份汇总（{price_col}）:\n{monthly_sum}"
+                info += f"\n\n按季度汇总（{price_col}）:\n{quarterly_sum}"
+            except Exception as e:
+                info += f"\n\n（未能自动计算时间汇总: {e}）"
+
         return info
     except Exception as e:
         return f"文件分析失败: {e}"
