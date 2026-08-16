@@ -238,42 +238,69 @@ with gr.Blocks(title="AI 智能体", css="""
     let audioChunks = [];
     let isRecording = false;
 
-    document.addEventListener('keydown', async (e) => {
-        if (e.code !== 'Space' || isRecording) return;
-        // 如果焦点在输入框或文本区域，则不触发录音，允许正常输入空格
-        const activeTag = document.activeElement.tagName;
-        if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') return;
+    // 创建状态提示元素
+    const statusDiv = document.createElement('div');
+    statusDiv.id = 'recording-status';
+    statusDiv.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 8px 16px; border-radius: 20px; display: none; z-index: 9999;';
+    document.body.appendChild(statusDiv);
 
-        e.preventDefault();  // 阻止页面滚动
+    function showStatus(text) {
+        statusDiv.textContent = text;
+        statusDiv.style.display = 'block';
+    }
+    function hideStatus() {
+        statusDiv.style.display = 'none';
+    }
+
+    document.addEventListener('keydown', async (e) => {
+        // 仅空格键触发
+        if (e.code !== 'Space' || isRecording) return;
+
+        // 如果焦点在输入框或文本区域，并且输入框有内容，则不触发录音（允许空格输入）
+        const active = document.activeElement;
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') && active.value && active.value.trim() !== '') {
+            return; // 正在输入文字，不录音
+        }
+
+        e.preventDefault();
+        console.log('空格键按下，准备录音');
         isRecording = true;
         audioChunks = [];
+        showStatus('🎤 正在录音...');
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaRecorder = new MediaRecorder(stream);
             mediaRecorder.ondataavailable = event => {
-                audioChunks.push(event.data);
+                if (event.data.size > 0) audioChunks.push(event.data);
             };
             mediaRecorder.onstop = () => {
+                hideStatus();
                 const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
                 const file = new File([audioBlob], 'voice_message.webm', { type: audioBlob.type });
 
-                // 获取隐藏的文件输入组件并设置文件
-                const fileInput = document.querySelector('#voice-file-input input[type="file"]');
+                // 定位隐藏的文件输入组件
+                const wrapper = document.getElementById('voice-file-input');
+                console.log('查找 voice-file-input:', wrapper);
+                const fileInput = wrapper ? wrapper.querySelector('input[type="file"]') : null;
                 if (fileInput) {
                     const dt = new DataTransfer();
                     dt.items.add(file);
                     fileInput.files = dt.files;
                     fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    console.log('已触发文件上传事件');
+                } else {
+                    console.error('未找到隐藏的 file input');
                 }
-                // 停止所有音轨
+
                 mediaRecorder.stream.getTracks().forEach(track => track.stop());
+                mediaRecorder = null;
             };
             mediaRecorder.start();
-            // 录音时轻微改变背景色作为提示
-            document.body.style.backgroundColor = '#f0f8ff';
         } catch (err) {
             console.error('录音失败:', err);
+            showStatus('❌ 无法访问麦克风，请检查权限');
+            setTimeout(hideStatus, 2000);
             isRecording = false;
         }
     });
@@ -281,8 +308,8 @@ with gr.Blocks(title="AI 智能体", css="""
     document.addEventListener('keyup', (e) => {
         if (e.code !== 'Space' || !isRecording) return;
         e.preventDefault();
+        console.log('空格键松开，停止录音');
         isRecording = false;
-        document.body.style.backgroundColor = '';
         if (mediaRecorder && mediaRecorder.state === 'recording') {
             mediaRecorder.stop();
         }
