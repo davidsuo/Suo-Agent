@@ -612,11 +612,24 @@ if __name__ == "__main__":
         css="""
             #voice-file-input { display: none; }
             #chat-file-upload {
-                margin-top: -10px;
+                margin-top: 0px;
             }
-            #chat-file-upload label {
+            #chat-file-upload .wrap {
+                display: none;          /* 隐藏默认的拖放区域内容 */
+            }
+            #chat-file-upload::before {
+                content: "📎 点击上传，或拖拽文件到这里";
+                display: block;
                 font-size: 0.9em;
                 color: #666;
+                padding: 4px 0;
+                cursor: pointer;
+            }
+            #chat-file-upload:hover::before {
+                color: #333;
+            }
+            #chat-file-upload input[type="file"] {
+                display: none;          /* 隐藏原始文件输入 */
             }
         """
     )
