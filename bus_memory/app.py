@@ -199,7 +199,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                 )
                 attachment_msg = gr.Markdown("")  # 显示暂存文件名
                 file_upload_input = gr.File(
-                    label="点击上传，或拖拽文件到这里",
+                    label="📎 点击上传，或拖拽文件到这里",
                     file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
                     type="filepath",
                     scale=1,
@@ -611,25 +611,22 @@ if __name__ == "__main__":
         head=voice_script,
         css="""
             #voice-file-input { display: none; }
+            #chat-input textarea {
+                border-radius: 8px 8px 0 0 !important;
+            }
             #chat-file-upload {
-                margin-top: 0px;
+                margin-top: -1px;
+                border: 1px solid #ddd;
+                border-radius: 0 0 8px 8px;
+                padding: 6px 8px;
+                background: #fafafa;
             }
             #chat-file-upload .wrap {
-                display: none;          /* 隐藏默认的拖放区域内容 */
-            }
-            #chat-file-upload::before {
-                content: "📎 点击上传，或拖拽文件到这里";
-                display: block;
-                font-size: 0.9em;
+                font-size: 0.85em;
                 color: #666;
-                padding: 4px 0;
-                cursor: pointer;
             }
-            #chat-file-upload:hover::before {
-                color: #333;
-            }
-            #chat-file-upload input[type="file"] {
-                display: none;          /* 隐藏原始文件输入 */
+            #chat-file-upload:hover {
+                background: #f0f0f0;
             }
         """
     )
