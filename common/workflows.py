@@ -38,10 +38,15 @@ def add_workflow(name: str, description: str, steps: List[Dict[str, Any]], creat
                 "INSERT INTO workflows (name, description, steps_json, created_by, created_at) VALUES (?,?,?,?,?)",
                 (name, description, json.dumps(steps, ensure_ascii=False), created_by, datetime.now().isoformat())
             )
+            print(f"[Workflow] 尝试添加工作流: {name}, steps={steps}", flush=True)
             conn.commit()
         return True
     except sqlite3.IntegrityError:
         return False  # 名称已存在
+    if ok:
+        print(f"[Workflow] 添加成功: {name}", flush=True)
+    else:
+        print("[Workflow] 添加失败，名称可能已存在", flush=True)
 
 def get_workflow(name: str) -> Optional[Dict[str, Any]]:
     """根据名称获取工作流定义"""
@@ -69,6 +74,7 @@ def list_workflows() -> List[Dict[str, Any]]:
         {"name": r[0], "description": r[1], "created_by": r[2], "created_at": r[3]}
         for r in rows
     ]
+    print(f"[Workflow] 列出工作流，发现 {len(rows)} 条", flush=True)
 
 def delete_workflow(name: str) -> bool:
     """删除指定名称的工作流"""
