@@ -179,7 +179,20 @@ def get_baidu_access_token() -> str:
         return ""
 
 def speech_to_text(audio_file_path: str) -> str:
+    def speech_to_text(audio_file_path: str) -> str:
     """使用百度短语音识别，自动处理音频格式"""
+    # 新增：处理 webm 格式（浏览器录音默认）
+    if audio_file_path.endswith('.webm'):
+        try:
+            from pydub import AudioSegment
+            audio = AudioSegment.from_file(audio_file_path, format="webm")
+            wav_path = audio_file_path.replace('.webm', '.wav')
+            audio.export(wav_path, format="wav")
+            audio_file_path = wav_path
+        except Exception as e:
+            return f"音频格式转换失败: {e}"
+    """使用百度短语音识别，自动处理音频格式"""
+    
     token = get_baidu_access_token()
     if not token:
         return "语音识别未配置或凭证无效"

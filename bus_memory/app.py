@@ -171,7 +171,7 @@ voice_script = """
 </script>
 """
 
-with gr.Blocks(title="AI 智能体", head=voice_script) as demo:
+with gr.Blocks(title="AI 智能体") as demo:
     # ---------- 全局状态 ----------
     user_state = gr.State(value=None)
     session_user_input = gr.Textbox(visible=False)
@@ -603,9 +603,15 @@ if __name__ == "__main__":
     loop.create_task(query_worker.run_loop())
     loop.create_task(command_worker.run_loop())
     port = int(os.environ.get("PORT", 7860))
-    demo.launch(server_name="0.0.0.0", server_port=port, theme=gr.themes.Soft(), css="""
-        #voice-file-input {
-            display: none;
-        }
-    """)
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=port,
+        theme=gr.themes.Soft(),
+        head=voice_script,
+        css="""
+            #voice-file-input {
+                display: none;
+            }
+        """
+)
 
