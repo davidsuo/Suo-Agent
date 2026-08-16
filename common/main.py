@@ -253,17 +253,39 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
     messages = [{"role": "system", "content": system_content}]
     messages.extend(history)
 
-    # 注入当前会话的文件上下文（如果存在）
-    file_context = memory.get_file_context(session_id)
-    if file_context:
-        # 截断过长的内容，防止上下文溢出
-        max_file_context_len = 5000
-        if len(file_context) > max_file_context_len:
-            file_context = file_context[:max_file_context_len] + "\n...（文件内容过长，已截断）"
+    # 获取该会话已上传的所有文件名
+    uploaded_names = memory.get_uploaded_file_names(session_id)
+    if uploaded_names:
+        # 注入文件名列表，并添加规则
+        file_list_str = ", ".join(uploaded_names)
         messages.append({
-            "role": "system", 
-            "content": f"【强制指令】以下是用户最新上传的文件内容，你必须严格基于该内容回答用户的问题，禁止使用其他数据源（如数据库、网络搜索）。文件内容如下：\n{file_context[:5000]}"
+            "role": "system",
+            "content": (
+                f"【已上传文件列表】{file_list_str}\n"
+                "规则：如果用户的问题涉及这些文件中的某一个，请使用该文件的内容回答。"
+                "如果用户没有明确指定文件，且存在多个文件，请先询问用户要查询哪个文件。"
+            )
         })
+
+        # 检查用户查询中是否提到了某个文件名
+        mentioned_file = None
+        for fname in uploaded_names:
+            if fname.lower() in query.lower():
+                mentioned_file = fname
+                break
+
+        if mentioned_file:
+            file_content = memory.get_uploaded_file_content(session_id, mentioned_file)
+            if file_content:
+                messages.append({
+                    "role": "system",
+                    "content": f"【指定文件内容：{mentioned_file}】\n{file_content[:2000]}"
+                })
+    else:
+        # 没有文件时，使用旧的最新文件上下文（兼容之前逻辑）
+        file_context = memory.get_file_context(session_id)
+        if file_context:
+            messages.append({"role": "system", "content": f"【当前文件内容】\n{file_context[:5000]}"})
 
     if image_base64:
         user_message = {...}

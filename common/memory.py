@@ -27,6 +27,8 @@ class ConversationMemory:
         self._lock = threading.Lock()          # 保护共享状态
         self.load_from_file()
         self.file_contexts: Dict[str, str] = {}
+        # 新增：存储每个会话已上传的文件（文件名 -> 内容）
+        self.uploaded_files: Dict[str, Dict[str, str]] = {}
 
     # ================== 持久化核心 ==================
     def _save_to_file(self) -> None:
@@ -37,6 +39,7 @@ class ConversationMemory:
             "all_tenants": list(self.all_tenants),
             "current_user": self.current_user,
             "file_contexts": self.file_contexts,
+            "uploaded_files": self.uploaded_files,
         }
         try:
             # 先写入临时文件，再原子替换，避免进程中断导致文件损坏
@@ -62,9 +65,29 @@ class ConversationMemory:
             self.all_tenants = set(loaded_tenants) if loaded_tenants else {"default"}
             self.current_user = data.get("current_user", None)
             self.file_contexts = data.get("file_contexts", {})
+            self.uploaded_files = data.get("uploaded_files", {})
             print(f"[Memory] 加载成功，租户映射: {self.tenant_map}, 会话键数量: {len(self.sessions)}")
         except Exception as e:
             print(f"[Memory] 加载失败: {e}，将使用空记忆并可能覆盖旧文件")
+    
+    # 新增方法
+    def add_uploaded_file(self, session_id: str, file_name: str, content: str) -> None:
+        """记录一个已上传的文件及其内容"""
+        with self._lock:
+            if session_id not in self.uploaded_files:
+                self.uploaded_files[session_id] = {}
+            self.uploaded_files[session_id][file_name] = content[:2000]  # 截断避免过大
+            self._save_to_file()
+
+    def get_uploaded_file_names(self, session_id: str) -> list:
+        """返回该会话已上传的文件名列表（按上传时间倒序，最近在前）"""
+        files = self.uploaded_files.get(session_id, {})
+        return list(files.keys())[::-1]  # 最近在前
+
+    def get_uploaded_file_content(self, session_id: str, file_name: str) -> str:
+        """获取指定文件的内容，若不存在返回空字符串"""
+        return self.uploaded_files.get(session_id, {}).get(file_name, "")
+    
 
     # ================== 租户管理 ==================
     def set_tenant(self, session_id: str, tenant_id: str) -> None:

@@ -369,6 +369,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             file_result = str(file_result)
             # 无论文件类型，都保存为最新文件上下文
             memory.set_file_context(session_id, f"【上传文件：{file_name}】\n{file_result}")
+            memory.add_uploaded_file(session_id, file_name, file_result)
             simple_log_tool(session_id, file_name, "file_upload", {"file_name": file_name}, "文件上传成功")
 
             history = history or []
