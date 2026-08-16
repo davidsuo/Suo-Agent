@@ -87,7 +87,11 @@ def get_available_tenants():
     return sorted(list(memory.all_tenants))
 
 # ================= Gradio 界面 =================
-with gr.Blocks(title="AI 智能体") as demo:
+with gr.Blocks(title="AI 智能体", css="""
+    #voice-file-input {
+        display: none;
+    }
+""") as demo:
     # ---------- 全局状态 ----------
     user_state = gr.State(value=None)              # 当前登录用户信息
     session_user_input = gr.Textbox(visible=False)   # 用于接收 sessionStorage 中的用户名
@@ -128,7 +132,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             with gr.Row():
                 text_input = gr.Textbox(
                     label="输入文字（可用 /logs 查看日志）",
-                    placeholder="在这里输入问题或指令...",
+                    placeholder="发消息或按住空格说话，松开发送...",
                     scale=4
                 )
 
@@ -138,11 +142,11 @@ with gr.Blocks(title="AI 智能体") as demo:
                     file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
                     scale=0
                 )
-                audio_input_btn = gr.Audio(
-                    label="🎤 语音输入",
-                    sources=["microphone"],
+                voice_file_input = gr.File(
+                    visible=True,                # 通过 CSS 隐藏
                     type="filepath",
-                    scale=1
+                    elem_id="voice-file-input",
+                    label=""
                 )
 
             with gr.Row():
@@ -226,6 +230,65 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             # 初始加载列表
             workflow_list.value = refresh_workflows()
+            
+        
+    gr.HTML("""
+    <script>
+    let mediaRecorder;
+    let audioChunks = [];
+    let isRecording = false;
+
+    document.addEventListener('keydown', async (e) => {
+        if (e.code !== 'Space' || isRecording) return;
+        // 如果焦点在输入框或文本区域，则不触发录音，允许正常输入空格
+        const activeTag = document.activeElement.tagName;
+        if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') return;
+
+        e.preventDefault();  // 阻止页面滚动
+        isRecording = true;
+        audioChunks = [];
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.ondataavailable = event => {
+                audioChunks.push(event.data);
+            };
+            mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+                const file = new File([audioBlob], 'voice_message.webm', { type: audioBlob.type });
+
+                // 获取隐藏的文件输入组件并设置文件
+                const fileInput = document.querySelector('#voice-file-input input[type="file"]');
+                if (fileInput) {
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    fileInput.files = dt.files;
+                    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                // 停止所有音轨
+                mediaRecorder.stream.getTracks().forEach(track => track.stop());
+            };
+            mediaRecorder.start();
+            // 录音时轻微改变背景色作为提示
+            document.body.style.backgroundColor = '#f0f8ff';
+        } catch (err) {
+            console.error('录音失败:', err);
+            isRecording = false;
+        }
+    });
+
+    document.addEventListener('keyup', (e) => {
+        if (e.code !== 'Space' || !isRecording) return;
+        e.preventDefault();
+        isRecording = false;
+        document.body.style.backgroundColor = '';
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+        }
+    });
+    </script>
+    """)
             
 
     # ================= 健康仪表板更新函数 =================
@@ -431,7 +494,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                     file_result = await asyncio.to_thread(ocr_image, file_path)
             elif ext in ('.csv', '.xlsx', '.xls'):
                 file_result = await asyncio.to_thread(analyze_file, file_path)
-            elif ext in ('.wav', '.mp3', '.m4a', '.ogg'):
+            elif ext in ('.wav', '.mp3', '.m4a', '.ogg', '.webm'):
                 file_result = await asyncio.to_thread(speech_to_text, file_path)
             else:
                 file_result = "不支持的文件类型"
@@ -477,10 +540,10 @@ with gr.Blocks(title="AI 智能体") as demo:
         [text_input, chatbot, file_upload_btn, user_state],
         [chatbot, text_input, file_upload_btn, last_user_message, last_assistant_message]
     )
-    audio_input_btn.stop_recording(
+    voice_file_input.upload(
         unified_handler,
-        [text_input, chatbot, audio_input_btn, user_state],
-        [chatbot, text_input, audio_input_btn, last_user_message, last_assistant_message]
+        [text_input, chatbot, voice_file_input, user_state],
+        [chatbot, text_input, voice_file_input, last_user_message, last_assistant_message]
     )
 
     # ================= 反馈处理 =================
