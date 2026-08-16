@@ -15,6 +15,7 @@ from common.tools import (
     fetch_webpage, generate_image,
     ocr_image, add_event, list_events, delete_event,
     recognize_table, send_email, init_calendar,
+    execute_workflow_tool,
 )
 from bus_memory.event_bus import EventBus
 from common.agents_memory import WorkerAgent, QueryWorker
@@ -44,6 +45,7 @@ command_worker_tools = {
     "delete_event": delete_event,
     "execute_python": execute_python,
     "generate_image": generate_image,
+    "execute_workflow": execute_workflow_tool,
 }
 
 query_worker = QueryWorker("QueryWorker", query_worker_tools, bus)

@@ -22,6 +22,7 @@ from ddgs import DDGS
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo  # Python 3.9+ 内置
+from typing import Any, Dict, Optional
 
 # ==================== 通用辅助函数 ====================
 def _request_with_retry(method: str, url: str, retries: int = 2, **kwargs):
