@@ -162,13 +162,15 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
 
+    function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
+
+    // 阻止浏览器默认打开文件
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
         dropZone.addEventListener(eventName, preventDefaults, false);
         document.body.addEventListener(eventName, preventDefaults, false);
     });
 
-    function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
-
+    // 高亮拖拽区域
     ['dragenter', 'dragover'].forEach(eventName => {
         dropZone.addEventListener(eventName, highlight, false);
     });
@@ -179,20 +181,43 @@ document.addEventListener('DOMContentLoaded', function() {
     function highlight(e) { dropZone.classList.add('highlight'); }
     function unhighlight(e) { dropZone.classList.remove('highlight'); }
 
+    // 处理拖拽文件
     dropZone.addEventListener('drop', handleDrop, false);
 
     function handleDrop(e) {
         const files = e.dataTransfer.files;
         if (files.length > 0) {
             const file = files[0];
+            // 显示 spinner
             if (spinner) spinner.style.display = 'inline-block';
-            const dt = new DataTransfer(); dt.items.add(file); fileInput.files = dt.files;
+            // 将文件赋给隐藏的文件输入
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            fileInput.files = dt.files;
             fileInput.dispatchEvent(new Event('change', { bubbles: true }));
             console.log('文件已拖拽上传:', file.name);
         }
     }
 
-    // 监听聊天内容变化，当出现“文件已就绪”时隐藏 spinner
+    // 处理粘贴文件（Ctrl+V）
+    document.addEventListener('paste', function(e) {
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].kind === 'file') {
+                const file = items[i].getAsFile();
+                if (spinner) spinner.style.display = 'inline-block';
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                fileInput.files = dt.files;
+                fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+                console.log('文件已粘贴上传:', file.name);
+                e.preventDefault(); // 阻止默认粘贴
+                break;
+            }
+        }
+    });
+
+    // 上传完成后隐藏 spinner（检测到“文件已就绪”文本）
     const observer = new MutationObserver(function(mutations) {
         if (document.body.innerText.includes('文件已就绪')) {
             if (spinner) spinner.style.display = 'none';
@@ -679,8 +704,24 @@ if __name__ == "__main__":
         css="""
             #voice-file-input { display: none; }
             #drop-file-input { display: none; }
-            #drop-zone { position: relative; }
-            .highlight { background-color: #f0f8ff; }
+            #drop-zone {
+                position: relative;
+                border: 2px dashed #ccc;
+                border-radius: 8px;
+                padding: 8px;
+                min-height: 80px;
+                background-color: #fafafa;
+            }
+            #drop-zone.highlight {
+                background-color: #f0f8ff;
+                border-color: #3498db;
+            }
+            #upload-spinner {
+                position: absolute;
+                top: 5px;
+                left: 5px;
+                z-index: 10;
+            }
         """
     )
 
