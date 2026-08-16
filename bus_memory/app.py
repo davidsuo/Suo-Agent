@@ -87,11 +87,91 @@ def get_available_tenants():
     return sorted(list(memory.all_tenants))
     
 
-with gr.Blocks(title="AI 智能体", css="""
-    #voice-file-input {
-        display: none;
+# ================= 自定义 JavaScript（按住空格录音） =================
+voice_script = """
+<script>
+(function() {
+    let mediaRecorder;
+    let audioChunks = [];
+    let isRecording = false;
+
+    const statusDiv = document.createElement('div');
+    statusDiv.id = 'recording-status';
+    statusDiv.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 8px 16px; border-radius: 20px; display: none; z-index: 9999;';
+    document.body.appendChild(statusDiv);
+
+    function showStatus(text) {
+        statusDiv.textContent = text;
+        statusDiv.style.display = 'block';
     }
-""") as demo:
+    function hideStatus() {
+        statusDiv.style.display = 'none';
+    }
+
+    document.addEventListener('keydown', async (e) => {
+        if (e.code !== 'Space' || isRecording) return;
+
+        const active = document.activeElement;
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') && active.value && active.value.trim() !== '') {
+            return;
+        }
+
+        e.preventDefault();
+        console.log('空格键按下，准备录音');
+        isRecording = true;
+        audioChunks = [];
+        showStatus('🎤 正在录音...');
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.ondataavailable = event => {
+                if (event.data.size > 0) audioChunks.push(event.data);
+            };
+            mediaRecorder.onstop = () => {
+                hideStatus();
+                const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+                const file = new File([audioBlob], 'voice_message.webm', { type: audioBlob.type });
+
+                const wrapper = document.getElementById('voice-file-input');
+                console.log('查找 voice-file-input:', wrapper);
+                const fileInput = wrapper ? wrapper.querySelector('input[type="file"]') : null;
+                if (fileInput) {
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    fileInput.files = dt.files;
+                    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    console.log('已触发文件上传事件');
+                } else {
+                    console.error('未找到隐藏的 file input');
+                }
+
+                mediaRecorder.stream.getTracks().forEach(track => track.stop());
+                mediaRecorder = null;
+            };
+            mediaRecorder.start();
+        } catch (err) {
+            console.error('录音失败:', err);
+            showStatus('❌ 无法访问麦克风，请检查权限');
+            setTimeout(hideStatus, 2000);
+            isRecording = false;
+        }
+    });
+
+    document.addEventListener('keyup', (e) => {
+        if (e.code !== 'Space' || !isRecording) return;
+        e.preventDefault();
+        console.log('空格键松开，停止录音');
+        isRecording = false;
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+        }
+    });
+})();
+</script>
+"""
+
+with gr.Blocks(title="AI 智能体", head=voice_script) as demo:
     # ---------- 全局状态 ----------
     user_state = gr.State(value=None)
     session_user_input = gr.Textbox(visible=False)
@@ -143,7 +223,7 @@ with gr.Blocks(title="AI 智能体", css="""
                     scale=0
                 )
                 voice_file_input = gr.File(
-                    visible=True,                # 通过 CSS 隐藏
+                    visible=True,                # 通过 CSS 隐藏，稍后在 launch 中设置
                     type="filepath",
                     elem_id="voice-file-input",
                     label=""
@@ -227,91 +307,6 @@ with gr.Blocks(title="AI 智能体", css="""
             )
 
             workflow_list.value = refresh_workflows()
-
-    # ================= 自定义 JavaScript（按住空格录音） =================
-    gr.HTML("""
-    <script>
-    (function() {
-        let mediaRecorder;
-        let audioChunks = [];
-        let isRecording = false;
-
-        // 状态提示元素
-        const statusDiv = document.createElement('div');
-        statusDiv.id = 'recording-status';
-        statusDiv.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 8px 16px; border-radius: 20px; display: none; z-index: 9999;';
-        document.body.appendChild(statusDiv);
-
-        function showStatus(text) {
-            statusDiv.textContent = text;
-            statusDiv.style.display = 'block';
-        }
-        function hideStatus() {
-            statusDiv.style.display = 'none';
-        }
-
-        document.addEventListener('keydown', async (e) => {
-            if (e.code !== 'Space' || isRecording) return;
-
-            const active = document.activeElement;
-            if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') && active.value && active.value.trim() !== '') {
-                return; // 输入框有内容，允许空格
-            }
-
-            e.preventDefault();
-            console.log('空格键按下，准备录音');
-            isRecording = true;
-            audioChunks = [];
-            showStatus('🎤 正在录音...');
-
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorder = new MediaRecorder(stream);
-                mediaRecorder.ondataavailable = event => {
-                    if (event.data.size > 0) audioChunks.push(event.data);
-                };
-                mediaRecorder.onstop = () => {
-                    hideStatus();
-                    const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
-                    const file = new File([audioBlob], 'voice_message.webm', { type: audioBlob.type });
-
-                    const wrapper = document.getElementById('voice-file-input');
-                    console.log('查找 voice-file-input:', wrapper);
-                    const fileInput = wrapper ? wrapper.querySelector('input[type="file"]') : null;
-                    if (fileInput) {
-                        const dt = new DataTransfer();
-                        dt.items.add(file);
-                        fileInput.files = dt.files;
-                        fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-                        console.log('已触发文件上传事件');
-                    } else {
-                        console.error('未找到隐藏的 file input');
-                    }
-
-                    mediaRecorder.stream.getTracks().forEach(track => track.stop());
-                    mediaRecorder = null;
-                };
-                mediaRecorder.start();
-            } catch (err) {
-                console.error('录音失败:', err);
-                showStatus('❌ 无法访问麦克风，请检查权限');
-                setTimeout(hideStatus, 2000);
-                isRecording = false;
-            }
-        });
-
-        document.addEventListener('keyup', (e) => {
-            if (e.code !== 'Space' || !isRecording) return;
-            e.preventDefault();
-            console.log('空格键松开，停止录音');
-            isRecording = false;
-            if (mediaRecorder && mediaRecorder.state === 'recording') {
-                mediaRecorder.stop();
-            }
-        });
-    })();
-    </script>
-    """)
 
     # ================= 登录函数 =================
     def login(username, pin):
@@ -603,11 +598,14 @@ with gr.Blocks(title="AI 智能体", css="""
 if __name__ == "__main__":
     init_users_db()
     init_db()
-    from common.workflows import init_workflows_db
-    init_workflows_db()
     init_calendar()
     loop = asyncio.get_event_loop()
     loop.create_task(query_worker.run_loop())
     loop.create_task(command_worker.run_loop())
     port = int(os.environ.get("PORT", 7860))
-    demo.launch(server_name="0.0.0.0", server_port=port, theme=gr.themes.Soft())
+    demo.launch(server_name="0.0.0.0", server_port=port, theme=gr.themes.Soft(), css="""
+        #voice-file-input {
+            display: none;
+        }
+    """)
+
