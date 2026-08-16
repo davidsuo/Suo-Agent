@@ -189,20 +189,22 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
-            # 输入区域：先输入框，后附件提示，最后文件上传组件
-            text_input = gr.Textbox(
-                label="",
-                placeholder="发送消息或按住空格说话，松开发送...",
-                scale=4
-            )
-            attachment_msg
-
-            file_upload_input = gr.File(
-                label="点击上传，或拖拽文件到这里",
-                file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
-                type="filepath",
-                scale=1
-            )
+            # 合并的输入区域：输入框在上，附件提示和文件上传在下
+            with gr.Column(scale=4):
+                text_input = gr.Textbox(
+                    label="",
+                    placeholder="发送消息或按住空格说话，松开发送...",
+                    scale=4,
+                    elem_id="chat-input"
+                )
+                attachment_msg = gr.Markdown("")  # 显示暂存文件名
+                file_upload_input = gr.File(
+                    label="点击上传，或拖拽文件到这里",
+                    file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
+                    type="filepath",
+                    scale=1,
+                    elem_id="chat-file-upload"
+                )
 
             # 隐藏的语音文件输入（用于按住空格录音）
             voice_file_input = gr.File(
@@ -388,7 +390,6 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     # ================= 文件上传暂存 =================
     def handle_file_upload(file):
-        """文件上传后暂存，不立即处理"""
         if file is None:
             return None, ""
         file_path = file.name if hasattr(file, 'name') else str(file)
@@ -456,7 +457,8 @@ with gr.Blocks(title="AI 智能体") as demo:
             history.append({"role": "assistant", "content": answer})
             return history, "", None, "", ""
 
-        # 文件处理：分析并保存上下文，不直接返回（除非无文字）
+        # 文件分析
+        file_name = None
         if file is not None:
             file_path = file if isinstance(file, str) else (file.name if hasattr(file, 'name') else str(file))
             ext = os.path.splitext(file_path)[1].lower()
@@ -480,18 +482,22 @@ with gr.Blocks(title="AI 智能体") as demo:
             memory.add_uploaded_file(session_id, file_name, file_result)
             simple_log_tool(session_id, file_name, "file_upload", {"file_name": file_name}, "文件上传成功")
 
-            # 如果没有文字，就显示就绪提示并结束
-            if not message or not message.strip():
-                history = history or []
-                history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
-                history.append({"role": "assistant", "content": "文件已就绪，您可以基于该内容提问。"})
-                return history, "", None, "", ""
+        # 如果没有文字，仅处理文件就绪提示
+        if (not message or not message.strip()) and file_name:
+            history = history or []
+            history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
+            history.append({"role": "assistant", "content": "文件已就绪，您可以基于该内容提问。"})
+            return history, "", None, "", ""
 
-        # 纯文本处理
+        # 纯文本处理（可能包含文件）
         if not message or not message.strip():
             return history or [], "", None, "", ""
 
         display_msg = message
+        if file_name:
+            # 文件在上，提示词在下
+            display_msg = f"📎 上传文件：{file_name}\n{message}"
+
         history = history or []
         history.append({"role": "user", "content": display_msg})
 
@@ -501,7 +507,6 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     # ================= 文本提交（携带暂存文件） =================
     async def handle_text_with_file(text, history, user_state, pending_file_val):
-        # 调用统一处理函数，文件作为参数传入
         result = await unified_handler(text, history, pending_file_val, user_state)
         # 清空暂存文件和相关提示
         return (*result, None, "")
@@ -511,8 +516,6 @@ with gr.Blocks(title="AI 智能体") as demo:
         inputs=[text_input, chatbot, user_state, pending_file],
         outputs=[chatbot, text_input, file_upload_input, last_user_message, last_assistant_message, pending_file, attachment_msg]
     )
-
-    # 文件上传暂存事件已单独绑定
 
     # 语音文件上传（按住空格）
     voice_file_input.upload(
@@ -608,6 +611,13 @@ if __name__ == "__main__":
         head=voice_script,
         css="""
             #voice-file-input { display: none; }
+            #chat-file-upload {
+                margin-top: -10px;
+            }
+            #chat-file-upload label {
+                font-size: 0.9em;
+                color: #666;
+            }
         """
     )
 
