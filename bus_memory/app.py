@@ -85,104 +85,16 @@ def init_db():
 def get_available_tenants():
     """返回所有已知租户列表（当前用户租户已在 memory.all_tenants 中）"""
     return sorted(list(memory.all_tenants))
+    
 
-# ================= 自定义 JavaScript =================
-custom_head = """
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    let mediaRecorder;
-    let audioChunks = [];
-    let isRecording = false;
-
-    // 创建状态提示元素
-    const statusDiv = document.createElement('div');
-    statusDiv.id = 'recording-status';
-    statusDiv.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 8px 16px; border-radius: 20px; display: none; z-index: 9999;';
-    document.body.appendChild(statusDiv);
-
-    function showStatus(text) {
-        statusDiv.textContent = text;
-        statusDiv.style.display = 'block';
-    }
-    function hideStatus() {
-        statusDiv.style.display = 'none';
-    }
-
-    document.addEventListener('keydown', async (e) => {
-        if (e.code !== 'Space' || isRecording) return;
-
-        // 如果焦点在输入框或文本区域，并且输入框有内容，则不触发录音（允许空格输入）
-        const active = document.activeElement;
-        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') && active.value && active.value.trim() !== '') {
-            return;
-        }
-
-        e.preventDefault();
-        console.log('空格键按下，准备录音');
-        isRecording = true;
-        audioChunks = [];
-        showStatus('🎤 正在录音...');
-
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
-            mediaRecorder.ondataavailable = event => {
-                if (event.data.size > 0) audioChunks.push(event.data);
-            };
-            mediaRecorder.onstop = () => {
-                hideStatus();
-                const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
-                const file = new File([audioBlob], 'voice_message.webm', { type: audioBlob.type });
-
-                // 定位隐藏的文件输入组件
-                const wrapper = document.getElementById('voice-file-input');
-                console.log('查找 voice-file-input:', wrapper);
-                const fileInput = wrapper ? wrapper.querySelector('input[type="file"]') : null;
-                if (fileInput) {
-                    const dt = new DataTransfer();
-                    dt.items.add(file);
-                    fileInput.files = dt.files;
-                    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-                    console.log('已触发文件上传事件');
-                } else {
-                    console.error('未找到隐藏的 file input');
-                }
-
-                mediaRecorder.stream.getTracks().forEach(track => track.stop());
-                mediaRecorder = null;
-            };
-            mediaRecorder.start();
-        } catch (err) {
-            console.error('录音失败:', err);
-            showStatus('❌ 无法访问麦克风，请检查权限');
-            setTimeout(hideStatus, 2000);
-            isRecording = false;
-        }
-    });
-
-    document.addEventListener('keyup', (e) => {
-        if (e.code !== 'Space' || !isRecording) return;
-        e.preventDefault();
-        console.log('空格键松开，停止录音');
-        isRecording = false;
-        if (mediaRecorder && mediaRecorder.state === 'recording') {
-            mediaRecorder.stop();
-        }
-    });
-});
-</script>
-"""
-
-with gr.Blocks(title="AI 智能体", head=custom_head, css="""
+with gr.Blocks(title="AI 智能体", css="""
     #voice-file-input {
         display: none;
     }
 """) as demo:
-    
-    
     # ---------- 全局状态 ----------
-    user_state = gr.State(value=None)              # 当前登录用户信息
-    session_user_input = gr.Textbox(visible=False)   # 用于接收 sessionStorage 中的用户名
+    user_state = gr.State(value=None)
+    session_user_input = gr.Textbox(visible=False)
     last_user_message = gr.State("")
     last_assistant_message = gr.State("")
     feedback_up = gr.State("up")
@@ -258,7 +170,7 @@ with gr.Blocks(title="AI 智能体", head=custom_head, css="""
                 headers=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度", "平均耗时(s)", "错误率"],
                 interactive=False
             )
-            
+
         with gr.Tab("工作流管理", visible=False) as workflow_tab:
             gr.Markdown("## 🧩 低代码工作流配置")
             gr.Markdown("仅管理员可配置。定义工作流后，在聊天中可说“执行工作流 xxx”来调用。")
@@ -271,7 +183,6 @@ with gr.Blocks(title="AI 智能体", head=custom_head, css="""
             workflow_create_btn = gr.Button("创建工作流")
             workflow_create_msg = gr.Markdown("")
 
-            # 按钮放在表格上方，直观
             with gr.Row():
                 refresh_workflow_btn = gr.Button("刷新列表")
             workflow_list = gr.Dataframe(
@@ -288,7 +199,6 @@ with gr.Blocks(title="AI 智能体", head=custom_head, css="""
                         return "❌ 步骤必须是 JSON 数组。"
                     ok = add_workflow(name, desc, steps, user["username"])
                     if ok:
-                        # 创建成功后自动刷新列表
                         updated_list = refresh_workflows()
                         return f"✅ 工作流 {name} 已创建。", updated_list
                     else:
@@ -316,47 +226,95 @@ with gr.Blocks(title="AI 智能体", head=custom_head, css="""
                 outputs=[workflow_list]
             )
 
-            # 初始加载列表
             workflow_list.value = refresh_workflows()
-            
 
-    # ================= 健康仪表板更新函数 =================
-    def update_health_dashboard():
-        from common.health import get_system_health
-        health = get_system_health()
-        summary = f"""
-**📊 总体统计**
-- 总任务数：{health['total_tasks']}
-- 成功任务：{health['success_tasks']} | 失败任务：{health['failed_tasks']}
-- 成功率：{health['success_rate']}%
-- 活跃用户（24h）：{health['active_users']} | 总用户：{health['total_users']}
-- 反馈总数：{health['total_feedback']}（👍 {health['up_feedback']} / 👎 {health['down_feedback']}）
-        """
-        tool_data = [[tool, count] for tool, count in health['sorted_tools']]
-        if not tool_data:
-            tool_data = [["暂无数据", 0]]
-        tool_df = pd.DataFrame(tool_data, columns=["工具名称", "调用次数"])
-        return summary, tool_df
+    # ================= 自定义 JavaScript（按住空格录音） =================
+    gr.HTML("""
+    <script>
+    (function() {
+        let mediaRecorder;
+        let audioChunks = [];
+        let isRecording = false;
 
-    health_refresh_btn.click(
-        fn=update_health_dashboard,
-        inputs=[],
-        outputs=[health_summary_md, health_tool_table]
-    )
-    health_refresh_btn.click(fn=update_health_dashboard, inputs=[], outputs=[health_summary_md, health_tool_table])
+        // 状态提示元素
+        const statusDiv = document.createElement('div');
+        statusDiv.id = 'recording-status';
+        statusDiv.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 8px 16px; border-radius: 20px; display: none; z-index: 9999;';
+        document.body.appendChild(statusDiv);
+
+        function showStatus(text) {
+            statusDiv.textContent = text;
+            statusDiv.style.display = 'block';
+        }
+        function hideStatus() {
+            statusDiv.style.display = 'none';
+        }
+
+        document.addEventListener('keydown', async (e) => {
+            if (e.code !== 'Space' || isRecording) return;
+
+            const active = document.activeElement;
+            if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') && active.value && active.value.trim() !== '') {
+                return; // 输入框有内容，允许空格
+            }
+
+            e.preventDefault();
+            console.log('空格键按下，准备录音');
+            isRecording = true;
+            audioChunks = [];
+            showStatus('🎤 正在录音...');
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.ondataavailable = event => {
+                    if (event.data.size > 0) audioChunks.push(event.data);
+                };
+                mediaRecorder.onstop = () => {
+                    hideStatus();
+                    const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+                    const file = new File([audioBlob], 'voice_message.webm', { type: audioBlob.type });
+
+                    const wrapper = document.getElementById('voice-file-input');
+                    console.log('查找 voice-file-input:', wrapper);
+                    const fileInput = wrapper ? wrapper.querySelector('input[type="file"]') : null;
+                    if (fileInput) {
+                        const dt = new DataTransfer();
+                        dt.items.add(file);
+                        fileInput.files = dt.files;
+                        fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+                        console.log('已触发文件上传事件');
+                    } else {
+                        console.error('未找到隐藏的 file input');
+                    }
+
+                    mediaRecorder.stream.getTracks().forEach(track => track.stop());
+                    mediaRecorder = null;
+                };
+                mediaRecorder.start();
+            } catch (err) {
+                console.error('录音失败:', err);
+                showStatus('❌ 无法访问麦克风，请检查权限');
+                setTimeout(hideStatus, 2000);
+                isRecording = false;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.code !== 'Space' || !isRecording) return;
+            e.preventDefault();
+            console.log('空格键松开，停止录音');
+            isRecording = false;
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+            }
+        });
+    })();
+    </script>
+    """)
 
     # ================= 登录函数 =================
     def login(username, pin):
-        if not username or not pin:
-            return (
-                None,
-                gr.update(visible=True),
-                gr.update(visible=False),
-                [],
-                gr.update(),
-                "❌ 请输入用户名和 PIN 码",
-                ""
-            )
         user = authenticate(username.strip().lower(), pin)
         if user:
             session_id = user["username"]
@@ -373,7 +331,7 @@ with gr.Blocks(title="AI 智能体", head=custom_head, css="""
                 f"✅ 登录成功，欢迎 {user['display_name']}！",
                 f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**",
                 gr.update(visible=(user.get("role") == "admin"))
-            )         
+            )
         else:
             return (
                 None,
@@ -384,13 +342,12 @@ with gr.Blocks(title="AI 智能体", head=custom_head, css="""
                 "❌ 用户名或 PIN 码错误",
                 "",
                 gr.update(visible=False)
-            )            
+            )
 
     login_btn.click(
         fn=login,
         inputs=[username_input, pin_input],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab],
-        js="(username, pin) => { if (username) { sessionStorage.setItem('suo_user', username); const url = new URL(window.location); url.searchParams.set('user', username); window.history.replaceState({}, '', url); } return [username, pin]; }"
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab]
     )
 
     # ================= 退出函数 =================
@@ -405,16 +362,15 @@ with gr.Blocks(title="AI 智能体", head=custom_head, css="""
             "",
             "",
             gr.update(visible=False)
-        )   
+        )
 
     logout_btn.click(
         fn=logout,
         inputs=[],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab],
-        js="() => { sessionStorage.removeItem('suo_user'); }"
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab]
     )
 
-    # ================= 页面加载自动恢复登录 =================
+    # ================= 页面加载恢复登录 =================
     def load_history(session_username):
         if session_username:
             user = get_user_info(session_username)
@@ -434,8 +390,6 @@ with gr.Blocks(title="AI 智能体", head=custom_head, css="""
                     f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**",
                     gr.update(visible=(user.get("role") == "admin"))
                 )
-                
-        # 未登录状态
         return (
             None,
             gr.update(visible=True),
@@ -446,12 +400,12 @@ with gr.Blocks(title="AI 智能体", head=custom_head, css="""
             "",
             gr.update(visible=False)
         )
-        
+
     demo.load(
         fn=load_history,
         inputs=[session_user_input],
         outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab],
-        js="() => { const user = sessionStorage.getItem('suo_user') || ''; return [user]; }"
+        js="() => sessionStorage.getItem('suo_user') || ''"
     )
 
     # ================= 主处理函数（文本、文件、音频） =================
@@ -529,14 +483,13 @@ with gr.Blocks(title="AI 智能体", head=custom_head, css="""
                 file_result = "不支持的文件类型"
 
             file_result = str(file_result)
-            # 无论文件类型，都保存为最新文件上下文
             memory.set_file_context(session_id, f"【上传文件：{file_name}】\n{file_result}")
             memory.add_uploaded_file(session_id, file_name, file_result)
             simple_log_tool(session_id, file_name, "file_upload", {"file_name": file_name}, "文件上传成功")
 
             history = history or []
 
-            if ext in ('.wav', '.mp3', '.m4a', '.ogg'):
+            if ext in ('.wav', '.mp3', '.m4a', '.ogg', '.webm'):
                 history.append({"role": "user", "content": f"🎤 语音输入：{file_result}"})
                 answer = await chat_core(session_id, file_result, query_worker, command_worker, TOOL_ROUTER)
                 history.append({"role": "assistant", "content": answer})
@@ -575,7 +528,7 @@ with gr.Blocks(title="AI 智能体", head=custom_head, css="""
         [chatbot, text_input, voice_file_input, last_user_message, last_assistant_message]
     )
 
-    # ================= 反馈处理 =================
+    # 反馈处理
     async def handle_feedback(feedback, user_msg_state, assistant_msg_state, user_state):
         print(f"[反馈按钮] 触发，feedback={feedback}, user={user_state}, user_msg={user_msg_state[:30]}...", flush=True)
         if not user_state:
@@ -601,7 +554,7 @@ with gr.Blocks(title="AI 智能体", head=custom_head, css="""
         outputs=[feedback_msg]
     )
 
-    # ================= Worker 监控刷新 =================
+    # Worker 监控刷新
     def refresh_status():
         workers = [query_worker, command_worker]
         data = []
@@ -620,6 +573,31 @@ with gr.Blocks(title="AI 智能体", head=custom_head, css="""
 
     refresh_btn2.click(fn=refresh_status, outputs=status_table)
     status_table.value = refresh_status()
+
+    # 健康仪表板更新
+    def update_health_dashboard():
+        from common.health import get_system_health
+        health = get_system_health()
+        summary = f"""
+**📊 总体统计**
+- 总任务数：{health['total_tasks']}
+- 成功任务：{health['success_tasks']} | 失败任务：{health['failed_tasks']}
+- 成功率：{health['success_rate']}%
+- 活跃用户（24h）：{health['active_users']} | 总用户：{health['total_users']}
+- 反馈总数：{health['total_feedback']}（👍 {health['up_feedback']} / 👎 {health['down_feedback']}）
+        """
+        tool_data = [[tool, count] for tool, count in health['sorted_tools']]
+        if not tool_data:
+            tool_data = [["暂无数据", 0]]
+        tool_df = pd.DataFrame(tool_data, columns=["工具名称", "调用次数"])
+        return summary, tool_df
+
+    health_refresh_btn.click(
+        fn=update_health_dashboard,
+        inputs=[],
+        outputs=[health_summary_md, health_tool_table]
+    )
+    health_refresh_btn.click(fn=update_health_dashboard, inputs=[], outputs=[health_summary_md, health_tool_table])
 
 # ================= 启动入口 =================
 if __name__ == "__main__":
