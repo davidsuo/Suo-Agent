@@ -87,7 +87,7 @@ def get_available_tenants():
     return sorted(list(memory.all_tenants))
     
 
-# ================= 自定义 JavaScript（仅用于按住空格录音） =================
+# ================= 自定义 JavaScript（按住空格录音） =================
 voice_script = """
 <script>
 (function() {
@@ -157,6 +157,8 @@ with gr.Blocks(title="AI 智能体") as demo:
     last_assistant_message = gr.State("")
     feedback_up = gr.State("up")
     feedback_down = gr.State("down")
+    pending_file = gr.State(None)               # 暂存的文件路径
+    attachment_msg = gr.Markdown("")            # 文件附加提示
 
     # ---------- 登录界面 ----------
     with gr.Column(visible=False) as login_column:
@@ -187,19 +189,19 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
-            # 文件上传区域（原生拖拽+点击）
+            # 输入区域：先输入框，后附件提示，最后文件上传组件
+            text_input = gr.Textbox(
+                label="",
+                placeholder="发送消息或按住空格说话，松开发送...",
+                scale=4
+            )
+            attachment_msg
+
             file_upload_input = gr.File(
-                label="📎 拖拽文件到这里，或点击上传",
+                label="点击上传，或拖拽文件到这里",
                 file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
                 type="filepath",
                 scale=1
-            )
-
-            # 输入框
-            text_input = gr.Textbox(
-                label="输入文字（可用 /logs 查看日志）",
-                placeholder="发消息或按住空格说话，松开发送...",
-                scale=4
             )
 
             # 隐藏的语音文件输入（用于按住空格录音）
@@ -384,7 +386,22 @@ with gr.Blocks(title="AI 智能体") as demo:
         js="() => sessionStorage.getItem('suo_user') || ''"
     )
 
-    # ================= 主处理函数（文本、文件、音频） =================
+    # ================= 文件上传暂存 =================
+    def handle_file_upload(file):
+        """文件上传后暂存，不立即处理"""
+        if file is None:
+            return None, ""
+        file_path = file.name if hasattr(file, 'name') else str(file)
+        file_name = os.path.basename(file_path)
+        return file_path, f"📎 已附加：{file_name}"
+
+    file_upload_input.upload(
+        fn=handle_file_upload,
+        inputs=[file_upload_input],
+        outputs=[pending_file, attachment_msg]
+    )
+
+    # ================= 主处理函数 =================
     async def unified_handler(message, history, file, user):
         if not user:
             return history or [], "", None, "", ""
@@ -439,7 +456,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             history.append({"role": "assistant", "content": answer})
             return history, "", None, "", ""
 
-        # 文件处理
+        # 文件处理：分析并保存上下文，不直接返回（除非无文字）
         if file is not None:
             file_path = file if isinstance(file, str) else (file.name if hasattr(file, 'name') else str(file))
             ext = os.path.splitext(file_path)[1].lower()
@@ -463,14 +480,9 @@ with gr.Blocks(title="AI 智能体") as demo:
             memory.add_uploaded_file(session_id, file_name, file_result)
             simple_log_tool(session_id, file_name, "file_upload", {"file_name": file_name}, "文件上传成功")
 
-            history = history or []
-
-            if ext in ('.wav', '.mp3', '.m4a', '.ogg', '.webm'):
-                history.append({"role": "user", "content": f"🎤 语音输入：{file_result}"})
-                answer = await chat_core(session_id, file_result, query_worker, command_worker, TOOL_ROUTER)
-                history.append({"role": "assistant", "content": answer})
-                return history, "", None, file_result, answer
-            else:
+            # 如果没有文字，就显示就绪提示并结束
+            if not message or not message.strip():
+                history = history or []
                 history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
                 history.append({"role": "assistant", "content": "文件已就绪，您可以基于该内容提问。"})
                 return history, "", None, "", ""
@@ -487,17 +499,22 @@ with gr.Blocks(title="AI 智能体") as demo:
         history.append({"role": "assistant", "content": answer})
         return history, "", None, message, answer
 
-    # 事件绑定
+    # ================= 文本提交（携带暂存文件） =================
+    async def handle_text_with_file(text, history, user_state, pending_file_val):
+        # 调用统一处理函数，文件作为参数传入
+        result = await unified_handler(text, history, pending_file_val, user_state)
+        # 清空暂存文件和相关提示
+        return (*result, None, "")
+
     text_input.submit(
-        unified_handler,
-        [text_input, chatbot, file_upload_input, user_state],
-        [chatbot, text_input, file_upload_input, last_user_message, last_assistant_message]
+        fn=handle_text_with_file,
+        inputs=[text_input, chatbot, user_state, pending_file],
+        outputs=[chatbot, text_input, file_upload_input, last_user_message, last_assistant_message, pending_file, attachment_msg]
     )
-    file_upload_input.upload(
-        unified_handler,
-        [text_input, chatbot, file_upload_input, user_state],
-        [chatbot, text_input, file_upload_input, last_user_message, last_assistant_message]
-    )
+
+    # 文件上传暂存事件已单独绑定
+
+    # 语音文件上传（按住空格）
     voice_file_input.upload(
         unified_handler,
         [text_input, chatbot, voice_file_input, user_state],
