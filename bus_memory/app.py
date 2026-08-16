@@ -165,7 +165,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                 interactive=False
             )
             
-        with gr.Tab("工作流管理"):
+        with gr.Tab("工作流管理", visible=False) as workflow_tab:
             gr.Markdown("## 🧩 低代码工作流配置")
             gr.Markdown("仅管理员可配置。定义工作流后，在聊天中可说“执行工作流 xxx”来调用。")
             workflow_name_input = gr.Textbox(label="工作流名称")
@@ -257,8 +257,9 @@ with gr.Blocks(title="AI 智能体") as demo:
                 hist if hist else [],
                 gr.Dropdown(choices=tenants, value=user["tenant"]),
                 f"✅ 登录成功，欢迎 {user['display_name']}！",
-                f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**"
-            )
+                f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**",
+                gr.update(visible=(user.get("role") == "admin"))
+            )         
         else:
             return (
                 None,
@@ -267,13 +268,14 @@ with gr.Blocks(title="AI 智能体") as demo:
                 [],
                 gr.update(),
                 "❌ 用户名或 PIN 码错误",
-                ""
-            )
+                "",
+                gr.update(visible=False)
+            )            
 
     login_btn.click(
         fn=login,
         inputs=[username_input, pin_input],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display],
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab],
         js="(username, pin) => { if (username) { sessionStorage.setItem('suo_user', username); const url = new URL(window.location); url.searchParams.set('user', username); window.history.replaceState({}, '', url); } return [username, pin]; }"
     )
 
@@ -287,13 +289,14 @@ with gr.Blocks(title="AI 智能体") as demo:
             gr.update(),
             gr.update(),
             "",
-            ""
-        )
+            "",
+            gr.update(visible=False)
+        )   
 
     logout_btn.click(
         fn=logout,
         inputs=[],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display],
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab],
         js="() => { sessionStorage.removeItem('suo_user'); }"
     )
 
@@ -314,8 +317,10 @@ with gr.Blocks(title="AI 智能体") as demo:
                     hist if hist else [],
                     gr.Dropdown(choices=tenants, value=user["tenant"]),
                     "",
-                    f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**"
+                    f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**",
+                    gr.update(visible=(user.get("role") == "admin"))
                 )
+                
         # 未登录状态
         return (
             None,
@@ -324,13 +329,14 @@ with gr.Blocks(title="AI 智能体") as demo:
             [],
             gr.Dropdown(choices=get_available_tenants(), value="default"),
             "",
-            ""
+            "",
+            gr.update(visible=False)
         )
-
+        
     demo.load(
         fn=load_history,
         inputs=[session_user_input],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display],
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab],
         js="() => { const user = sessionStorage.getItem('suo_user') || ''; return [user]; }"
     )
 
