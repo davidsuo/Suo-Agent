@@ -9,6 +9,7 @@ import sqlite3
 import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from common.tools import AVAILABLE_TOOLS
 
 DB_PATH = "workflows.db"
 
@@ -62,14 +63,17 @@ def get_workflow(name: str) -> Optional[Dict[str, Any]]:
         }
     return None
 
-def list_workflows():
+def list_workflows() -> List[Dict[str, Any]]:
     init_workflows_db()
     with sqlite3.connect(DB_PATH) as conn:
         c = conn.cursor()
         c.execute("SELECT name, description, created_by, created_at FROM workflows ORDER BY created_at DESC")
         rows = c.fetchall()
     print(f"[Workflow] 列出工作流，共 {len(rows)} 条", flush=True)
-    return [{"name": r[0], "description": r[1], "created_by": r[2], "created_at": r[3]} for r in rows]
+    return [
+        {"名称": r[0], "描述": r[1], "创建者": r[2], "创建时间": r[3]}
+        for r in rows
+    ]
 
 def delete_workflow(name: str) -> bool:
     """删除指定名称的工作流"""
