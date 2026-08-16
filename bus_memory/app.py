@@ -87,7 +87,7 @@ def get_available_tenants():
     return sorted(list(memory.all_tenants))
     
 
-# ================= 自定义 JavaScript（按住空格录音） =================
+# ================= 自定义 JavaScript =================
 voice_script = """
 <script>
 (function() {
@@ -100,13 +100,8 @@ voice_script = """
     statusDiv.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 8px 16px; border-radius: 20px; display: none; z-index: 9999;';
     document.body.appendChild(statusDiv);
 
-    function showStatus(text) {
-        statusDiv.textContent = text;
-        statusDiv.style.display = 'block';
-    }
-    function hideStatus() {
-        statusDiv.style.display = 'none';
-    }
+    function showStatus(text) { statusDiv.textContent = text; statusDiv.style.display = 'block'; }
+    function hideStatus() { statusDiv.style.display = 'none'; }
 
     document.addEventListener('keydown', async (e) => {
         if (e.code !== 'Space' || isRecording) return;
@@ -118,59 +113,97 @@ voice_script = """
 
         e.preventDefault();
         console.log('空格键按下，准备录音');
-        isRecording = true;
-        audioChunks = [];
-        showStatus('🎤 正在录音...');
+        isRecording = true; audioChunks = []; showStatus('🎤 正在录音...');
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaRecorder = new MediaRecorder(stream);
-            mediaRecorder.ondataavailable = event => {
-                if (event.data.size > 0) audioChunks.push(event.data);
-            };
+            mediaRecorder.ondataavailable = event => { if (event.data.size > 0) audioChunks.push(event.data); };
             mediaRecorder.onstop = () => {
                 hideStatus();
                 const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
                 const file = new File([audioBlob], 'voice_message.webm', { type: audioBlob.type });
-
                 const wrapper = document.getElementById('voice-file-input');
-                console.log('查找 voice-file-input:', wrapper);
                 const fileInput = wrapper ? wrapper.querySelector('input[type="file"]') : null;
                 if (fileInput) {
-                    const dt = new DataTransfer();
-                    dt.items.add(file);
-                    fileInput.files = dt.files;
+                    const dt = new DataTransfer(); dt.items.add(file); fileInput.files = dt.files;
                     fileInput.dispatchEvent(new Event('change', { bubbles: true }));
                     console.log('已触发文件上传事件');
-                } else {
-                    console.error('未找到隐藏的 file input');
-                }
-
+                } else { console.error('未找到隐藏的 file input'); }
                 mediaRecorder.stream.getTracks().forEach(track => track.stop());
                 mediaRecorder = null;
             };
             mediaRecorder.start();
         } catch (err) {
-            console.error('录音失败:', err);
-            showStatus('❌ 无法访问麦克风，请检查权限');
-            setTimeout(hideStatus, 2000);
-            isRecording = false;
+            console.error('录音失败:', err); showStatus('❌ 无法访问麦克风，请检查权限');
+            setTimeout(hideStatus, 2000); isRecording = false;
         }
     });
 
     document.addEventListener('keyup', (e) => {
         if (e.code !== 'Space' || !isRecording) return;
-        e.preventDefault();
-        console.log('空格键松开，停止录音');
-        isRecording = false;
-        if (mediaRecorder && mediaRecorder.state === 'recording') {
-            mediaRecorder.stop();
-        }
+        e.preventDefault(); isRecording = false;
+        if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
     });
 })();
 </script>
 """
 
+drag_drop_script = """
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const dropZone = document.getElementById('drop-zone');
+    const spinner = document.getElementById('upload-spinner');
+    const fileInputWrapper = document.getElementById('drop-file-input');
+    const fileInput = fileInputWrapper ? fileInputWrapper.querySelector('input[type="file"]') : null;
+
+    if (!dropZone || !fileInput) {
+        console.warn('拖拽上传组件未找到');
+        return;
+    }
+
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, preventDefaults, false);
+        document.body.addEventListener(eventName, preventDefaults, false);
+    });
+
+    function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropZone.addEventListener(eventName, highlight, false);
+    });
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropZone.addEventListener(eventName, unhighlight, false);
+    });
+
+    function highlight(e) { dropZone.classList.add('highlight'); }
+    function unhighlight(e) { dropZone.classList.remove('highlight'); }
+
+    dropZone.addEventListener('drop', handleDrop, false);
+
+    function handleDrop(e) {
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            const file = files[0];
+            if (spinner) spinner.style.display = 'inline-block';
+            const dt = new DataTransfer(); dt.items.add(file); fileInput.files = dt.files;
+            fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+            console.log('文件已拖拽上传:', file.name);
+        }
+    }
+
+    // 监听聊天内容变化，当出现“文件已就绪”时隐藏 spinner
+    const observer = new MutationObserver(function(mutations) {
+        if (document.body.innerText.includes('文件已就绪')) {
+            if (spinner) spinner.style.display = 'none';
+        }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+});
+</script>
+"""
+
+# ================= Gradio 界面 =================
 with gr.Blocks(title="AI 智能体") as demo:
     # ---------- 全局状态 ----------
     user_state = gr.State(value=None)
@@ -209,11 +242,47 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
-            with gr.Row():
+            # 拖拽上传区域：包含 spinner、输入框和隐藏文件组件
+            with gr.Column(elem_id="drop-zone"):
+                # 旋转提示
+                spinner_html = gr.HTML("""
+                <div id="upload-spinner" style="display:none; position:absolute; top:5px; left:5px; z-index:10;">
+                    <span class="loader"></span> 处理中...
+                </div>
+                <style>
+                .loader {
+                    border: 3px solid #f3f3f3;
+                    border-radius: 50%;
+                    border-top: 3px solid #3498db;
+                    width: 15px;
+                    height: 15px;
+                    animation: spin 1s linear infinite;
+                    display: inline-block;
+                }
+                @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+                </style>
+                """)
+
                 text_input = gr.Textbox(
                     label="输入文字（可用 /logs 查看日志）",
                     placeholder="发消息或按住空格说话，松开发送...",
                     scale=4
+                )
+
+                # 隐藏的文件组件，用于接收拖拽的文件
+                drop_file_input = gr.File(
+                    visible=True,
+                    type="filepath",
+                    elem_id="drop-file-input",
+                    label=""
+                )
+
+                # 另一个隐藏的文件组件，用于接收按住空格录音
+                voice_file_input = gr.File(
+                    visible=True,
+                    type="filepath",
+                    elem_id="voice-file-input",
+                    label=""
                 )
 
             with gr.Row():
@@ -221,12 +290,6 @@ with gr.Blocks(title="AI 智能体") as demo:
                     "📁 上传文件",
                     file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
                     scale=0
-                )
-                voice_file_input = gr.File(
-                    visible=True,                # 通过 CSS 隐藏，稍后在 launch 中设置
-                    type="filepath",
-                    elem_id="voice-file-input",
-                    label=""
                 )
 
             with gr.Row():
@@ -403,7 +466,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         js="() => sessionStorage.getItem('suo_user') || ''"
     )
 
-    # ================= 主处理函数（文本、文件、音频） =================
+    # ================= 主处理函数 =================
     async def unified_handler(message, history, file, user):
         if not user:
             return history or [], "", None, "", ""
@@ -522,6 +585,11 @@ with gr.Blocks(title="AI 智能体") as demo:
         [text_input, chatbot, voice_file_input, user_state],
         [chatbot, text_input, voice_file_input, last_user_message, last_assistant_message]
     )
+    drop_file_input.upload(
+        unified_handler,
+        [text_input, chatbot, drop_file_input, user_state],
+        [chatbot, text_input, drop_file_input, last_user_message, last_assistant_message]
+    )
 
     # 反馈处理
     async def handle_feedback(feedback, user_msg_state, assistant_msg_state, user_state):
@@ -607,11 +675,12 @@ if __name__ == "__main__":
         server_name="0.0.0.0",
         server_port=port,
         theme=gr.themes.Soft(),
-        head=voice_script,
+        head=voice_script + drag_drop_script,
         css="""
-            #voice-file-input {
-                display: none;
-            }
+            #voice-file-input { display: none; }
+            #drop-file-input { display: none; }
+            #drop-zone { position: relative; }
+            .highlight { background-color: #f0f8ff; }
         """
-)
+    )
 
