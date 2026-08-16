@@ -29,7 +29,7 @@ ROLE_PERMISSIONS: Dict[str, List[str]] = {
     "manager": [
         "get_current_time", "calculator", "query_database", "list_events",
         "add_event", "delete_event", "web_search", "fetch_webpage",
-        "analyze_file", "speech_to_text", "send_email"
+        "analyze_file", "speech_to_text", "send_email", "execute_python"
     ],
     "developer": [
         "get_current_time", "calculator", "query_database", "execute_python",

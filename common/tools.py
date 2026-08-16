@@ -311,6 +311,25 @@ def analyze_file(file_path: str) -> str:
             except Exception as e:
                 info += f"\n\n（未能自动计算时间汇总: {e}）"
 
+        # 分组统计：检测类别列（如 coffee_name）
+        category_col = None
+        for col in df.columns:
+            if 'name' in col.lower() or '名称' in col.lower() or 'type' in col.lower() or '类别' in col.lower():
+                category_col = col
+                break
+        if category_col and price_col:
+            try:
+                # 按类别统计最高价、最低价、平均价、总销售额
+                group_stats = df.groupby(category_col).agg(
+                    max_price=(price_col, 'max'),
+                    min_price=(price_col, 'min'),
+                    avg_price=(price_col, 'mean'),
+                    total_revenue=(price_col, 'sum')
+                ).to_string()
+                info += f"\n\n按类别统计（{category_col}）:\n{group_stats}"
+            except Exception as e:
+                info += f"\n\n（未能自动计算类别统计: {e}）"
+
         return info
     except Exception as e:
         return f"文件分析失败: {e}"

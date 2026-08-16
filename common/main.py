@@ -256,18 +256,9 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
     # 获取该会话已上传的所有文件名
     uploaded_names = memory.get_uploaded_file_names(session_id)
     if uploaded_names:
-        # 注入文件名列表，并添加规则
-        file_list_str = ", ".join(uploaded_names)
-        messages.append({
-            "role": "system",
-            "content": (
-                f"【已上传文件列表】{file_list_str}\n"
-                "规则：如果用户的问题涉及这些文件中的某一个，请使用该文件的内容回答。"
-                "如果用户没有明确指定文件，且存在多个文件，请先询问用户要查询哪个文件。"
-            )
-        })
-
-        # 检查用户查询中是否提到了某个文件名
+        # 最新文件（列表第一个）
+        latest_file = uploaded_names[0]
+        # 检查用户是否提到了某个文件名
         mentioned_file = None
         for fname in uploaded_names:
             if fname.lower() in query.lower():
@@ -275,14 +266,35 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                 break
 
         if mentioned_file:
+            # 用户明确指定了文件
             file_content = memory.get_uploaded_file_content(session_id, mentioned_file)
             if file_content:
                 messages.append({
                     "role": "system",
                     "content": f"【指定文件内容：{mentioned_file}】\n{file_content[:2000]}"
                 })
+        else:
+            # 用户未指定文件，默认使用最新上传的文件
+            latest_content = memory.get_uploaded_file_content(session_id, latest_file)
+            if latest_content:
+                messages.append({
+                    "role": "system",
+                    "content": f"【最新上传文件：{latest_file}】\n{latest_content[:2000]}"
+                })
+
+        # 同时提供所有文件名列表，以便用户询问旧文件时模型知道有哪些文件
+        file_list_str = ", ".join(uploaded_names)
+        messages.append({
+            "role": "system",
+            "content": (
+                f"当前会话已上传的文件：{file_list_str}。"
+                "如果用户的问题涉及已上传文件但未指明具体文件，请默认使用最新上传的文件；"
+                "如果用户明确提到某个文件名，请使用该文件的内容；"
+                "如果文件内容不足以回答，请告知用户并建议更具体的文件。"
+            )
+        })
     else:
-        # 没有文件时，使用旧的最新文件上下文（兼容之前逻辑）
+        # 无文件时使用旧逻辑
         file_context = memory.get_file_context(session_id)
         if file_context:
             messages.append({"role": "system", "content": f"【当前文件内容】\n{file_context[:5000]}"})
