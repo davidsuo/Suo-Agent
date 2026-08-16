@@ -243,7 +243,7 @@ def speech_to_text(audio_file_path: str) -> str:
         return f"语音识别请求错误: {e}"
 
 # ==================== 文件分析 ====================
-def analyze_file(file_path: str) -> str:
+def analyze_file(file_path: str, _tenant: str = "default") -> str:
     """
     分析 CSV 或 Excel 文件，返回摘要信息。
     如果检测到日期列和价格列，自动计算按月份/季度的汇总统计。

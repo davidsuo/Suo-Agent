@@ -95,7 +95,7 @@ class WorkerAgent(Agent):
         super().__init__(name, event_bus)
         self.tools = tools
         # 需要保留 _tenant 参数的工具（用于租户隔离）
-        self.tenant_aware_tools = {"add_event", "list_events", "delete_event"}
+        self.tenant_aware_tools = {"add_event", "list_events", "delete_event", "analyze_file"}
 
     async def handle_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         tool_name = task.get("tool")
