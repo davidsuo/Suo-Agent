@@ -28,8 +28,7 @@ def init_workflows_db():
         ''')
         conn.commit()
 
-def add_workflow(name: str, description: str, steps: List[Dict[str, Any]], created_by: str) -> bool:
-    """添加一个工作流，步骤为 [{"tool": "工具名", "arguments": {...}}, ...]"""
+def add_workflow(name, description, steps, created_by):
     init_workflows_db()
     try:
         with sqlite3.connect(DB_PATH) as conn:
@@ -38,15 +37,15 @@ def add_workflow(name: str, description: str, steps: List[Dict[str, Any]], creat
                 "INSERT INTO workflows (name, description, steps_json, created_by, created_at) VALUES (?,?,?,?,?)",
                 (name, description, json.dumps(steps, ensure_ascii=False), created_by, datetime.now().isoformat())
             )
-            print(f"[Workflow] 尝试添加工作流: {name}, steps={steps}", flush=True)
             conn.commit()
+        print(f"[Workflow] 添加成功: {name}", flush=True)
         return True
     except sqlite3.IntegrityError:
-        return False  # 名称已存在
-    if ok:
-        print(f"[Workflow] 添加成功: {name}", flush=True)
-    else:
-        print("[Workflow] 添加失败，名称可能已存在", flush=True)
+        print(f"[Workflow] 添加失败: 名称已存在 {name}", flush=True)
+        return False
+    except Exception as e:
+        print(f"[Workflow] 添加异常: {e}", flush=True)
+        return False
 
 def get_workflow(name: str) -> Optional[Dict[str, Any]]:
     """根据名称获取工作流定义"""
@@ -63,18 +62,14 @@ def get_workflow(name: str) -> Optional[Dict[str, Any]]:
         }
     return None
 
-def list_workflows() -> List[Dict[str, Any]]:
-    """列出所有工作流（简要信息）"""
+def list_workflows():
     init_workflows_db()
     with sqlite3.connect(DB_PATH) as conn:
         c = conn.cursor()
         c.execute("SELECT name, description, created_by, created_at FROM workflows ORDER BY created_at DESC")
         rows = c.fetchall()
-    return [
-        {"name": r[0], "description": r[1], "created_by": r[2], "created_at": r[3]}
-        for r in rows
-    ]
-    print(f"[Workflow] 列出工作流，发现 {len(rows)} 条", flush=True)
+    print(f"[Workflow] 列出工作流，共 {len(rows)} 条", flush=True)
+    return [{"name": r[0], "description": r[1], "created_by": r[2], "created_at": r[3]} for r in rows]
 
 def delete_workflow(name: str) -> bool:
     """删除指定名称的工作流"""

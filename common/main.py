@@ -603,7 +603,7 @@ async def generate_plan(user_query, history, client):
 - ocr_image: 识别图片文字（参数必须为 "image_path"）
 - speech_to_text: 语音转文字（参数必须为 "audio_file_path"）
 - recognize_table: 识别图片中的表格（参数必须为 "image_path"）
-- execute_workflow: 执行预定义的工作流（如果管理员配置了）
+- execute_workflow: 执行管理员预定义的工作流（仅在管理员配置后可用）
 
 计划是一个步骤列表，每个步骤包含：
 - id: 步骤唯一编号（从1开始）

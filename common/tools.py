@@ -859,8 +859,30 @@ TOOLS_METADATA = [
                 "required": ["image_path"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "execute_workflow",
+            "description": "执行一个预定义的工作流（由管理员配置），根据名称运行一系列工具步骤。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "工作流名称"},
+                    "extra_params": {"type": "object", "description": "可选的额外参数，用于覆盖步骤中的默认参数"}
+                },
+                "required": ["name"]
+            }
+        }
     }
 ]
+
+# ---------- 低代码工作流执行 ----------
+def execute_workflow_tool(name: str, extra_params: Optional[Dict[str, Any]] = None) -> str:
+    """执行预定义的工作流"""
+    from common.workflows import execute_workflow
+    return execute_workflow(name, extra_params=extra_params)
+    
 
 # ==================== 工具映射 ====================
 AVAILABLE_TOOLS = {
@@ -879,4 +901,5 @@ AVAILABLE_TOOLS = {
     "list_events": list_events,
     "delete_event": delete_event,
     "recognize_table": recognize_table,
+    "execute_workflow": execute_workflow_tool,
 }
