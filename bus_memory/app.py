@@ -19,7 +19,7 @@ from common.tools import (
 from bus_memory.event_bus import EventBus
 from common.agents_memory import WorkerAgent, QueryWorker
 from common.auth import init_users_db, authenticate, get_user_info
-from common.workflows import add_workflow, list_workflows, init_workflows_db
+from common.workflows import add_workflow, list_workflows
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)) + "/..")
 
@@ -531,6 +531,7 @@ with gr.Blocks(title="AI 智能体") as demo:
 if __name__ == "__main__":
     init_users_db()
     init_db()
+    from common.workflows import init_workflows_db
     init_workflows_db()
     init_calendar()
     loop = asyncio.get_event_loop()
