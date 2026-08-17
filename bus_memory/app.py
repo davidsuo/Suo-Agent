@@ -209,7 +209,7 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             # ========== 输入区域 ==========
             with gr.Column(elem_id="input-container"):
-                # 左上角按钮行：上传、点赞、点踩
+                # 第一行：上传按钮、反馈按钮、清除按钮（左上角）
                 with gr.Row(elem_id="toolbar-row"):
                     file_upload_btn = gr.UploadButton(
                         "📎 上传文件",
@@ -221,18 +221,15 @@ with gr.Blocks(title="AI 智能体") as demo:
                     down_btn = gr.Button("👎 无帮助", scale=0, elem_id="down-btn")
                     clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
 
-                # 附件提示（显示在右上角）
-                attachment_msg
-
-                # 输入框（占剩余宽度）
+                # 第二行：输入框（占据大部分宽度）和附件提示（绝对定位在右上角）
                 text_input = gr.Textbox(
-                    label="",
+                    label="",   # 确保 label 为空
                     placeholder="发送消息或按住空格说话，松开发送...",
                     scale=4,
                     elem_id="chat-input"
                 )
-
-                # 反馈结果提示
+                # attachment_msg 和 feedback_msg 可以不放在这里，但它们需要在某处定义
+                attachment_msg = gr.Markdown("", elem_id="attachment-msg")
                 feedback_msg = gr.Markdown("")
 
             # 隐藏的文件输入：语音和粘贴
@@ -686,8 +683,9 @@ if __name__ == "__main__":
                 box-shadow: none !important;
                 background: transparent !important;
             }
-            #clear-btn {
-                color: #ff5555;
+            /* 隐藏 Gradio 自动生成的 Textbox 标签 */
+            #chat-input label {
+                display: none !important;
             }
         """
     )
