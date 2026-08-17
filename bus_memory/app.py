@@ -105,15 +105,10 @@ voice_script = """
 
     document.addEventListener('keydown', async (e) => {
         if (e.code !== 'Space' || isRecording) return;
-
         const active = document.activeElement;
-        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') && active.value && active.value.trim() !== '') {
-            return;
-        }
-
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') && active.value && active.value.trim() !== '') return;
         e.preventDefault();
         isRecording = true; audioChunks = []; showStatus('🎤 正在录音...');
-
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaRecorder = new MediaRecorder(stream);
@@ -127,9 +122,7 @@ voice_script = """
                 if (fileInput) {
                     const dt = new DataTransfer(); dt.items.add(file); fileInput.files = dt.files;
                     fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-                } else {
-                    console.error('未找到隐藏的 file input');
-                }
+                } else { console.error('未找到隐藏的 file input'); }
                 mediaRecorder.stream.getTracks().forEach(track => track.stop());
                 mediaRecorder = null;
             };
@@ -152,7 +145,6 @@ voice_script = """
 paste_script = """
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // 处理粘贴文件
     document.addEventListener('paste', function(e) {
         const items = (e.clipboardData || e.originalEvent.clipboardData).items;
         for (let i = 0; i < items.length; i++) {
@@ -165,11 +157,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     dt.items.add(file);
                     fileInput.files = dt.files;
                     fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-                    console.log('文件已粘贴上传:', file.name);
                     e.preventDefault();
                     break;
-                } else {
-                    console.error('未找到粘贴文件输入组件');
                 }
             }
         }
@@ -203,7 +192,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具）")
 
             with gr.Row():
-                    tenant_dropdown = gr.Dropdown(
+                tenant_dropdown = gr.Dropdown(
                     choices=get_available_tenants(),
                     value="default",
                     label="当前租户",
@@ -220,10 +209,8 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             # ========== 输入区域（整合在一个容器内） ==========
             with gr.Column(elem_id="input-container"):
-                # 附件提示（显示在输入框右上角）
                 attachment_msg
-
-                with gr.Row(elem_id="input-row"):
+                with gr.Row():
                     text_input = gr.Textbox(
                         label="",
                         placeholder="发送消息或按住空格说话，松开发送...",
@@ -238,8 +225,9 @@ with gr.Blocks(title="AI 智能体") as demo:
                     )
                     up_btn = gr.Button("👍", scale=0, elem_id="up-btn")
                     down_btn = gr.Button("👎", scale=0, elem_id="down-btn")
-                    feedback_msg = gr.Markdown("")   # 新增这一行
-                    clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)  # 有文件时才显示
+                    clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
+
+                feedback_msg = gr.Markdown("")  # 反馈结果提示
 
             # 隐藏的文件输入：语音和粘贴
             voice_file_input = gr.File(
@@ -280,7 +268,7 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             with gr.Row():
                 refresh_workflow_btn = gr.Button("刷新列表")
-                workflow_list = gr.Dataframe(
+            workflow_list = gr.Dataframe(
                 headers=["名称", "描述", "创建者", "创建时间"],
                 interactive=False
             )
@@ -420,28 +408,25 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     # ================= 文件上传暂存 =================
     def handle_file_upload(file):
-        """文件上传后暂存，返回文件路径和显示名称"""
         if file is None:
             return None, "", gr.update(visible=False)
         file_path = file.name if hasattr(file, 'name') else str(file)
         file_name = os.path.basename(file_path)
         return file_path, f"📎 {file_name}", gr.update(visible=True)
 
-    # 上传事件：先显示“...”，函数返回后显示文件名
     file_upload_btn.upload(
         fn=handle_file_upload,
         inputs=[file_upload_btn],
         outputs=[pending_file, attachment_msg, clear_file_btn],
-        js="() => { document.getElementById('attachment-msg').innerText = '...'; }"
+        js="() => { const el = document.getElementById('attachment-msg'); if (el) el.innerText = '...'; }"
     )
     paste_file_input.upload(
         fn=handle_file_upload,
         inputs=[paste_file_input],
         outputs=[pending_file, attachment_msg, clear_file_btn],
-        js="() => { document.getElementById('attachment-msg').innerText = '...'; }"
+        js="() => { const el = document.getElementById('attachment-msg'); if (el) el.innerText = '...'; }"
     )
 
-    # 清除暂存文件
     def clear_file():
         return None, "", gr.update(visible=False)
 
@@ -531,13 +516,13 @@ with gr.Blocks(title="AI 智能体") as demo:
             memory.add_uploaded_file(session_id, file_name, file_result)
             simple_log_tool(session_id, file_name, "file_upload", {"file_name": file_name}, "文件上传成功")
 
-        # 如果是音频文件，直接转写并回答（无需用户再输入文字）
-        if ext in ('.wav', '.mp3', '.m4a', '.ogg', '.webm'):
-            history = history or []
-            history.append({"role": "user", "content": f"🎤 语音输入：{file_result}"})
-            answer = await chat_core(session_id, file_result, query_worker, command_worker, TOOL_ROUTER)
-            history.append({"role": "assistant", "content": answer})
-            return history, "", None, file_result, answer
+            # 音频文件直接转写并回答
+            if ext in ('.wav', '.mp3', '.m4a', '.ogg', '.webm'):
+                history = history or []
+                history.append({"role": "user", "content": f"🎤 语音输入：{file_result}"})
+                answer = await chat_core(session_id, file_result, query_worker, command_worker, TOOL_ROUTER)
+                history.append({"role": "assistant", "content": answer})
+                return history, "", None, file_result, answer
 
         # 如果没有文字，仅处理文件就绪提示
         if (not message or not message.strip()) and file_name:
@@ -564,7 +549,6 @@ with gr.Blocks(title="AI 智能体") as demo:
     # ================= 文本提交（携带暂存文件） =================
     async def handle_text_with_file(text, history, user_state, pending_file_val):
         result = await unified_handler(text, history, pending_file_val, user_state)
-        # 清空暂存文件和提示，隐藏清除按钮
         return (*result, None, "", gr.update(visible=False))
 
     text_input.submit(
@@ -653,7 +637,13 @@ with gr.Blocks(title="AI 智能体") as demo:
 
 # ================= 启动入口 =================
 if __name__ == "__main__":
-    # ... 保持不变 ...
+    init_users_db()
+    init_db()
+    init_calendar()
+    loop = asyncio.get_event_loop()
+    loop.create_task(query_worker.run_loop())
+    loop.create_task(command_worker.run_loop())
+    port = int(os.environ.get("PORT", 7860))
     demo.launch(
         server_name="0.0.0.0",
         server_port=port,
@@ -663,15 +653,15 @@ if __name__ == "__main__":
             #voice-file-input { display: none; }
             #paste-file-input { display: none; }
             #input-container {
-                border: 2px solid #ccc;
+                border: 1px solid #ddd;
                 border-radius: 12px;
                 padding: 8px;
-                background: #f9f9f9;
+                background: #fafafa;
                 position: relative;
             }
             #attachment-msg {
                 position: absolute;
-                top: -15px;
+                top: -12px;
                 right: 10px;
                 background: #e0f0ff;
                 border-radius: 8px;
@@ -690,10 +680,11 @@ if __name__ == "__main__":
             }
             #upload-btn, #up-btn, #down-btn, #clear-btn {
                 margin-left: 4px;
+                padding: 4px;
             }
             #clear-btn {
                 color: #ff5555;
+                display: none; /* 默认隐藏，有文件时显示 */
             }
         """
     )
-
