@@ -196,7 +196,8 @@ with gr.Blocks(title="AI 智能体") as demo:
                 user_display = gr.Markdown("")
                 logout_btn = gr.Button("退出登录", size="sm")
 
-            chatbot = gr.Chatbot(label="对话", height=500, value=[])
+            # 关键：使用 type="messages" 以支持独立气泡
+            chatbot = gr.Chatbot(label="对话", height=500, value=[], type="messages")
 
             # 上传按钮、文件名、清除按钮（紧密排列）
             with gr.Row(elem_id="upload-row"):
@@ -309,8 +310,8 @@ with gr.Blocks(title="AI 智能体") as demo:
             return None, "", gr.update(visible=False)
         file_path = file.name if hasattr(file, 'name') else str(file)
         file_name = os.path.basename(file_path)
-        # 文件名以 HTML 形式显示，便于与清除按钮紧密排列
-        html = f"<span style='display:inline-block; margin-right:4px;'>{file_name}</span>"
+        # 文件名以 HTML 形式显示，确保与清除按钮零间距
+        html = f"<span style='display:inline-block; margin:0; padding:0;'>{file_name}</span>"
         return file_path, html, gr.update(visible=True)
 
     file_upload_btn.upload(fn=handle_file_upload, inputs=[file_upload_btn], outputs=[pending_file, attachment_html, clear_file_btn])
@@ -320,11 +321,11 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     clear_file_btn.click(fn=clear_file, inputs=[], outputs=[pending_file, attachment_html, clear_file_btn])
 
-    # ================= 文本提交（生成器，先显示...再替换为实际消息） =================
+    # ================= 文本提交（生成器：先显示...再显示实际消息） =================
     async def handle_text_with_file_generator(text, history, user_state, pending_file_val):
         history = history or []
 
-        # 1. 先显示占位符 "..." 作为用户消息（在聊天窗口右侧）
+        # 1. 先显示占位符 "..." 作为用户消息
         placeholder_msg = "..."
         history_with_placeholder = history + [{"role": "user", "content": placeholder_msg}]
         yield history_with_placeholder, "", None, "", gr.update(visible=False)
@@ -335,7 +336,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             file_path = pending_file_val
             ext = os.path.splitext(file_path)[1].lower()
             file_name = os.path.basename(file_path)
-            # 可以在这里实际分析文件并保存上下文，但为保持示例简单，仅记录文件名
+            # 这里可以后续扩展为真正的文件分析
             memory.set_file_context(user_state.get("username", "default"), f"【上传文件：{file_name}】\n文件内容待分析")
 
         user_messages = []
@@ -387,16 +388,25 @@ if __name__ == "__main__":
             #upload-row {
                 display: flex;
                 align-items: center;
-                gap: 4px;
+                gap: 0px;  /* 无间隙 */
             }
-            #attachment-html {
-                display: inline-block;
-                margin: 0;
+            #upload-row > * {
+                margin-right: 2px; /* 轻微间距 */
             }
             #clear-btn {
                 padding: 0 2px;
                 color: #ff5555;
                 font-size: 0.9em;
+                margin-left: 0;
+            }
+            /* 隐藏加载旋转指示器 */
+            .loader, .spinner, .progress, .loading {
+                display: none !important;
+            }
+            /* 确保输入框占位符可见 */
+            #chat-input textarea::placeholder {
+                color: #aaa;
+                opacity: 1;
             }
         """
     )
