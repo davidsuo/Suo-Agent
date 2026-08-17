@@ -207,27 +207,33 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
-            # ========== 输入区域（整合在一个容器内） ==========
+            # ========== 输入区域 ==========
             with gr.Column(elem_id="input-container"):
-                attachment_msg
-                with gr.Row():
-                    text_input = gr.Textbox(
-                        label="",
-                        placeholder="发送消息或按住空格说话，松开发送...",
-                        scale=4,
-                        elem_id="chat-input"
-                    )
+                # 左上角按钮行：上传、点赞、点踩
+                with gr.Row(elem_id="toolbar-row"):
                     file_upload_btn = gr.UploadButton(
-                        "📎",
+                        "📎 上传文件",
                         file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
                         scale=0,
                         elem_id="upload-btn"
                     )
-                    up_btn = gr.Button("👍", scale=0, elem_id="up-btn")
-                    down_btn = gr.Button("👎", scale=0, elem_id="down-btn")
+                    up_btn = gr.Button("👍 有帮助", scale=0, elem_id="up-btn")
+                    down_btn = gr.Button("👎 无帮助", scale=0, elem_id="down-btn")
                     clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
 
-                feedback_msg = gr.Markdown("")  # 反馈结果提示
+                # 附件提示（显示在右上角）
+                attachment_msg
+
+                # 输入框（占剩余宽度）
+                text_input = gr.Textbox(
+                    label="",
+                    placeholder="发送消息或按住空格说话，松开发送...",
+                    scale=4,
+                    elem_id="chat-input"
+                )
+
+                # 反馈结果提示
+                feedback_msg = gr.Markdown("")
 
             # 隐藏的文件输入：语音和粘贴
             voice_file_input = gr.File(
@@ -417,14 +423,12 @@ with gr.Blocks(title="AI 智能体") as demo:
     file_upload_btn.upload(
         fn=handle_file_upload,
         inputs=[file_upload_btn],
-        outputs=[pending_file, attachment_msg, clear_file_btn],
-        js="() => { const el = document.getElementById('attachment-msg'); if (el) el.innerText = '...'; }"
+        outputs=[pending_file, attachment_msg, clear_file_btn]
     )
     paste_file_input.upload(
         fn=handle_file_upload,
         inputs=[paste_file_input],
-        outputs=[pending_file, attachment_msg, clear_file_btn],
-        js="() => { const el = document.getElementById('attachment-msg'); if (el) el.innerText = '...'; }"
+        outputs=[pending_file, attachment_msg, clear_file_btn]
     )
 
     def clear_file():
@@ -637,13 +641,7 @@ with gr.Blocks(title="AI 智能体") as demo:
 
 # ================= 启动入口 =================
 if __name__ == "__main__":
-    init_users_db()
-    init_db()
-    init_calendar()
-    loop = asyncio.get_event_loop()
-    loop.create_task(query_worker.run_loop())
-    loop.create_task(command_worker.run_loop())
-    port = int(os.environ.get("PORT", 7860))
+    # ... 保持不变 ...
     demo.launch(
         server_name="0.0.0.0",
         server_port=port,
@@ -659,6 +657,13 @@ if __name__ == "__main__":
                 background: #fafafa;
                 position: relative;
             }
+            #toolbar-row {
+                margin-bottom: 4px;
+                justify-content: flex-start;
+            }
+            #toolbar-row button {
+                margin-right: 6px;
+            }
             #attachment-msg {
                 position: absolute;
                 top: -12px;
@@ -670,21 +675,13 @@ if __name__ == "__main__":
                 color: #333;
                 z-index: 5;
             }
-            #input-row {
-                align-items: center;
-            }
             #chat-input textarea {
                 border: none !important;
                 box-shadow: none !important;
                 background: transparent !important;
             }
-            #upload-btn, #up-btn, #down-btn, #clear-btn {
-                margin-left: 4px;
-                padding: 4px;
-            }
             #clear-btn {
                 color: #ff5555;
-                display: none; /* 默认隐藏，有文件时显示 */
             }
         """
     )
