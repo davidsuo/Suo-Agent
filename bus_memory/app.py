@@ -197,17 +197,16 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
-            # 上传按钮（独立一行）
-            file_upload_btn = gr.UploadButton(
-                "📎 上传文件",
-                file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
-                scale=0
-            )
+            # 上传按钮和附件提示放在同一行
+            with gr.Row(elem_id="upload-row"):
+                file_upload_btn = gr.UploadButton(
+                    "📎 上传文件",
+                    file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
+                    scale=0
+                )
+                attachment_msg = gr.Markdown("", elem_id="attachment-msg", scale=1)
 
-            # 附件提示（显示文件名）
-            attachment_msg
-
-            # 输入框（只显示 placeholder，不显示 label）
+            # 输入框
             text_input = gr.Textbox(
                 show_label=False,
                 placeholder="发送消息或按住空格说话，松开发送...",
