@@ -641,7 +641,13 @@ with gr.Blocks(title="AI 智能体") as demo:
 
 # ================= 启动入口 =================
 if __name__ == "__main__":
-    # ... 保持不变 ...
+    init_users_db()
+    init_db()
+    init_calendar()
+    loop = asyncio.get_event_loop()
+    loop.create_task(query_worker.run_loop())
+    loop.create_task(command_worker.run_loop())
+    port = int(os.environ.get("PORT", 7860))      # ← 确保这一行存在
     demo.launch(
         server_name="0.0.0.0",
         server_port=port,
