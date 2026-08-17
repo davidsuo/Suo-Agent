@@ -172,7 +172,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     user_state = gr.State(value=None)
     session_user_input = gr.Textbox(visible=False)
     pending_file = gr.State(None)
-    attachment_msg = gr.HTML("", elem_id="attachment-msg")
+    attachment_msg = gr.Markdown("", elem_id="attachment-msg")
 
     # ---------- 登录界面 ----------
     with gr.Column(visible=False) as login_column:
@@ -197,67 +197,51 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
-            # ========== 输入区域 ==========
-            with gr.Column(elem_id="input-container"):
-                # 第一行：上传按钮 + 文件名 + 清除按钮（左对齐）
-                with gr.Row(elem_id="file-row"):
-                    file_upload_btn = gr.UploadButton(
-                        "📎 上传文件",
-                        file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
-                        scale=0,
-                        elem_id="upload-btn"
-                    )
-                    attachment_msg = gr.HTML("", elem_id="attachment-msg")
-                    clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
+            # 上传按钮放在输入框上方，独立一行，不使用自定义 CSS
+            file_upload_btn = gr.UploadButton(
+                "📎 上传文件",
+                file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
+                scale=0
+            )
 
-                # 第二行：输入框
-                text_input = gr.Textbox(
-                    show_label=False,
-                    placeholder="发送消息或按住空格说话，松开发送...",
-                    scale=4,
-                    elem_id="chat-input"
-                )
+            # 附件提示（文件名）
+            attachment_msg
 
-            # 隐藏文件输入（粘贴和语音，暂不绑定）
+            # 输入框（默认样式，没有自定义 CSS）
+            text_input = gr.Textbox(
+                label="发送消息或按住空格说话，松开发送...",   # 暂时使用 label 代替 placeholder，以验证显示
+                placeholder="发送消息或按住空格说话，松开发送...",
+                scale=4
+            )
+
+            # 隐藏文件输入（暂不绑定）
             voice_file_input = gr.File(visible=True, type="filepath", elem_id="voice-file-input", label="")
             paste_file_input = gr.File(visible=True, type="filepath", elem_id="paste-file-input", label="")
 
-        # ---------- 其他 Tab ----------
+        # 其他 Tab 保持不变（略）
         with gr.Tab("系统健康"):
             gr.Markdown("## 🏥 系统健康仪表板")
             health_refresh_btn = gr.Button("刷新数据")
             health_summary_md = gr.Markdown("加载中...")
-            health_tool_table = gr.Dataframe(
-                headers=["工具名称", "调用次数"],
-                interactive=False
-            )
+            health_tool_table = gr.Dataframe(headers=["工具名称", "调用次数"], interactive=False)
 
         with gr.Tab("Worker 监控"):
             gr.Markdown("## 实时 Worker 状态")
             refresh_btn2 = gr.Button("刷新")
-            status_table = gr.Dataframe(
-                headers=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度", "平均耗时(s)", "错误率"],
-                interactive=False
-            )
+            status_table = gr.Dataframe(headers=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度", "平均耗时(s)", "错误率"], interactive=False)
 
         with gr.Tab("工作流管理", visible=False) as workflow_tab:
             gr.Markdown("## 🧩 低代码工作流配置")
             gr.Markdown("仅管理员可配置。定义工作流后，在聊天中可说“执行工作流 xxx”来调用。")
             workflow_name_input = gr.Textbox(label="工作流名称")
             workflow_desc_input = gr.Textbox(label="描述")
-            workflow_steps_input = gr.Textbox(
-                label="步骤 JSON",
-                placeholder='[{"tool": "get_current_time", "arguments": {}}, {"tool": "web_search", "arguments": {"query": "今日新闻"}}]'
-            )
+            workflow_steps_input = gr.Textbox(label="步骤 JSON", placeholder='[{"tool": "get_current_time", "arguments": {}}, {"tool": "web_search", "arguments": {"query": "今日新闻"}}]')
             workflow_create_btn = gr.Button("创建工作流")
             workflow_create_msg = gr.Markdown("")
 
             with gr.Row():
                 refresh_workflow_btn = gr.Button("刷新列表")
-            workflow_list = gr.Dataframe(
-                headers=["名称", "描述", "创建者", "创建时间"],
-                interactive=False
-            )
+            workflow_list = gr.Dataframe(headers=["名称", "描述", "创建者", "创建时间"], interactive=False)
 
             def create_workflow(name, desc, steps_json, user):
                 if not user or user.get("role") != "admin":
@@ -283,18 +267,8 @@ with gr.Blocks(title="AI 智能体") as demo:
                     df = pd.DataFrame(columns=["名称", "描述", "创建者", "创建时间"])
                 return df
 
-            workflow_create_btn.click(
-                fn=create_workflow,
-                inputs=[workflow_name_input, workflow_desc_input, workflow_steps_input, user_state],
-                outputs=[workflow_create_msg, workflow_list]
-            )
-
-            refresh_workflow_btn.click(
-                fn=refresh_workflows,
-                inputs=[],
-                outputs=[workflow_list]
-            )
-
+            workflow_create_btn.click(fn=create_workflow, inputs=[workflow_name_input, workflow_desc_input, workflow_steps_input, user_state], outputs=[workflow_create_msg, workflow_list])
+            refresh_workflow_btn.click(fn=refresh_workflows, inputs=[], outputs=[workflow_list])
             workflow_list.value = refresh_workflows()
 
     # ================= 登录、退出、加载函数 =================
@@ -328,30 +302,13 @@ with gr.Blocks(title="AI 智能体") as demo:
                 gr.update(visible=False)
             )
 
-    login_btn.click(
-        fn=login,
-        inputs=[username_input, pin_input],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab]
-    )
+    login_btn.click(fn=login, inputs=[username_input, pin_input], outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab])
 
     def logout():
         memory.set_current_user(None)
-        return (
-            None,
-            gr.update(visible=True),
-            gr.update(visible=False),
-            gr.update(),
-            gr.update(),
-            "",
-            "",
-            gr.update(visible=False)
-        )
+        return (None, gr.update(visible=True), gr.update(visible=False), gr.update(), gr.update(), "", "", gr.update(visible=False))
 
-    logout_btn.click(
-        fn=logout,
-        inputs=[],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab]
-    )
+    logout_btn.click(fn=logout, inputs=[], outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab])
 
     def load_history(session_username):
         if session_username:
@@ -362,51 +319,20 @@ with gr.Blocks(title="AI 智能体") as demo:
                 memory.set_current_user(user)
                 hist = memory.get_history(session_id)
                 tenants = get_available_tenants()
-                return (
-                    user,
-                    gr.update(visible=False),
-                    gr.update(visible=True),
-                    hist if hist else [],
-                    gr.Dropdown(choices=tenants, value=user["tenant"]),
-                    "",
-                    f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**",
-                    gr.update(visible=(user.get("role") == "admin"))
-                )
-        return (
-            None,
-            gr.update(visible=True),
-            gr.update(visible=False),
-            [],
-            gr.Dropdown(choices=get_available_tenants(), value="default"),
-            "",
-            "",
-            gr.update(visible=False)
-        )
+                return (user, gr.update(visible=False), gr.update(visible=True), hist if hist else [], gr.Dropdown(choices=tenants, value=user["tenant"]), "", f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**", gr.update(visible=(user.get("role") == "admin")))
+        return (None, gr.update(visible=True), gr.update(visible=False), [], gr.Dropdown(choices=get_available_tenants(), value="default"), "", "", gr.update(visible=False))
 
-    demo.load(
-        fn=load_history,
-        inputs=[session_user_input],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab],
-        js="() => sessionStorage.getItem('suo_user') || ''"
-    )
+    demo.load(fn=load_history, inputs=[session_user_input], outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab], js="() => sessionStorage.getItem('suo_user') || ''")
 
     # ================= 文件上传暂存 =================
     def handle_file_upload(file):
         if file is None:
-            return None, "", gr.update(visible=False)
+            return None, ""
         file_path = file.name if hasattr(file, 'name') else str(file)
         file_name = os.path.basename(file_path)
-        # 内联元素，确保与清除按钮紧邻
-        html = f"<span style='margin-right:4px;'>{file_name}</span>"
-        return file_path, html, gr.update(visible=True)
+        return file_path, f"📎 {file_name}"
 
-    file_upload_btn.upload(fn=handle_file_upload, inputs=[file_upload_btn], outputs=[pending_file, attachment_msg, clear_file_btn])
-    paste_file_input.upload(fn=handle_file_upload, inputs=[paste_file_input], outputs=[pending_file, attachment_msg, clear_file_btn])
-
-    def clear_file():
-        return None, "", gr.update(visible=False)
-
-    clear_file_btn.click(fn=clear_file, inputs=[], outputs=[pending_file, attachment_msg, clear_file_btn])
+    file_upload_btn.upload(fn=handle_file_upload, inputs=[file_upload_btn], outputs=[pending_file, attachment_msg])
 
     # ================= 文本提交 =================
     async def handle_text_with_file(text, history, user_state, pending_file_val):
@@ -414,25 +340,20 @@ with gr.Blocks(title="AI 智能体") as demo:
             return history or [], "", None, ""
         session_id = user_state.get("username", "default")
         memory.set_tenant(session_id, user_state.get("tenant", session_id))
-
         history = history or []
         file_name = None
         if pending_file_val:
             file_path = pending_file_val
             ext = os.path.splitext(file_path)[1].lower()
             file_name = os.path.basename(file_path)
-            # 暂不分析文件，只显示文件名
-            file_result = "文件内容待分析"
-            memory.set_file_context(session_id, f"【上传文件：{file_name}】\n{file_result}")
-            memory.add_uploaded_file(session_id, file_name, file_result)
-
+            memory.set_file_context(session_id, f"【上传文件：{file_name}】\n文件内容待分析")
+            memory.add_uploaded_file(session_id, file_name, "文件内容待分析")
         if file_name and text.strip():
             display_msg = f"📎 上传文件：{file_name}\n{text}"
         elif file_name and not text.strip():
             display_msg = f"📎 上传文件：{file_name}"
         else:
             display_msg = text
-
         history.append({"role": "user", "content": display_msg})
         if text.strip():
             answer = await chat_core(session_id, text, query_worker, command_worker, TOOL_ROUTER)
@@ -441,11 +362,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         history.append({"role": "assistant", "content": answer})
         return history, "", None, ""
 
-    text_input.submit(
-        fn=handle_text_with_file,
-        inputs=[text_input, chatbot, user_state, pending_file],
-        outputs=[chatbot, text_input, pending_file, attachment_msg]
-    )
+    text_input.submit(fn=handle_text_with_file, inputs=[text_input, chatbot, user_state, pending_file], outputs=[chatbot, text_input, pending_file, attachment_msg])
 
 # ================= 启动入口 =================
 if __name__ == "__main__":
@@ -456,48 +373,4 @@ if __name__ == "__main__":
     loop.create_task(query_worker.run_loop())
     loop.create_task(command_worker.run_loop())
     port = int(os.environ.get("PORT", 7860))
-    demo.launch(
-        server_name="0.0.0.0",
-        server_port=port,
-        theme=gr.themes.Soft(),
-        css="""
-            #voice-file-input { display: none; }
-            #paste-file-input { display: none; }
-            #input-container {
-                border: 2px solid #ccc;
-                border-radius: 12px;
-                padding: 8px;
-                background: #fafafa;
-            }
-            #file-row {
-                display: flex;
-                align-items: center;
-                gap: 4px;
-                margin-bottom: 4px;
-            }
-            #attachment-msg {
-                margin: 0;
-                font-size: 0.9em;
-                color: #333;
-            }
-            #clear-btn {
-                padding: 0 2px;
-                color: #ff5555;
-                font-size: 0.9em;
-            }
-            #chat-input textarea {
-                border: none !important;
-                box-shadow: none !important;
-                background: transparent !important;
-                padding: 8px 4px;
-                font-size: 1em;
-            }
-            #chat-input textarea::placeholder {
-                color: #aaa;
-                opacity: 1;
-            }
-            #chat-input label {
-                display: none !important;
-            }
-        """
-    )
+    demo.launch(server_name="0.0.0.0", server_port=port, theme=gr.themes.Soft())
