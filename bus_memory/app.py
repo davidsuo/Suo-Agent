@@ -196,7 +196,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                 user_display = gr.Markdown("")
                 logout_btn = gr.Button("退出登录", size="sm")
 
-            chatbot = gr.Chatbot(label="对话", height=500, value=[], type="messages")
+            chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
             # 上传按钮、文件名、清除按钮（紧密排列）
             with gr.Row(elem_id="upload-row"):
@@ -319,46 +319,48 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     clear_file_btn.click(fn=clear_file, inputs=[], outputs=[pending_file, attachment_html, clear_file_btn])
 
-    # ================= 文本提交（生成器，先显示...再替换为实际消息） =================
+    # ================= 文本提交（生成器，兼容 Gradio 3.x） =================
     async def handle_text_with_file_generator(text, history, user_state, pending_file_val):
-        history = history or []
-
-        # 1. 显示占位符 "..."
-        placeholder_msg = "..."
-        history_with_placeholder = history + [{"role": "user", "content": placeholder_msg}]
-        yield history_with_placeholder, "", None, "", gr.update(visible=False)
-
-        # 2. 准备实际用户消息（文件消息和文字消息分离）
-        file_name = None
+        history = list(history) if history else []
+        
+        # 1. 构建多条独立的用户消息
+        user_entries = []
+        
         if pending_file_val:
-            file_path = pending_file_val
-            ext = os.path.splitext(file_path)[1].lower()
-            file_name = os.path.basename(file_path)
+            file_name = os.path.basename(pending_file_val)
+            # 将文件消息作为一个独立气泡加入
+            user_entries.append([f"📎 上传文件：{file_name}", None])
             memory.set_file_context(user_state.get("username", "default"), f"【上传文件：{file_name}】\n文件内容待分析")
-
-        user_messages = []
-        if file_name:
-            user_messages.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
+            
         if text and text.strip():
-            user_messages.append({"role": "user", "content": text})
-
-        if not user_messages:
-            user_messages = [{"role": "user", "content": ""}]
-
-        final_history = history + user_messages
-
-        # 3. 调用智能体
+            # 将文本提问作为另一个独立气泡加入
+            user_entries.append([text, None])
+            
+        # 如果没有输入任何内容，创建一个空白占位（防止无响应）
+        if not user_entries:
+            user_entries.append(["", None])
+            
+        # 2. 先把新的用户消息更新到历史列表，此时机器人回答为空（None）
+        new_history = history + user_entries
+        yield new_history, "", None, "", gr.update(visible=False)
+        
+        # 3. 调用智能体后台逻辑
         session_id = user_state.get("username", "default") if user_state else "default"
-        memory.set_tenant(session_id, user_state.get("tenant", session_id))
+        memory.set_tenant(session_id, user_state.get("tenant", session_id) if user_state else session_id)
+        
         if text and text.strip():
+            # 只有在有提问文字时，才去调用 AI 回答
             answer = await chat_core(session_id, text, query_worker, command_worker, TOOL_ROUTER)
         else:
+            # 如果只上传了文件没有提问，给出默认提示
             answer = "文件已就绪，您可以基于该内容提问。"
-
-        final_history.append({"role": "assistant", "content": answer})
-
-        # 4. 返回最终结果，清空暂存文件
-        yield final_history, "", None, "", gr.update(visible=False)
+            
+        # 4. 将 AI 的回答更新到最新一条用户消息的后面（即绑定到提问气泡上）
+        if new_history:
+            new_history[-1][1] = answer
+            
+        # 5. 返回最终结果，并清空暂存文件
+        yield new_history, "", None, "", gr.update(visible=False)
 
     text_input.submit(
         fn=handle_text_with_file_generator,
