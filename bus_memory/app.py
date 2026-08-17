@@ -123,25 +123,33 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
-            # 输入区域：输入框 + 上传按钮（同一行）
-            with gr.Row():
+            # 输入区域：上传按钮在输入框上方，靠右
+            with gr.Column(elem_id="input-area"):
+                # 附件提示（文件名显示在这里）
+                attachment_msg
+
+                # 上传按钮（靠右）
+                with gr.Row(elem_id="upload-row"):
+                    file_upload_btn = gr.UploadButton(
+                        "📎 上传文件",
+                        file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
+                        scale=0
+                    )
+
+                # 输入框
                 text_input = gr.Textbox(
                     label="",
                     placeholder="发送消息或按住空格说话，松开发送...",
                     scale=4
                 )
-                file_upload_btn = gr.UploadButton(
-                    "📎 上传文件",
-                    file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
-                    scale=0
-                )
 
-            # 附件提示（显示在输入框下方）
-            attachment_msg
-
-            # 隐藏文件输入（用于粘贴和语音，稍后添加）
-            voice_file_input = gr.File(visible=True, type="filepath", elem_id="voice-file-input", label="")
-            paste_file_input = gr.File(visible=True, type="filepath", elem_id="paste-file-input", label="")
+            # 隐藏文件输入（语音和粘贴，暂时只定义，未绑定）
+            voice_file_input = gr.File(
+                visible=True, type="filepath", elem_id="voice-file-input", label=""
+            )
+            paste_file_input = gr.File(
+                visible=True, type="filepath", elem_id="paste-file-input", label=""
+            )
 
         with gr.Tab("系统健康"):
             gr.Markdown("## 🏥 系统健康仪表板")
@@ -399,19 +407,16 @@ with gr.Blocks(title="AI 智能体") as demo:
 
         history = history or []
 
-        # 如果有文件，先分析并保存上下文，再处理文字
         file_name = None
         if pending_file_val:
             file_path = pending_file_val
             ext = os.path.splitext(file_path)[1].lower()
             file_name = os.path.basename(file_path)
-            # 简化：只记录文件名，不真正分析（后续再集成分析逻辑）
-            # 这里可以调用 analyze_file 等，但为了先验证布局，暂时只显示文件名
+            # 这里可调用分析函数，但为了验证布局，先仅显示文件名
             file_result = "文件内容待分析"
             memory.set_file_context(session_id, f"【上传文件：{file_name}】\n{file_result}")
             memory.add_uploaded_file(session_id, file_name, file_result)
 
-        # 显示用户消息（文件在上，文字在下）
         if file_name and text.strip():
             display_msg = f"📎 上传文件：{file_name}\n{text}"
         elif file_name and not text.strip():
@@ -427,6 +432,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             answer = "文件已就绪，您可以基于该内容提问。"
 
         history.append({"role": "assistant", "content": answer})
+        # 清空暂存文件和附件提示
         return history, "", None, ""
 
     text_input.submit(
@@ -435,7 +441,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         outputs=[chatbot, text_input, pending_file, attachment_msg]
     )
 
-# ================= 启动入口 =================
+    # ================= 启动入口 =================
 if __name__ == "__main__":
     init_users_db()
     init_db()
@@ -448,5 +454,17 @@ if __name__ == "__main__":
         server_name="0.0.0.0",
         server_port=port,
         theme=gr.themes.Soft(),
-        # 注意：没有添加任何 CSS，确保输入框默认可见
+        css="""
+            #voice-file-input { display: none; }
+            #paste-file-input { display: none; }
+            #upload-row {
+                justify-content: flex-end;
+                margin-bottom: 4px;
+            }
+            #attachment-msg {
+                margin-bottom: 4px;
+                font-size: 0.9em;
+                color: #333;
+            }
+        """
     )
