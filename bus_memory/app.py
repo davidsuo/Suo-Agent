@@ -522,6 +522,14 @@ with gr.Blocks(title="AI 智能体") as demo:
             memory.add_uploaded_file(session_id, file_name, file_result)
             simple_log_tool(session_id, file_name, "file_upload", {"file_name": file_name}, "文件上传成功")
 
+        # 如果是音频文件，直接转写并回答（无需用户再输入文字）
+        if ext in ('.wav', '.mp3', '.m4a', '.ogg', '.webm'):
+            history = history or []
+            history.append({"role": "user", "content": f"🎤 语音输入：{file_result}"})
+            answer = await chat_core(session_id, file_result, query_worker, command_worker, TOOL_ROUTER)
+            history.append({"role": "assistant", "content": answer})
+            return history, "", None, file_result, answer
+
         # 如果没有文字，仅处理文件就绪提示
         if (not message or not message.strip()) and file_name:
             history = history or []
