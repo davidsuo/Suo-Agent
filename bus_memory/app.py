@@ -197,26 +197,22 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
-            # 上传按钮放在输入框上方，独立一行，不使用自定义 CSS
+            # 上传按钮（独立一行）
             file_upload_btn = gr.UploadButton(
                 "📎 上传文件",
                 file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
                 scale=0
             )
 
-            # 附件提示（文件名）
+            # 附件提示（显示文件名）
             attachment_msg
 
-            # 输入框（默认样式，没有自定义 CSS）
+            # 输入框（只显示 placeholder，不显示 label）
             text_input = gr.Textbox(
-                label="发送消息或按住空格说话，松开发送...",   # 暂时使用 label 代替 placeholder，以验证显示
+                show_label=False,
                 placeholder="发送消息或按住空格说话，松开发送...",
                 scale=4
             )
-
-            # 隐藏文件输入（暂不绑定）
-            voice_file_input = gr.File(visible=True, type="filepath", elem_id="voice-file-input", label="")
-            paste_file_input = gr.File(visible=True, type="filepath", elem_id="paste-file-input", label="")
 
         # 其他 Tab 保持不变（略）
         with gr.Tab("系统健康"):
@@ -280,27 +276,9 @@ with gr.Blocks(title="AI 智能体") as demo:
             memory.set_current_user(user)
             hist = memory.get_history(session_id)
             tenants = get_available_tenants()
-            return (
-                user,
-                gr.update(visible=False),
-                gr.update(visible=True),
-                hist if hist else [],
-                gr.Dropdown(choices=tenants, value=user["tenant"]),
-                f"✅ 登录成功，欢迎 {user['display_name']}！",
-                f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**",
-                gr.update(visible=(user.get("role") == "admin"))
-            )
+            return (user, gr.update(visible=False), gr.update(visible=True), hist if hist else [], gr.Dropdown(choices=tenants, value=user["tenant"]), f"✅ 登录成功，欢迎 {user['display_name']}！", f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**", gr.update(visible=(user.get("role") == "admin")))
         else:
-            return (
-                None,
-                gr.update(visible=True),
-                gr.update(visible=False),
-                [],
-                gr.update(),
-                "❌ 用户名或 PIN 码错误",
-                "",
-                gr.update(visible=False)
-            )
+            return (None, gr.update(visible=True), gr.update(visible=False), [], gr.update(), "❌ 用户名或 PIN 码错误", "", gr.update(visible=False))
 
     login_btn.click(fn=login, inputs=[username_input, pin_input], outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab])
 
@@ -346,8 +324,10 @@ with gr.Blocks(title="AI 智能体") as demo:
             file_path = pending_file_val
             ext = os.path.splitext(file_path)[1].lower()
             file_name = os.path.basename(file_path)
-            memory.set_file_context(session_id, f"【上传文件：{file_name}】\n文件内容待分析")
-            memory.add_uploaded_file(session_id, file_name, "文件内容待分析")
+            # 这里可以后续扩展为真正的文件分析
+            file_result = "文件内容待分析"
+            memory.set_file_context(session_id, f"【上传文件：{file_name}】\n{file_result}")
+            memory.add_uploaded_file(session_id, file_name, file_result)
         if file_name and text.strip():
             display_msg = f"📎 上传文件：{file_name}\n{text}"
         elif file_name and not text.strip():
