@@ -177,7 +177,8 @@ with gr.Blocks(title="AI 智能体") as demo:
     feedback_up = gr.State("up")
     feedback_down = gr.State("down")
     pending_file = gr.State(None)
-    attachment_msg = gr.Markdown("", elem_id="attachment-msg")
+    attachment_msg = gr.Markdown("", elem_id="attachment-msg", scale=0)
+    clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
 
     # ---------- 登录界面 ----------
     with gr.Column(visible=False) as login_column:
@@ -220,12 +221,12 @@ with gr.Blocks(title="AI 智能体") as demo:
                     )
                     up_btn = gr.Button("👍 有帮助", scale=0, elem_id="up-btn")
                     down_btn = gr.Button("👎 无帮助", scale=0, elem_id="down-btn")
-                    feedback_msg = gr.Markdown("", elem_id="feedback-msg")
+                    feedback_msg = gr.Markdown("", elem_id="feedback-msg", scale=0)
 
-                # 第二行：附件提示 + 清除按钮（左对齐）
+                # 第二行：附件提示 + 清除按钮（左对齐，紧贴）
                 with gr.Row(elem_id="attachment-row"):
-                    attachment_msg = gr.Markdown("", elem_id="attachment-msg")
-                    clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
+                    attachment_msg
+                    clear_file_btn
 
                 # 第三行：输入框
                 text_input = gr.Textbox(
@@ -553,6 +554,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     # ================= 文本提交（携带暂存文件） =================
     async def handle_text_with_file(text, history, user_state, pending_file_val):
         result = await unified_handler(text, history, pending_file_val, user_state)
+        # 返回时确保 last_user_message 和 last_assistant_message 正确
         return (*result, None, "", gr.update(visible=False))
 
     text_input.submit(
@@ -568,7 +570,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         [chatbot, text_input, voice_file_input, last_user_message, last_assistant_message]
     )
 
-    # 反馈处理
+    # ================= 反馈处理 =================
     async def handle_feedback(feedback, user_msg_state, assistant_msg_state, user_state):
         print(f"[反馈按钮] 触发，feedback={feedback}, user={user_state}, user_msg={user_msg_state[:30]}...", flush=True)
         if not user_state:
@@ -663,31 +665,30 @@ if __name__ == "__main__":
                 background: #fafafa;
             }
             #toolbar-row {
-                margin-bottom: 6px;
+                margin-bottom: 4px;
             }
             #toolbar-row button {
-                margin-right: 8px;
+                margin-right: 6px;
             }
             #attachment-row {
                 justify-content: flex-start;
                 align-items: center;
-                margin-bottom: 6px;
+                margin-bottom: 4px;
             }
             #attachment-msg {
+                margin-right: 4px;
                 font-size: 0.9em;
                 color: #333;
-                margin-right: 6px;
             }
             #clear-btn {
-                color: #ff5555;
                 padding: 2px;
+                color: #ff5555;
             }
             #chat-input textarea {
                 border: none !important;
                 box-shadow: none !important;
                 background: transparent !important;
             }
-            /* 隐藏 Textbox 标签 */
             #chat-input label {
                 display: none !important;
             }
