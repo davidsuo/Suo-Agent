@@ -91,6 +91,8 @@ with gr.Blocks(title="AI 智能体") as demo:
     # ---------- 全局状态 ----------
     user_state = gr.State(value=None)
     session_user_input = gr.Textbox(visible=False)
+    pending_file = gr.State(None)
+    attachment_msg = gr.Markdown("", elem_id="attachment-msg")
 
     # ---------- 登录界面 ----------
     with gr.Column(visible=False) as login_column:
@@ -121,12 +123,25 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
-            # 输入框（默认样式，不加任何自定义 CSS）
-            text_input = gr.Textbox(
-                label="",  # 不显示标签
-                placeholder="发送消息或按住空格说话，松开发送...",
-                scale=4
-            )
+            # 输入区域：输入框 + 上传按钮（同一行）
+            with gr.Row():
+                text_input = gr.Textbox(
+                    label="",
+                    placeholder="发送消息或按住空格说话，松开发送...",
+                    scale=4
+                )
+                file_upload_btn = gr.UploadButton(
+                    "📎 上传文件",
+                    file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
+                    scale=0
+                )
+
+            # 附件提示（显示在输入框下方）
+            attachment_msg
+
+            # 隐藏文件输入（用于粘贴和语音，稍后添加）
+            voice_file_input = gr.File(visible=True, type="filepath", elem_id="voice-file-input", label="")
+            paste_file_input = gr.File(visible=True, type="filepath", elem_id="paste-file-input", label="")
 
         with gr.Tab("系统健康"):
             gr.Markdown("## 🏥 系统健康仪表板")
@@ -359,6 +374,66 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     refresh_btn2.click(fn=refresh_status, outputs=status_table)
     status_table.value = refresh_status()
+
+
+    # ================= 文件上传暂存 =================
+    def handle_file_upload(file):
+        if file is None:
+            return None, ""
+        file_path = file.name if hasattr(file, 'name') else str(file)
+        file_name = os.path.basename(file_path)
+        return file_path, f"📎 已附加：{file_name}"
+
+    file_upload_btn.upload(
+        fn=handle_file_upload,
+        inputs=[file_upload_btn],
+        outputs=[pending_file, attachment_msg]
+    )
+
+    # ================= 文本提交（携带暂存文件） =================
+    async def handle_text_with_file(text, history, user_state, pending_file_val):
+        if not user_state:
+            return history or [], "", None, ""
+        session_id = user_state.get("username", "default")
+        memory.set_tenant(session_id, user_state.get("tenant", session_id))
+
+        history = history or []
+
+        # 如果有文件，先分析并保存上下文，再处理文字
+        file_name = None
+        if pending_file_val:
+            file_path = pending_file_val
+            ext = os.path.splitext(file_path)[1].lower()
+            file_name = os.path.basename(file_path)
+            # 简化：只记录文件名，不真正分析（后续再集成分析逻辑）
+            # 这里可以调用 analyze_file 等，但为了先验证布局，暂时只显示文件名
+            file_result = "文件内容待分析"
+            memory.set_file_context(session_id, f"【上传文件：{file_name}】\n{file_result}")
+            memory.add_uploaded_file(session_id, file_name, file_result)
+
+        # 显示用户消息（文件在上，文字在下）
+        if file_name and text.strip():
+            display_msg = f"📎 上传文件：{file_name}\n{text}"
+        elif file_name and not text.strip():
+            display_msg = f"📎 上传文件：{file_name}"
+        else:
+            display_msg = text
+
+        history.append({"role": "user", "content": display_msg})
+
+        if text.strip():
+            answer = await chat_core(session_id, text, query_worker, command_worker, TOOL_ROUTER)
+        else:
+            answer = "文件已就绪，您可以基于该内容提问。"
+
+        history.append({"role": "assistant", "content": answer})
+        return history, "", None, ""
+
+    text_input.submit(
+        fn=handle_text_with_file,
+        inputs=[text_input, chatbot, user_state, pending_file],
+        outputs=[chatbot, text_input, pending_file, attachment_msg]
+    )
 
 # ================= 启动入口 =================
 if __name__ == "__main__":
