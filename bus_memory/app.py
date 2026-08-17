@@ -381,21 +381,6 @@ if __name__ == "__main__":
         css="""
             #voice-file-input { display: none; }
             #paste-file-input { display: none; }
-            #upload-row {
-                display: flex;
-                align-items: center;
-                gap: 0px;
-                flex-wrap: nowrap; /* 强制不换行 */;
-            }
-            #upload-row > * {
-                margin-right: 0px;
-            }
-            #clear-btn {
-                padding: 0 2px;
-                color: #ff5555;
-                font-size: 0.9em;
-                margin-left: 0;
-            }
             /* 隐藏加载旋转指示器 */
             .loader, .spinner, .progress, .loading {
                 display: none !important;
@@ -405,6 +390,55 @@ if __name__ == "__main__":
                 color: #aaa;
                 opacity: 1;
             }
-            #chat-input .gradio-spinner { display: none !important; }
+            
+            /* ========= 以下是修复上传区和 ❌ 按钮分离的核心 CSS ========= */
+            #upload-row {
+                display: flex !important;
+                align-items: center !important;
+                gap: 0px !important;           /* 强制组件之间无缝隙 */
+                flex-wrap: nowrap !important;   /* 强制在一行不换行 */
+                justify-content: flex-start !important;
+                margin-bottom: 10px !important; /* 与下面输入框保持一点距离 */
+            }
+            
+            /* 强制上传按钮内文字横向单行显示（解决截图里“上传文件”竖排的问题） */
+            #upload-row .upload-button button {
+                white-space: nowrap !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                min-width: 80px !important;
+                padding: 4px 12px !important;
+                height: auto !important;
+            }
+
+            /* 彻底消除包裹上传按钮的外部容器多余的边距 */
+            #upload-row .gr-box {
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            /* 彻底消除文件名组件的多余内外边距 */
+            #attachment-html {
+                margin: 0 !important;
+                padding: 0 6px !important; /* 这里给文件名留一点点阅读间隙 */
+                background: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
+                min-width: auto !important;
+            }
+
+            /* 彻底消除 ❌ 清除按钮的多余边距 */
+            #clear-btn {
+                margin: 0 !important;
+                padding: 0 4px !important;
+                background: transparent !important;
+                border: none !important;
+                color: #ff5555 !important;
+                min-width: auto !important;
+                width: auto !important;
+                box-shadow: none !important;
+                font-size: 14px !important;
+            }
         """
     )
