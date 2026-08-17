@@ -172,7 +172,8 @@ with gr.Blocks(title="AI 智能体") as demo:
     user_state = gr.State(value=None)
     session_user_input = gr.Textbox(visible=False)
     pending_file = gr.State(None)
-    attachment_msg = gr.Markdown("", elem_id="attachment-msg")
+    attachment_html = gr.HTML("", elem_id="attachment-html")
+    clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
 
     # ---------- 登录界面 ----------
     with gr.Column(visible=False) as login_column:
@@ -197,14 +198,14 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
-            # 上传按钮、附件提示、清除按钮（同一行）
+            # 上传按钮、文件名、清除按钮（紧密排列）
             with gr.Row(elem_id="upload-row"):
                 file_upload_btn = gr.UploadButton(
                     "📎 上传文件",
                     file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
                     scale=0
                 )
-                attachment_msg = gr.Markdown("", elem_id="attachment-msg", scale=1)
+                attachment_html = gr.HTML("", elem_id="attachment-html")
                 clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
 
             # 输入框
@@ -308,34 +309,34 @@ with gr.Blocks(title="AI 智能体") as demo:
             return None, "", gr.update(visible=False)
         file_path = file.name if hasattr(file, 'name') else str(file)
         file_name = os.path.basename(file_path)
-        return file_path, f"📎 {file_name}", gr.update(visible=True)
+        # 文件名以 HTML 形式显示，便于与清除按钮紧密排列
+        html = f"<span style='display:inline-block; margin-right:4px;'>{file_name}</span>"
+        return file_path, html, gr.update(visible=True)
 
-    file_upload_btn.upload(fn=handle_file_upload, inputs=[file_upload_btn], outputs=[pending_file, attachment_msg, clear_file_btn])
+    file_upload_btn.upload(fn=handle_file_upload, inputs=[file_upload_btn], outputs=[pending_file, attachment_html, clear_file_btn])
 
     def clear_file():
         return None, "", gr.update(visible=False)
 
-    clear_file_btn.click(fn=clear_file, inputs=[], outputs=[pending_file, attachment_msg, clear_file_btn])
+    clear_file_btn.click(fn=clear_file, inputs=[], outputs=[pending_file, attachment_html, clear_file_btn])
 
     # ================= 文本提交（生成器，先显示...再替换为实际消息） =================
     async def handle_text_with_file_generator(text, history, user_state, pending_file_val):
-        # 初始历史
         history = history or []
 
-        # 先添加一个“...”作为占位用户消息
+        # 1. 先显示占位符 "..." 作为用户消息（在聊天窗口右侧）
         placeholder_msg = "..."
         history_with_placeholder = history + [{"role": "user", "content": placeholder_msg}]
-        yield history_with_placeholder, "", None, "", ""
+        yield history_with_placeholder, "", None, "", gr.update(visible=False)
 
-        # 准备实际用户消息（文件在上，提示词在下）
+        # 2. 准备实际用户消息（文件消息和文字消息分离）
         file_name = None
         if pending_file_val:
             file_path = pending_file_val
             ext = os.path.splitext(file_path)[1].lower()
             file_name = os.path.basename(file_path)
-            # 这里可以后续扩展为真正的文件分析
-            file_result = "文件内容待分析"
-            memory.set_file_context(user_state.get("username", "default"), f"【上传文件：{file_name}】\n{file_result}")
+            # 可以在这里实际分析文件并保存上下文，但为保持示例简单，仅记录文件名
+            memory.set_file_context(user_state.get("username", "default"), f"【上传文件：{file_name}】\n文件内容待分析")
 
         user_messages = []
         if file_name:
@@ -343,14 +344,12 @@ with gr.Blocks(title="AI 智能体") as demo:
         if text and text.strip():
             user_messages.append({"role": "user", "content": text})
 
-        # 如果没有实际内容，则仅保留一条空消息
         if not user_messages:
             user_messages = [{"role": "user", "content": ""}]
 
-        # 移除占位符，插入实际用户消息
         final_history = history + user_messages
 
-        # 调用智能体
+        # 3. 调用智能体
         session_id = user_state.get("username", "default") if user_state else "default"
         memory.set_tenant(session_id, user_state.get("tenant", session_id))
         if text and text.strip():
@@ -358,16 +357,15 @@ with gr.Blocks(title="AI 智能体") as demo:
         else:
             answer = "文件已就绪，您可以基于该内容提问。"
 
-        # 添加助手回复
         final_history.append({"role": "assistant", "content": answer})
 
-        # 清理暂存文件
-        yield final_history, "", None, "", ""
+        # 4. 返回最终结果，清空暂存文件
+        yield final_history, "", None, "", gr.update(visible=False)
 
     text_input.submit(
         fn=handle_text_with_file_generator,
         inputs=[text_input, chatbot, user_state, pending_file],
-        outputs=[chatbot, text_input, pending_file, attachment_msg, clear_file_btn]
+        outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn]
     )
 
 # ================= 启动入口 =================
@@ -379,4 +377,26 @@ if __name__ == "__main__":
     loop.create_task(query_worker.run_loop())
     loop.create_task(command_worker.run_loop())
     port = int(os.environ.get("PORT", 7860))
-    demo.launch(server_name="0.0.0.0", server_port=port, theme=gr.themes.Soft())
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=port,
+        theme=gr.themes.Soft(),
+        css="""
+            #voice-file-input { display: none; }
+            #paste-file-input { display: none; }
+            #upload-row {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+            }
+            #attachment-html {
+                display: inline-block;
+                margin: 0;
+            }
+            #clear-btn {
+                padding: 0 2px;
+                color: #ff5555;
+                font-size: 0.9em;
+            }
+        """
+    )
