@@ -87,87 +87,6 @@ def get_available_tenants():
     return sorted(list(memory.all_tenants))
     
 
-# ================= 自定义 JavaScript =================
-# ================= 自定义 JavaScript（按住空格录音，保留但无用） =================
-voice_script = """
-<script>
-(function() {
-    let mediaRecorder;
-    let audioChunks = [];
-    let isRecording = false;
-
-    const statusDiv = document.createElement('div');
-    statusDiv.id = 'recording-status';
-    statusDiv.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 8px 16px; border-radius: 20px; display: none; z-index: 9999;';
-    document.body.appendChild(statusDiv);
-
-    function showStatus(text) { statusDiv.textContent = text; statusDiv.style.display = 'block'; }
-    function hideStatus() { statusDiv.style.display = 'none'; }
-
-    document.addEventListener('keydown', async (e) => {
-        if (e.code !== 'Space' || isRecording) return;
-        const active = document.activeElement;
-        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') && active.value && active.value.trim() !== '') return;
-        e.preventDefault();
-        isRecording = true; audioChunks = []; showStatus('🎤 正在录音...');
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
-            mediaRecorder.ondataavailable = event => { if (event.data.size > 0) audioChunks.push(event.data); };
-            mediaRecorder.onstop = () => {
-                hideStatus();
-                const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
-                const file = new File([audioBlob], 'voice_message.webm', { type: audioBlob.type });
-                const wrapper = document.getElementById('voice-file-input');
-                const fileInput = wrapper ? wrapper.querySelector('input[type="file"]') : null;
-                if (fileInput) {
-                    const dt = new DataTransfer(); dt.items.add(file); fileInput.files = dt.files;
-                    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-                }
-                mediaRecorder.stream.getTracks().forEach(track => track.stop());
-                mediaRecorder = null;
-            };
-            mediaRecorder.start();
-        } catch (err) {
-            console.error('录音失败:', err); showStatus('❌ 无法访问麦克风，请检查权限');
-            setTimeout(hideStatus, 2000); isRecording = false;
-        }
-    });
-
-    document.addEventListener('keyup', (e) => {
-        if (e.code !== 'Space' || !isRecording) return;
-        e.preventDefault(); isRecording = false;
-        if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
-    });
-})();
-</script>
-"""
-
-paste_script = """
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    document.addEventListener('paste', function(e) {
-        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-        for (let i = 0; i < items.length; i++) {
-            if (items[i].kind === 'file') {
-                const file = items[i].getAsFile();
-                const wrapper = document.getElementById('paste-file-input');
-                const fileInput = wrapper ? wrapper.querySelector('input[type="file"]') : null;
-                if (fileInput) {
-                    const dt = new DataTransfer();
-                    dt.items.add(file);
-                    fileInput.files = dt.files;
-                    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-                    e.preventDefault();
-                    break;
-                }
-            }
-        }
-    });
-});
-</script>
-"""
-
 with gr.Blocks(title="AI 智能体") as demo:
     # ---------- 全局状态 ----------
     user_state = gr.State(value=None)
@@ -202,20 +121,11 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
-            # 输入框（单独，无其他组件干扰）
+            # 输入框（默认样式，不加任何自定义 CSS）
             text_input = gr.Textbox(
-                show_label=False,
+                label="",  # 不显示标签
                 placeholder="发送消息或按住空格说话，松开发送...",
-                scale=4,
-                elem_id="chat-input"
-            )
-
-            # 隐藏文件输入（语音和粘贴，但暂时不绑定任何事件，仅保留）
-            voice_file_input = gr.File(
-                visible=True, type="filepath", elem_id="voice-file-input", label=""
-            )
-            paste_file_input = gr.File(
-                visible=True, type="filepath", elem_id="paste-file-input", label=""
+                scale=4
             )
 
         with gr.Tab("系统健康"):
@@ -387,10 +297,70 @@ with gr.Blocks(title="AI 智能体") as demo:
         js="() => sessionStorage.getItem('suo_user') || ''"
     )
 
-    # 暂时不绑定任何文本提交、文件上传、语音、反馈事件
-    # 仅保留登录、退出、页面加载功能
+    # ================= 纯文本聊天处理 =================
+    async def handle_text(message, history, user):
+        if not user:
+            return history or [], ""
+        session_id = user.get("username", "default")
+        memory.set_tenant(session_id, user.get("tenant", session_id))
+        history = history or []
+        history.append({"role": "user", "content": message})
+        answer = await chat_core(session_id, message, query_worker, command_worker, TOOL_ROUTER)
+        history.append({"role": "assistant", "content": answer})
+        return history, ""
 
-    # ================= 启动入口 =================
+    text_input.submit(
+        fn=handle_text,
+        inputs=[text_input, chatbot, user_state],
+        outputs=[chatbot, text_input]
+    )
+
+    # 健康仪表板刷新
+    def update_health_dashboard():
+        from common.health import get_system_health
+        health = get_system_health()
+        summary = f"""
+**📊 总体统计**
+- 总任务数：{health['total_tasks']}
+- 成功任务：{health['success_tasks']} | 失败任务：{health['failed_tasks']}
+- 成功率：{health['success_rate']}%
+- 活跃用户（24h）：{health['active_users']} | 总用户：{health['total_users']}
+- 反馈总数：{health['total_feedback']}（👍 {health['up_feedback']} / 👎 {health['down_feedback']}）
+        """
+        tool_data = [[tool, count] for tool, count in health['sorted_tools']]
+        if not tool_data:
+            tool_data = [["暂无数据", 0]]
+        tool_df = pd.DataFrame(tool_data, columns=["工具名称", "调用次数"])
+        return summary, tool_df
+
+    health_refresh_btn.click(
+        fn=update_health_dashboard,
+        inputs=[],
+        outputs=[health_summary_md, health_tool_table]
+    )
+    health_refresh_btn.click(fn=update_health_dashboard, inputs=[], outputs=[health_summary_md, health_tool_table])
+
+    # Worker 监控刷新
+    def refresh_status():
+        workers = [query_worker, command_worker]
+        data = []
+        for w in workers:
+            stats = w.get_stats()
+            data.append([
+                stats["name"],
+                str(stats["is_running"]),
+                stats["task_count"],
+                stats["error_count"],
+                stats["queue_size"],
+                stats["avg_time"],
+                stats["error_rate"]
+            ])
+        return pd.DataFrame(data, columns=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度", "平均耗时(s)", "错误率"])
+
+    refresh_btn2.click(fn=refresh_status, outputs=status_table)
+    status_table.value = refresh_status()
+
+# ================= 启动入口 =================
 if __name__ == "__main__":
     init_users_db()
     init_db()
@@ -403,23 +373,5 @@ if __name__ == "__main__":
         server_name="0.0.0.0",
         server_port=port,
         theme=gr.themes.Soft(),
-        head=voice_script + paste_script,
-        css="""
-            #voice-file-input { display: none; }
-            #paste-file-input { display: none; }
-            #chat-input textarea {
-                border: 1px solid #ddd !important;
-                border-radius: 8px;
-                padding: 10px;
-                background: #fff !important;
-                width: 100%;
-            }
-            #chat-input textarea::placeholder {
-                color: #aaa;
-                opacity: 1;
-            }
-            #chat-input label {
-                display: none !important;
-            }
-        """
+        # 注意：没有添加任何 CSS，确保输入框默认可见
     )
