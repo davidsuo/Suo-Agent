@@ -202,27 +202,27 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
-            # ========== 输入区域（全新布局） ==========
+            # ========== 输入区域 ==========
             with gr.Column(elem_id="input-container"):
-                # 工具栏
+                # 工具栏（上传、点赞、点踩）
                 with gr.Row(elem_id="toolbar-row"):
                     file_upload_btn = gr.UploadButton("📎 上传文件", file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"], scale=0, elem_id="upload-btn")
                     up_btn = gr.Button("👍 有帮助", scale=0, elem_id="up-btn")
                     down_btn = gr.Button("👎 无帮助", scale=0, elem_id="down-btn")
                     feedback_msg = gr.HTML("", elem_id="feedback-msg")
 
-                # 附件行（文件名 + 清除按钮紧贴）
-                with gr.Row(elem_id="attachment-row"):
-                    attachment_msg = gr.HTML("", elem_id="attachment-msg")
-                    clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
-
-                # 输入框
+                # 输入框（占位符可见）
                 text_input = gr.Textbox(
-                    label="",
+                    show_label=False,
                     placeholder="发送消息或按住空格说话，松开发送...",
                     scale=4,
                     elem_id="chat-input"
                 )
+
+                # 附件提示（绝对定位到右上角，不占布局）
+                with gr.Row(elem_id="attachment-row"):
+                    attachment_msg = gr.HTML("", elem_id="attachment-msg")
+                    clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
 
             # 隐藏文件输入
             voice_file_input = gr.File(visible=True, type="filepath", elem_id="voice-file-input", label="")
@@ -402,8 +402,8 @@ with gr.Blocks(title="AI 智能体") as demo:
             return None, "", gr.update(visible=False)
         file_path = file.name if hasattr(file, 'name') else str(file)
         file_name = os.path.basename(file_path)
-        # 使用内联块元素并设置样式
-        html = f"<span style='margin-right:4px; font-size:0.9em; color:#333;'>{file_name}</span>"
+        # 生成 HTML 显示文件名，并内联一个 ❌ 按钮？不能用按钮，但可以用文本
+        html = f"<span style='font-size:0.9em; color:#333;'>{file_name}</span>"
         return file_path, html, gr.update(visible=True)
 
     file_upload_btn.upload(fn=handle_file_upload, inputs=[file_upload_btn], outputs=[pending_file, attachment_msg, clear_file_btn])
@@ -529,7 +529,6 @@ with gr.Blocks(title="AI 智能体") as demo:
     # ================= 文本提交（携带暂存文件） =================
     async def handle_text_with_file(text, history, user_state, pending_file_val):
         result = await unified_handler(text, history, pending_file_val, user_state)
-        # result: (history, text_input, file_input, last_user_message, last_assistant_message)
         return (*result, None, "", gr.update(visible=False))
 
     text_input.submit(
@@ -629,6 +628,7 @@ if __name__ == "__main__":
                 border-radius: 12px;
                 padding: 8px;
                 background: #fafafa;
+                position: relative;
             }
             #toolbar-row {
                 margin-bottom: 4px;
@@ -637,10 +637,13 @@ if __name__ == "__main__":
                 margin-right: 6px;
             }
             #attachment-row {
+                position: absolute;
+                top: -25px;
+                right: 10px;
                 display: flex;
                 align-items: center;
                 gap: 2px;
-                margin-bottom: 4px;
+                z-index: 5;
             }
             #attachment-msg {
                 display: inline-block;
@@ -656,9 +659,11 @@ if __name__ == "__main__":
                 border: none !important;
                 box-shadow: none !important;
                 background: transparent !important;
+                padding: 12px 8px;
             }
             #chat-input textarea::placeholder {
                 color: #aaa;
+                opacity: 1; /* 确保不透明 */
             }
             #chat-input label {
                 display: none !important;
