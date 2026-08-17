@@ -229,7 +229,9 @@ with gr.Blocks(title="AI 智能体") as demo:
                     elem_id="chat-input"
                 )
                 # attachment_msg 和 feedback_msg 可以不放在这里，但它们需要在某处定义
-                attachment_msg = gr.Markdown("", elem_id="attachment-msg")
+                with gr.Row(elem_id="attachment-row"):
+                    attachment_msg = gr.Markdown("", elem_id="attachment-msg")
+                    clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
                 feedback_msg = gr.Markdown("")
 
             # 隐藏的文件输入：语音和粘贴
@@ -686,6 +688,14 @@ if __name__ == "__main__":
             /* 隐藏 Gradio 自动生成的 Textbox 标签 */
             #chat-input label {
                 display: none !important;
+            }
+            #attachment-row {
+                justify-content: flex-end;
+                align-items: center;
+                margin-bottom: 4px;
+            }
+            #clear-btn {
+                margin-left: 4px;
             }
         """
     )
