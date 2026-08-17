@@ -199,13 +199,13 @@ with gr.Blocks(title="AI 智能体") as demo:
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
             # 上传按钮、文件名、清除按钮（紧密排列）
-            with gr.Row(elem_id="upload-row"):
+            with gr.Row(elem_id="upload-row", equal_width=False):  # ✅ 加上 equal_width=False 解决分离
                 file_upload_btn = gr.UploadButton(
                     "📎 上传文件",
                     file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
-                    scale=0
+                    scale=0, min_width=0  # ✅ 加上这些，压缩尺寸
                 )
-                attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
+                attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0) # ✅ 加上 scale=0, min_width=0
                 clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
 
             # 输入框
@@ -322,51 +322,47 @@ with gr.Blocks(title="AI 智能体") as demo:
     # ================= 文本提交（生成器，使用 dict 字典格式兼容当前 Gradio） =================
     async def handle_text_with_file_generator(text, history, user_state, pending_file_val):
         history = list(history) if history else []
-        
-        # 1. 构建字典格式的用户消息列表
-        user_messages = []
+
+        # 1. 构建消息列表（加入一个 Assistant 状态作为分隔符）
+        user_entries = []
         
         if pending_file_val:
             file_name = os.path.basename(pending_file_val)
-            # 将文件消息以字典格式作为一个独立气泡
-            user_messages.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
+            # 气泡 1：上传文件（User）
+            user_entries.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
+            # 气泡 2：分隔符（Assistant）。这里用作临时状态提示，完美分开相邻的用户气泡
+            user_entries.append({"role": "assistant", "content": "⏳ 正在分析文件..."})
             memory.set_file_context(user_state.get("username", "default"), f"【上传文件：{file_name}】\n文件内容待分析")
             
         if text and text.strip():
-            # 将文本提问作为另一个独立气泡
-            user_messages.append({"role": "user", "content": text})
+            # 气泡 3：问题（User）
+            user_entries.append({"role": "user", "content": text})
             
-        # 如果没有输入任何内容，给一个占位符（防止无响应）
-        if not user_messages:
-            user_messages = [{"role": "user", "content": ""}]
+        if not user_entries:
+            user_entries = [{"role": "user", "content": ""}]
             
-        # 2. 将新用户消息追加到历史记录中
-        new_history = history + user_messages
-        # 此时在界面上，文件气泡和提问气泡会完美分成两个独立的块，AI 回答等待中
+        # 2. 立即渲染（此时界面完美出现：文件气泡 -> 分析中 -> 问题气泡）
+        new_history = history + user_entries
         yield new_history, "", None, "", gr.update(visible=False)
         
-        # 3. 调用智能体后台逻辑
+        # 3. 调用 AI 后台
         session_id = user_state.get("username", "default") if user_state else "default"
         memory.set_tenant(session_id, user_state.get("tenant", session_id) if user_state else session_id)
         
         if text and text.strip():
-            # 有文字提问，调用 AI 引擎
             answer = await chat_core(session_id, text, query_worker, command_worker, TOOL_ROUTER)
         else:
-            # 如果只上传了文件没有提问，给出默认提示
             answer = "文件已就绪，您可以基于该内容提问。"
             
-        # 4. 将 AI 的回答追加到历史记录末尾（字典格式）
+        # 4. 追加 AI 最终回答（气泡 4：Assistant）
         new_history.append({"role": "assistant", "content": answer})
-        
-        # 5. 返回最终结果，并清空暂存文件
         yield new_history, "", None, "", gr.update(visible=False)
 
     text_input.submit(
         fn=handle_text_with_file_generator,
         inputs=[text_input, chatbot, user_state, pending_file],
         outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn],
-        show_progress="hidden"  # ✅ 必填，解决输入框旁边出现旋转加载飞镖
+        show_progress="hidden"  # ✅ 保留这个参数即可解决飞镖消失问题
     )
 
 # ================= 启动入口 =================
