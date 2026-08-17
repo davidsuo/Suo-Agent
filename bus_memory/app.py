@@ -199,13 +199,13 @@ with gr.Blocks(title="AI 智能体") as demo:
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
             # 上传按钮、文件名、清除按钮（紧密排列）
-            with gr.Row(elem_id="upload-row", equal_width=False):  # ✅ 加上 equal_width=False 解决分离
+            with gr.Row(elem_id="upload-row"):   # ✅ 务必删除 equal_width=False
                 file_upload_btn = gr.UploadButton(
                     "📎 上传文件",
                     file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
-                    scale=0, min_width=0  # ✅ 加上这些，压缩尺寸
+                    scale=0, min_width=0   # ✅ scale=0 让它不强行拉伸
                 )
-                attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0) # ✅ 加上 scale=0, min_width=0
+                attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0) # ✅ 核心：禁止 HTML 抢占空白
                 clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
 
             # 输入框
@@ -385,6 +385,7 @@ if __name__ == "__main__":
                 display: flex;
                 align-items: center;
                 gap: 0px;
+                flex-wrap: nowrap; /* 强制不换行 */;
             }
             #upload-row > * {
                 margin-right: 0px;
