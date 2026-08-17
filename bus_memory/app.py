@@ -87,7 +87,7 @@ def get_available_tenants():
     return sorted(list(memory.all_tenants))
     
 
-# ================= 自定义 JavaScript（按住空格录音） =================
+# ================= 自定义 JavaScript =================
 voice_script = """
 <script>
 (function() {
@@ -149,6 +149,35 @@ voice_script = """
 </script>
 """
 
+paste_script = """
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 处理粘贴文件
+    document.addEventListener('paste', function(e) {
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].kind === 'file') {
+                const file = items[i].getAsFile();
+                const wrapper = document.getElementById('paste-file-input');
+                const fileInput = wrapper ? wrapper.querySelector('input[type="file"]') : null;
+                if (fileInput) {
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    fileInput.files = dt.files;
+                    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    console.log('文件已粘贴上传:', file.name);
+                    e.preventDefault();
+                    break;
+                } else {
+                    console.error('未找到粘贴文件输入组件');
+                }
+            }
+        }
+    });
+});
+</script>
+"""
+
 with gr.Blocks(title="AI 智能体") as demo:
     # ---------- 全局状态 ----------
     user_state = gr.State(value=None)
@@ -157,8 +186,8 @@ with gr.Blocks(title="AI 智能体") as demo:
     last_assistant_message = gr.State("")
     feedback_up = gr.State("up")
     feedback_down = gr.State("down")
-    pending_file = gr.State(None)               # 暂存的文件路径
-    attachment_msg = gr.Markdown("")            # 文件附加提示
+    pending_file = gr.State(None)
+    attachment_msg = gr.Markdown("")
 
     # ---------- 登录界面 ----------
     with gr.Column(visible=False) as login_column:
@@ -189,28 +218,34 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
-            # 合并的输入区域：输入框在上，附件提示和文件上传在下
-            with gr.Column(scale=4):
+            # 输入区域：文字输入框和上传按钮并排
+            with gr.Row():
                 text_input = gr.Textbox(
                     label="",
                     placeholder="发送消息或按住空格说话，松开发送...",
                     scale=4,
                     elem_id="chat-input"
                 )
-                attachment_msg = gr.Markdown("")  # 显示暂存文件名
-                file_upload_input = gr.File(
-                    label="📎 点击上传，或拖拽文件到这里",
+                file_upload_btn = gr.UploadButton(
+                    "📎 上传文件",
                     file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
-                    type="filepath",
-                    scale=1,
-                    elem_id="chat-file-upload"
+                    scale=0
                 )
 
-            # 隐藏的语音文件输入（用于按住空格录音）
+            # 附件提示（暂存文件名）
+            attachment_msg
+
+            # 隐藏的文件输入：用于语音和粘贴
             voice_file_input = gr.File(
                 visible=True,
                 type="filepath",
                 elem_id="voice-file-input",
+                label=""
+            )
+            paste_file_input = gr.File(
+                visible=True,
+                type="filepath",
+                elem_id="paste-file-input",
                 label=""
             )
 
@@ -396,9 +431,14 @@ with gr.Blocks(title="AI 智能体") as demo:
         file_name = os.path.basename(file_path)
         return file_path, f"📎 已附加：{file_name}"
 
-    file_upload_input.upload(
+    file_upload_btn.upload(
         fn=handle_file_upload,
-        inputs=[file_upload_input],
+        inputs=[file_upload_btn],
+        outputs=[pending_file, attachment_msg]
+    )
+    paste_file_input.upload(
+        fn=handle_file_upload,
+        inputs=[paste_file_input],
         outputs=[pending_file, attachment_msg]
     )
 
@@ -495,7 +535,6 @@ with gr.Blocks(title="AI 智能体") as demo:
 
         display_msg = message
         if file_name:
-            # 文件在上，提示词在下
             display_msg = f"📎 上传文件：{file_name}\n{message}"
 
         history = history or []
@@ -508,13 +547,12 @@ with gr.Blocks(title="AI 智能体") as demo:
     # ================= 文本提交（携带暂存文件） =================
     async def handle_text_with_file(text, history, user_state, pending_file_val):
         result = await unified_handler(text, history, pending_file_val, user_state)
-        # 清空暂存文件和相关提示
         return (*result, None, "")
 
     text_input.submit(
         fn=handle_text_with_file,
         inputs=[text_input, chatbot, user_state, pending_file],
-        outputs=[chatbot, text_input, file_upload_input, last_user_message, last_assistant_message, pending_file, attachment_msg]
+        outputs=[chatbot, text_input, file_upload_btn, last_user_message, last_assistant_message, pending_file, attachment_msg]
     )
 
     # 语音文件上传（按住空格）
@@ -608,25 +646,12 @@ if __name__ == "__main__":
         server_name="0.0.0.0",
         server_port=port,
         theme=gr.themes.Soft(),
-        head=voice_script,
+        head=voice_script + paste_script,
         css="""
             #voice-file-input { display: none; }
+            #paste-file-input { display: none; }
             #chat-input textarea {
-                border-radius: 8px 8px 0 0 !important;
-            }
-            #chat-file-upload {
-                margin-top: -1px;
-                border: 1px solid #ddd;
-                border-radius: 0 0 8px 8px;
-                padding: 6px 8px;
-                background: #fafafa;
-            }
-            #chat-file-upload .wrap {
-                font-size: 0.85em;
-                color: #666;
-            }
-            #chat-file-upload:hover {
-                background: #f0f0f0;
+                border-radius: 8px;
             }
         """
     )
