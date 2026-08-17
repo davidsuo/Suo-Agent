@@ -194,13 +194,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具）")
 
             with gr.Row():
-                tenant_dropdown = gr.Dropdown(
-                    choices=get_available_tenants(),
-                    value="default",
-                    label="当前租户",
-                    interactive=False,
-                    scale=1
-                )
+                tenant_dropdown = gr.Dropdown(choices=get_available_tenants(), value="default", label="当前租户", interactive=False, scale=1)
                 refresh_btn = gr.Button("刷新租户列表", size="sm", scale=0)
 
             with gr.Row():
@@ -211,38 +205,21 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             # ========== 输入区域 ==========
             with gr.Column(elem_id="input-container"):
-                # 第一行：上传按钮、点赞、点踩（工具栏）
                 with gr.Row(elem_id="toolbar-row"):
-                    file_upload_btn = gr.UploadButton(
-                        "📎 上传文件",
-                        file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
-                        scale=0,
-                        elem_id="upload-btn"
-                    )
+                    file_upload_btn = gr.UploadButton("📎 上传文件", file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"], scale=0, elem_id="upload-btn")
                     up_btn = gr.Button("👍 有帮助", scale=0, elem_id="up-btn")
                     down_btn = gr.Button("👎 无帮助", scale=0, elem_id="down-btn")
                     feedback_msg = gr.Markdown("", elem_id="feedback-msg", scale=0)
 
-                # 第二行：附件提示 + 清除按钮（左对齐，紧贴）
                 with gr.Row(elem_id="attachment-row"):
-                    attachment_msg
-                    clear_file_btn
+                    attachment_msg = gr.Markdown("", elem_id="attachment-msg", scale=0)
+                    clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
 
-                # 第三行：输入框
-                text_input = gr.Textbox(
-                    label="",
-                    placeholder="发送消息或按住空格说话，松开发送...",
-                    scale=4,
-                    elem_id="chat-input"
-                )
+                text_input = gr.Textbox(label="", placeholder="发送消息或按住空格说话，松开发送...", scale=4, elem_id="chat-input")
 
-            # 隐藏的文件输入：语音和粘贴
-            voice_file_input = gr.File(
-                visible=True, type="filepath", elem_id="voice-file-input", label=""
-            )
-            paste_file_input = gr.File(
-                visible=True, type="filepath", elem_id="paste-file-input", label=""
-            )
+            # 隐藏的文件输入
+            voice_file_input = gr.File(visible=True, type="filepath", elem_id="voice-file-input", label="")
+            paste_file_input = gr.File(visible=True, type="filepath", elem_id="paste-file-input", label="")
 
         with gr.Tab("系统健康"):
             gr.Markdown("## 🏥 系统健康仪表板")
@@ -421,25 +398,13 @@ with gr.Blocks(title="AI 智能体") as demo:
         file_name = os.path.basename(file_path)
         return file_path, f"📎 {file_name}", gr.update(visible=True)
 
-    file_upload_btn.upload(
-        fn=handle_file_upload,
-        inputs=[file_upload_btn],
-        outputs=[pending_file, attachment_msg, clear_file_btn]
-    )
-    paste_file_input.upload(
-        fn=handle_file_upload,
-        inputs=[paste_file_input],
-        outputs=[pending_file, attachment_msg, clear_file_btn]
-    )
+    file_upload_btn.upload(fn=handle_file_upload, inputs=[file_upload_btn], outputs=[pending_file, attachment_msg, clear_file_btn])
+    paste_file_input.upload(fn=handle_file_upload, inputs=[paste_file_input], outputs=[pending_file, attachment_msg, clear_file_btn])
 
     def clear_file():
         return None, "", gr.update(visible=False)
 
-    clear_file_btn.click(
-        fn=clear_file,
-        inputs=[],
-        outputs=[pending_file, attachment_msg, clear_file_btn]
-    )
+    clear_file_btn.click(fn=clear_file, inputs=[], outputs=[pending_file, attachment_msg, clear_file_btn])
 
     # ================= 主处理函数 =================
     async def unified_handler(message, history, file, user):
@@ -554,7 +519,6 @@ with gr.Blocks(title="AI 智能体") as demo:
     # ================= 文本提交（携带暂存文件） =================
     async def handle_text_with_file(text, history, user_state, pending_file_val):
         result = await unified_handler(text, history, pending_file_val, user_state)
-        # 返回时确保 last_user_message 和 last_assistant_message 正确
         return (*result, None, "", gr.update(visible=False))
 
     text_input.submit(
@@ -563,7 +527,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         outputs=[chatbot, text_input, file_upload_btn, last_user_message, last_assistant_message, pending_file, attachment_msg, clear_file_btn]
     )
 
-    # 语音文件上传（按住空格）
+    # 语音文件上传
     voice_file_input.upload(
         unified_handler,
         [text_input, chatbot, voice_file_input, user_state],
@@ -585,16 +549,8 @@ with gr.Blocks(title="AI 智能体") as demo:
             print(f"[反馈错误] {e}", flush=True)
             return f"反馈保存失败: {e}"
 
-    up_btn.click(
-        fn=handle_feedback,
-        inputs=[feedback_up, last_user_message, last_assistant_message, user_state],
-        outputs=[feedback_msg]
-    )
-    down_btn.click(
-        fn=handle_feedback,
-        inputs=[feedback_down, last_user_message, last_assistant_message, user_state],
-        outputs=[feedback_msg]
-    )
+    up_btn.click(fn=handle_feedback, inputs=[feedback_up, last_user_message, last_assistant_message, user_state], outputs=[feedback_msg])
+    down_btn.click(fn=handle_feedback, inputs=[feedback_down, last_user_message, last_assistant_message, user_state], outputs=[feedback_msg])
 
     # Worker 监控刷新
     def refresh_status():
@@ -671,18 +627,23 @@ if __name__ == "__main__":
                 margin-right: 6px;
             }
             #attachment-row {
+                display: flex;
+                flex-direction: row;
                 justify-content: flex-start;
                 align-items: center;
+                gap: 4px;
                 margin-bottom: 4px;
             }
             #attachment-msg {
-                margin-right: 4px;
+                margin: 0;
                 font-size: 0.9em;
                 color: #333;
+                white-space: nowrap;
             }
             #clear-btn {
-                padding: 2px;
+                padding: 0 2px;
                 color: #ff5555;
+                font-size: 0.9em;
             }
             #chat-input textarea {
                 border: none !important;
@@ -691,6 +652,9 @@ if __name__ == "__main__":
             }
             #chat-input label {
                 display: none !important;
+            }
+            #chat-input::placeholder {
+                color: #aaa;
             }
         """
     )
