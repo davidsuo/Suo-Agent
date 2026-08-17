@@ -91,6 +91,10 @@ with gr.Blocks(title="AI 智能体") as demo:
     # ---------- 全局状态 ----------
     user_state = gr.State(value=None)
     session_user_input = gr.Textbox(visible=False)
+    last_user_message = gr.State("")
+    last_assistant_message = gr.State("")
+    feedback_up = gr.State("up")
+    feedback_down = gr.State("down")
     pending_file = gr.State(None)
     attachment_msg = gr.Markdown("", elem_id="attachment-msg")
 
@@ -123,27 +127,34 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
-            # 输入区域：上传按钮在输入框上方，靠右
-            with gr.Column(elem_id="input-area"):
-                # 附件提示（文件名显示在这里）
-                attachment_msg
-
-                # 上传按钮（靠右）
-                with gr.Row(elem_id="upload-row"):
+            # ========== 统一输入框容器 ==========
+            with gr.Column(elem_id="input-box"):
+                # 第一行：上传按钮、附件提示、清除按钮（都靠左）
+                with gr.Row(elem_id="attachment-row"):
                     file_upload_btn = gr.UploadButton(
                         "📎 上传文件",
                         file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
-                        scale=0
+                        scale=0,
+                        elem_id="upload-btn"
                     )
+                    attachment_msg = gr.Markdown("", elem_id="attachment-msg")
+                    clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
 
-                # 输入框
+                # 第二行：输入框
                 text_input = gr.Textbox(
-                    label="",
+                    show_label=False,
                     placeholder="发送消息或按住空格说话，松开发送...",
-                    scale=4
+                    scale=4,
+                    elem_id="chat-input"
                 )
 
-            # 隐藏文件输入（语音和粘贴，暂时只定义，未绑定）
+                # 第三行：反馈按钮和提示
+                with gr.Row(elem_id="feedback-row"):
+                    up_btn = gr.Button("👍 有帮助", scale=0, elem_id="up-btn")
+                    down_btn = gr.Button("👎 无帮助", scale=0, elem_id="down-btn")
+                    feedback_msg = gr.Markdown("", elem_id="feedback-msg")
+
+            # 隐藏文件输入（语音和粘贴）
             voice_file_input = gr.File(
                 visible=True, type="filepath", elem_id="voice-file-input", label=""
             )
@@ -151,6 +162,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                 visible=True, type="filepath", elem_id="paste-file-input", label=""
             )
 
+        # ---------- 其他 Tab ----------
         with gr.Tab("系统健康"):
             gr.Markdown("## 🏥 系统健康仪表板")
             health_refresh_btn = gr.Button("刷新数据")
@@ -225,7 +237,7 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             workflow_list.value = refresh_workflows()
 
-    # ================= 登录函数 =================
+    # ================= 登录、退出、加载函数 =================
     def login(username, pin):
         user = authenticate(username.strip().lower(), pin)
         if user:
@@ -262,7 +274,6 @@ with gr.Blocks(title="AI 智能体") as demo:
         outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab]
     )
 
-    # ================= 退出函数 =================
     def logout():
         memory.set_current_user(None)
         return (
@@ -282,7 +293,6 @@ with gr.Blocks(title="AI 智能体") as demo:
         outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab]
     )
 
-    # ================= 页面加载恢复登录 =================
     def load_history(session_username):
         if session_username:
             user = get_user_info(session_username)
@@ -320,25 +330,211 @@ with gr.Blocks(title="AI 智能体") as demo:
         js="() => sessionStorage.getItem('suo_user') || ''"
     )
 
-    # ================= 纯文本聊天处理 =================
-    async def handle_text(message, history, user):
-        if not user:
-            return history or [], ""
-        session_id = user.get("username", "default")
-        memory.set_tenant(session_id, user.get("tenant", session_id))
-        history = history or []
-        history.append({"role": "user", "content": message})
-        answer = await chat_core(session_id, message, query_worker, command_worker, TOOL_ROUTER)
-        history.append({"role": "assistant", "content": answer})
-        return history, ""
+    # ================= 文件上传暂存 =================
+    def handle_file_upload(file):
+        if file is None:
+            return None, "", gr.update(visible=False)
+        file_path = file.name if hasattr(file, 'name') else str(file)
+        file_name = os.path.basename(file_path)
+        return file_path, f"📎 {file_name}", gr.update(visible=True)
 
-    text_input.submit(
-        fn=handle_text,
-        inputs=[text_input, chatbot, user_state],
-        outputs=[chatbot, text_input]
+    file_upload_btn.upload(
+        fn=handle_file_upload,
+        inputs=[file_upload_btn],
+        outputs=[pending_file, attachment_msg, clear_file_btn]
+    )
+    paste_file_input.upload(
+        fn=handle_file_upload,
+        inputs=[paste_file_input],
+        outputs=[pending_file, attachment_msg, clear_file_btn]
     )
 
-    # 健康仪表板刷新
+    def clear_file():
+        return None, "", gr.update(visible=False)
+
+    clear_file_btn.click(
+        fn=clear_file,
+        inputs=[],
+        outputs=[pending_file, attachment_msg, clear_file_btn]
+    )
+
+    # ================= 主处理函数 =================
+    async def unified_handler(message, history, file, user):
+        if not user:
+            return history or [], "", None, "", ""
+
+        session_id = user.get("username", "default")
+        memory.set_tenant(session_id, user.get("tenant", session_id))
+
+        # 处理 /logs
+        if message and message.strip().lower() == "/logs":
+            try:
+                if os.path.exists("plan_log.json"):
+                    with open("plan_log.json", "r", encoding="utf-8") as f:
+                        lines = f.readlines()
+                    valid_entries = []
+                    for line in lines:
+                        try:
+                            entry = json.loads(line.strip())
+                            if isinstance(entry, dict):
+                                valid_entries.append(entry)
+                        except json.JSONDecodeError:
+                            continue
+                    if not valid_entries:
+                        answer = "暂无规划日志。"
+                    else:
+                        recent = valid_entries[-5:] if len(valid_entries) > 5 else valid_entries
+                        logs_display = "**📋 最近操作日志（审计）**\n\n"
+                        for idx, entry in enumerate(recent, 1):
+                            timestamp = entry.get('timestamp', '未知')
+                            username = entry.get('username', '未知')
+                            role = entry.get('role', '未知')
+                            mode = entry.get('mode', '规划')
+                            status = entry.get('status', entry.get('final_status', '未知'))
+                            user_query = entry.get('user_query', '')
+                            logs_display += f"**记录{idx}** | 时间: {timestamp}\n"
+                            logs_display += f"用户: {username} | 角色: {role} | 模式: {mode} | 状态: {status}\n"
+                            logs_display += f"请求: {user_query[:80]}\n"
+                            if mode == "regular":
+                                tool = entry.get('tool', '')
+                                result = entry.get('result', '')
+                                logs_display += f"工具: {tool} | 结果: {result[:60]}\n"
+                            else:
+                                plan = entry.get('plan', [])
+                                logs_display += f"步骤数: {len(plan)}\n"
+                            logs_display += "\n"
+                        answer = logs_display
+                else:
+                    answer = "暂无规划日志文件。"
+            except Exception as e:
+                answer = f"读取日志失败: {e}"
+            history = history or []
+            history.append({"role": "user", "content": "/logs"})
+            history.append({"role": "assistant", "content": answer})
+            return history, "", None, "", ""
+
+        # 文件分析
+        file_name = None
+        if file is not None:
+            file_path = file if isinstance(file, str) else (file.name if hasattr(file, 'name') else str(file))
+            ext = os.path.splitext(file_path)[1].lower()
+            file_name = os.path.basename(file_path)
+            file_result = ""
+
+            if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif'):
+                if message and "表格" in message:
+                    file_result = await asyncio.to_thread(recognize_table, file_path)
+                else:
+                    file_result = await asyncio.to_thread(ocr_image, file_path)
+            elif ext in ('.csv', '.xlsx', '.xls'):
+                file_result = await asyncio.to_thread(analyze_file, file_path)
+            elif ext in ('.wav', '.mp3', '.m4a', '.ogg', '.webm'):
+                file_result = await asyncio.to_thread(speech_to_text, file_path)
+            else:
+                file_result = "不支持的文件类型"
+
+            file_result = str(file_result)
+            memory.set_file_context(session_id, f"【上传文件：{file_name}】\n{file_result}")
+            memory.add_uploaded_file(session_id, file_name, file_result)
+            simple_log_tool(session_id, file_name, "file_upload", {"file_name": file_name}, "文件上传成功")
+
+            # 音频文件直接转写并回答
+            if ext in ('.wav', '.mp3', '.m4a', '.ogg', '.webm'):
+                history = history or []
+                history.append({"role": "user", "content": f"🎤 语音输入：{file_result}"})
+                answer = await chat_core(session_id, file_result, query_worker, command_worker, TOOL_ROUTER)
+                history.append({"role": "assistant", "content": answer})
+                return history, "", None, f"🎤 语音输入：{file_result}", answer
+
+        # 文件就绪提示
+        if (not message or not message.strip()) and file_name:
+            user_msg = f"📎 上传文件：{file_name}"
+            assistant_msg = "文件已就绪，您可以基于该内容提问。"
+            history = history or []
+            history.append({"role": "user", "content": user_msg})
+            history.append({"role": "assistant", "content": assistant_msg})
+            return history, "", None, user_msg, assistant_msg
+
+        # 纯文本处理
+        if not message or not message.strip():
+            return history or [], "", None, "", ""
+
+        display_msg = message
+        if file_name:
+            display_msg = f"📎 上传文件：{file_name}\n{message}"
+
+        history = history or []
+        history.append({"role": "user", "content": display_msg})
+
+        answer = await chat_core(session_id, message, query_worker, command_worker, TOOL_ROUTER)
+        history.append({"role": "assistant", "content": answer})
+        return history, "", None, display_msg, answer
+
+    # ================= 文本提交 =================
+    async def handle_text_with_file(text, history, user_state, pending_file_val):
+        result = await unified_handler(text, history, pending_file_val, user_state)
+        return (*result, None, "", gr.update(visible=False))
+
+    text_input.submit(
+        fn=handle_text_with_file,
+        inputs=[text_input, chatbot, user_state, pending_file],
+        outputs=[chatbot, text_input, file_upload_btn, last_user_message, last_assistant_message, pending_file, attachment_msg, clear_file_btn]
+    )
+
+    # 语音文件上传
+    voice_file_input.upload(
+        unified_handler,
+        [text_input, chatbot, voice_file_input, user_state],
+        [chatbot, text_input, voice_file_input, last_user_message, last_assistant_message]
+    )
+
+    # 反馈处理
+    async def handle_feedback(feedback, user_msg_state, assistant_msg_state, user_state):
+        print(f"[反馈按钮] 触发，feedback={feedback}, user={user_state}, user_msg={user_msg_state[:30]}...", flush=True)
+        if not user_state:
+            return "⚠️ 请先登录。"
+        if not user_msg_state or not assistant_msg_state:
+            return "⚠️ 暂无可以评价的对话。"
+        try:
+            from common.feedback import save_feedback
+            save_feedback(user_state["username"], user_msg_state, assistant_msg_state, feedback)
+            return f"感谢您的反馈！({feedback})"
+        except Exception as e:
+            print(f"[反馈错误] {e}", flush=True)
+            return f"反馈保存失败: {e}"
+
+    up_btn.click(
+        fn=handle_feedback,
+        inputs=[feedback_up, last_user_message, last_assistant_message, user_state],
+        outputs=[feedback_msg]
+    )
+    down_btn.click(
+        fn=handle_feedback,
+        inputs=[feedback_down, last_user_message, last_assistant_message, user_state],
+        outputs=[feedback_msg]
+    )
+
+    # Worker监控刷新
+    def refresh_status():
+        workers = [query_worker, command_worker]
+        data = []
+        for w in workers:
+            stats = w.get_stats()
+            data.append([
+                stats["name"],
+                str(stats["is_running"]),
+                stats["task_count"],
+                stats["error_count"],
+                stats["queue_size"],
+                stats["avg_time"],
+                stats["error_rate"]
+            ])
+        return pd.DataFrame(data, columns=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度", "平均耗时(s)", "错误率"])
+
+    refresh_btn2.click(fn=refresh_status, outputs=status_table)
+    status_table.value = refresh_status()
+
+    # 健康仪表板更新
     def update_health_dashboard():
         from common.health import get_system_health
         health = get_system_health()
@@ -363,85 +559,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     )
     health_refresh_btn.click(fn=update_health_dashboard, inputs=[], outputs=[health_summary_md, health_tool_table])
 
-    # Worker 监控刷新
-    def refresh_status():
-        workers = [query_worker, command_worker]
-        data = []
-        for w in workers:
-            stats = w.get_stats()
-            data.append([
-                stats["name"],
-                str(stats["is_running"]),
-                stats["task_count"],
-                stats["error_count"],
-                stats["queue_size"],
-                stats["avg_time"],
-                stats["error_rate"]
-            ])
-        return pd.DataFrame(data, columns=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度", "平均耗时(s)", "错误率"])
-
-    refresh_btn2.click(fn=refresh_status, outputs=status_table)
-    status_table.value = refresh_status()
-
-
-    # ================= 文件上传暂存 =================
-    def handle_file_upload(file):
-        if file is None:
-            return None, ""
-        file_path = file.name if hasattr(file, 'name') else str(file)
-        file_name = os.path.basename(file_path)
-        return file_path, f"📎 已附加：{file_name}"
-
-    file_upload_btn.upload(
-        fn=handle_file_upload,
-        inputs=[file_upload_btn],
-        outputs=[pending_file, attachment_msg]
-    )
-
-    # ================= 文本提交（携带暂存文件） =================
-    async def handle_text_with_file(text, history, user_state, pending_file_val):
-        if not user_state:
-            return history or [], "", None, ""
-        session_id = user_state.get("username", "default")
-        memory.set_tenant(session_id, user_state.get("tenant", session_id))
-
-        history = history or []
-
-        file_name = None
-        if pending_file_val:
-            file_path = pending_file_val
-            ext = os.path.splitext(file_path)[1].lower()
-            file_name = os.path.basename(file_path)
-            # 这里可调用分析函数，但为了验证布局，先仅显示文件名
-            file_result = "文件内容待分析"
-            memory.set_file_context(session_id, f"【上传文件：{file_name}】\n{file_result}")
-            memory.add_uploaded_file(session_id, file_name, file_result)
-
-        if file_name and text.strip():
-            display_msg = f"📎 上传文件：{file_name}\n{text}"
-        elif file_name and not text.strip():
-            display_msg = f"📎 上传文件：{file_name}"
-        else:
-            display_msg = text
-
-        history.append({"role": "user", "content": display_msg})
-
-        if text.strip():
-            answer = await chat_core(session_id, text, query_worker, command_worker, TOOL_ROUTER)
-        else:
-            answer = "文件已就绪，您可以基于该内容提问。"
-
-        history.append({"role": "assistant", "content": answer})
-        # 清空暂存文件和附件提示
-        return history, "", None, ""
-
-    text_input.submit(
-        fn=handle_text_with_file,
-        inputs=[text_input, chatbot, user_state, pending_file],
-        outputs=[chatbot, text_input, pending_file, attachment_msg]
-    )
-
-    # ================= 启动入口 =================
+# ================= 启动入口 =================
 if __name__ == "__main__":
     init_users_db()
     init_db()
@@ -454,17 +572,51 @@ if __name__ == "__main__":
         server_name="0.0.0.0",
         server_port=port,
         theme=gr.themes.Soft(),
+        head=voice_script + paste_script,
         css="""
             #voice-file-input { display: none; }
             #paste-file-input { display: none; }
-            #upload-row {
-                justify-content: flex-end;
+            #input-box {
+                border: 2px solid #ccc;
+                border-radius: 12px;
+                padding: 8px;
+                background: #fafafa;
+            }
+            #attachment-row {
+                display: flex;
+                align-items: center;
+                gap: 4px;
                 margin-bottom: 4px;
             }
             #attachment-msg {
-                margin-bottom: 4px;
+                margin: 0;
                 font-size: 0.9em;
                 color: #333;
+            }
+            #clear-btn {
+                padding: 0 2px;
+                color: #ff5555;
+                font-size: 0.9em;
+            }
+            #feedback-row {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                margin-top: 4px;
+            }
+            #chat-input textarea {
+                border: none !important;
+                box-shadow: none !important;
+                background: transparent !important;
+                padding: 8px 4px;
+                font-size: 1em;
+            }
+            #chat-input textarea::placeholder {
+                color: #aaa;
+                opacity: 1;
+            }
+            #chat-input label {
+                display: none !important;
             }
         """
     )
