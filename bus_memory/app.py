@@ -391,54 +391,67 @@ if __name__ == "__main__":
                 opacity: 1;
             }
             
-            /* ========= 以下是修复上传区和 ❌ 按钮分离的核心 CSS ========= */
+            /* ========= 终极修复上传区布局 ========= */
             #upload-row {
                 display: flex !important;
+                flex-direction: row !important;
+                flex-wrap: nowrap !important;
                 align-items: center !important;
-                gap: 0px !important;           /* 强制组件之间无缝隙 */
-                flex-wrap: nowrap !important;   /* 强制在一行不换行 */
+                gap: 0px !important;
                 justify-content: flex-start !important;
-                margin-bottom: 10px !important; /* 与下面输入框保持一点距离 */
-            }
-            
-            /* 强制上传按钮内文字横向单行显示（解决截图里“上传文件”竖排的问题） */
-            #upload-row .upload-button button {
-                white-space: nowrap !important;
-                display: flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-                min-width: 80px !important;
-                padding: 4px 12px !important;
-                height: auto !important;
+                margin-bottom: 10px !important;
             }
 
-            /* 彻底消除包裹上传按钮的外部容器多余的边距 */
-            #upload-row .gr-box {
+            /* 对 row 里面的所有子容器强制取消自动拉伸 */
+            #upload-row > div {
+                flex: 0 0 auto !important;
+                width: auto !important;
+                max-width: fit-content !important;
                 margin: 0 !important;
                 padding: 0 !important;
             }
 
-            /* 彻底消除文件名组件的多余内外边距 */
-            #attachment-html {
-                margin: 0 !important;
-                padding: 0 6px !important; /* 这里给文件名留一点点阅读间隙 */
+            /* 修复上传按钮竖排的问题：强制按钮内部横向排列 */
+            #upload-row .gr-box, #upload-row .gr-box > div {
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
                 background: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
+            }
+            #upload-row button {
+                white-space: nowrap !important;        /* 禁止文字换行 */
+                display: flex !important;              /* 强制 flex 布局 */
+                flex-direction: row !important;        /* 强制文字横向排列 */
+                align-items: center !important;        /* 图标和文字居中对齐 */
+                gap: 4px !important;                   /* 图标和文字间距 */
                 min-width: auto !important;
+                padding: 4px 8px !important;
             }
 
-            /* 彻底消除 ❌ 清除按钮的多余边距 */
+            /* 修复中间文件名组件：禁止抢空间 */
+            #attachment-html {
+                flex: 0 0 auto !important;
+                width: auto !important;
+                margin: 0 6px !important; /* 给文件名左右留一点点阅读缝隙 */
+                padding: 0 !important;
+            }
+
+            /* 修复❌按钮：紧紧挨着文件名 */
             #clear-btn {
-                margin: 0 !important;
-                padding: 0 4px !important;
+                flex: 0 0 auto !important;
+                width: auto !important;
+                margin: 0 0 0 4px !important;
+                padding: 0 2px !important;
                 background: transparent !important;
                 border: none !important;
-                color: #ff5555 !important;
-                min-width: auto !important;
-                width: auto !important;
                 box-shadow: none !important;
+                color: #ff5555 !important;
                 font-size: 14px !important;
+                font-weight: bold !important;
+                min-width: auto !important;
+                cursor: pointer !important;
             }
         """
     )
