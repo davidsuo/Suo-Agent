@@ -85,7 +85,87 @@ def init_db():
 def get_available_tenants():
     """返回所有已知租户列表（当前用户租户已在 memory.all_tenants 中）"""
     return sorted(list(memory.all_tenants))
-    
+
+
+voice_script = """
+<script>
+(function() {
+    let mediaRecorder;
+    let audioChunks = [];
+    let isRecording = false;
+
+    const statusDiv = document.createElement('div');
+    statusDiv.id = 'recording-status';
+    statusDiv.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 8px 16px; border-radius: 20px; display: none; z-index: 9999;';
+    document.body.appendChild(statusDiv);
+
+    function showStatus(text) { statusDiv.textContent = text; statusDiv.style.display = 'block'; }
+    function hideStatus() { statusDiv.style.display = 'none'; }
+
+    document.addEventListener('keydown', async (e) => {
+        if (e.code !== 'Space' || isRecording) return;
+        const active = document.activeElement;
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') && active.value && active.value.trim() !== '') return;
+        e.preventDefault();
+        isRecording = true; audioChunks = []; showStatus('🎤 正在录音...');
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.ondataavailable = event => { if (event.data.size > 0) audioChunks.push(event.data); };
+            mediaRecorder.onstop = () => {
+                hideStatus();
+                const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+                const file = new File([audioBlob], 'voice_message.webm', { type: audioBlob.type });
+                const wrapper = document.getElementById('voice-file-input');
+                const fileInput = wrapper ? wrapper.querySelector('input[type="file"]') : null;
+                if (fileInput) {
+                    const dt = new DataTransfer(); dt.items.add(file); fileInput.files = dt.files;
+                    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+                } else { console.error('未找到隐藏的 file input'); }
+                mediaRecorder.stream.getTracks().forEach(track => track.stop());
+                mediaRecorder = null;
+            };
+            mediaRecorder.start();
+        } catch (err) {
+            console.error('录音失败:', err); showStatus('❌ 无法访问麦克风，请检查权限');
+            setTimeout(hideStatus, 2000); isRecording = false;
+        }
+    });
+
+    document.addEventListener('keyup', (e) => {
+        if (e.code !== 'Space' || !isRecording) return;
+        e.preventDefault(); isRecording = false;
+        if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+    });
+})();
+</script>
+"""
+
+paste_script = """
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('paste', function(e) {
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].kind === 'file') {
+                const file = items[i].getAsFile();
+                const wrapper = document.getElementById('paste-file-input');
+                const fileInput = wrapper ? wrapper.querySelector('input[type="file"]') : null;
+                if (fileInput) {
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    fileInput.files = dt.files;
+                    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    e.preventDefault();
+                    break;
+                }
+            }
+        }
+    });
+});
+</script>
+"""
+
 
 with gr.Blocks(title="AI 智能体") as demo:
     # ---------- 全局状态 ----------
