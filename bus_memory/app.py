@@ -172,7 +172,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     user_state = gr.State(value=None)
     session_user_input = gr.Textbox(visible=False)
     pending_file = gr.State(None)
-    attachment_html = gr.HTML("", elem_id="attachment-html")
+    attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
     clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
 
     # ---------- 登录界面 ----------
@@ -196,7 +196,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                 user_display = gr.Markdown("")
                 logout_btn = gr.Button("退出登录", size="sm")
 
-            chatbot = gr.Chatbot(label="对话", height=500, value=[])
+            chatbot = gr.Chatbot(label="对话", height=500, value=[], type="messages")
 
             # 上传按钮、文件名、清除按钮（紧密排列）
             with gr.Row(elem_id="upload-row"):
@@ -363,7 +363,8 @@ with gr.Blocks(title="AI 智能体") as demo:
     text_input.submit(
         fn=handle_text_with_file_generator,
         inputs=[text_input, chatbot, user_state, pending_file],
-        outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn]
+        outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn],
+        show_progress="hidden"  # 彻底隐藏加载飞镖/跑马灯
     )
 
 # ================= 启动入口 =================
@@ -405,5 +406,6 @@ if __name__ == "__main__":
                 color: #aaa;
                 opacity: 1;
             }
+            #chat-input .gradio-spinner { display: none !important; }
         """
     )
