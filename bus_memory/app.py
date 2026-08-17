@@ -88,6 +88,7 @@ def get_available_tenants():
     
 
 # ================= 自定义 JavaScript =================
+# ================= 自定义 JavaScript（保持不变） =================
 voice_script = """
 <script>
 (function() {
@@ -209,7 +210,7 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             # ========== 输入区域 ==========
             with gr.Column(elem_id="input-container"):
-                # 第一行：上传按钮、反馈按钮、清除按钮（左上角）
+                # 第一行：上传按钮、点赞、点踩（工具栏）
                 with gr.Row(elem_id="toolbar-row"):
                     file_upload_btn = gr.UploadButton(
                         "📎 上传文件",
@@ -219,20 +220,20 @@ with gr.Blocks(title="AI 智能体") as demo:
                     )
                     up_btn = gr.Button("👍 有帮助", scale=0, elem_id="up-btn")
                     down_btn = gr.Button("👎 无帮助", scale=0, elem_id="down-btn")
+                    feedback_msg = gr.Markdown("", elem_id="feedback-msg")
+
+                # 第二行：附件提示 + 清除按钮（左对齐）
+                with gr.Row(elem_id="attachment-row"):
+                    attachment_msg = gr.Markdown("", elem_id="attachment-msg")
                     clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
 
-                # 第二行：输入框（占据大部分宽度）和附件提示（绝对定位在右上角）
+                # 第三行：输入框
                 text_input = gr.Textbox(
-                    label="",   # 确保 label 为空
+                    label="",
                     placeholder="发送消息或按住空格说话，松开发送...",
                     scale=4,
                     elem_id="chat-input"
                 )
-                # attachment_msg 和 feedback_msg 可以不放在这里，但它们需要在某处定义
-                with gr.Row(elem_id="attachment-row"):
-                    attachment_msg = gr.Markdown("", elem_id="attachment-msg")
-                    clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
-                feedback_msg = gr.Markdown("")
 
             # 隐藏的文件输入：语音和粘贴
             voice_file_input = gr.File(
@@ -646,7 +647,7 @@ if __name__ == "__main__":
     loop = asyncio.get_event_loop()
     loop.create_task(query_worker.run_loop())
     loop.create_task(command_worker.run_loop())
-    port = int(os.environ.get("PORT", 7860))      # ← 确保这一行存在
+    port = int(os.environ.get("PORT", 7860))
     demo.launch(
         server_name="0.0.0.0",
         server_port=port,
@@ -660,42 +661,35 @@ if __name__ == "__main__":
                 border-radius: 12px;
                 padding: 8px;
                 background: #fafafa;
-                position: relative;
             }
             #toolbar-row {
-                margin-bottom: 4px;
-                justify-content: flex-start;
+                margin-bottom: 6px;
             }
             #toolbar-row button {
-                margin-right: 6px;
+                margin-right: 8px;
+            }
+            #attachment-row {
+                justify-content: flex-start;
+                align-items: center;
+                margin-bottom: 6px;
             }
             #attachment-msg {
-                position: absolute;
-                top: -12px;
-                right: 10px;
-                background: #e0f0ff;
-                border-radius: 8px;
-                padding: 2px 8px;
-                font-size: 0.85em;
+                font-size: 0.9em;
                 color: #333;
-                z-index: 5;
+                margin-right: 6px;
+            }
+            #clear-btn {
+                color: #ff5555;
+                padding: 2px;
             }
             #chat-input textarea {
                 border: none !important;
                 box-shadow: none !important;
                 background: transparent !important;
             }
-            /* 隐藏 Gradio 自动生成的 Textbox 标签 */
+            /* 隐藏 Textbox 标签 */
             #chat-input label {
                 display: none !important;
-            }
-            #attachment-row {
-                justify-content: flex-end;
-                align-items: center;
-                margin-bottom: 4px;
-            }
-            #clear-btn {
-                margin-left: 4px;
             }
         """
     )
