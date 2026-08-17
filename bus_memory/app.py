@@ -203,7 +203,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具）")
 
             with gr.Row():
-                tenant_dropdown = gr.Dropdown(
+                    tenant_dropdown = gr.Dropdown(
                     choices=get_available_tenants(),
                     value="default",
                     label="当前租户",
@@ -238,6 +238,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                     )
                     up_btn = gr.Button("👍", scale=0, elem_id="up-btn")
                     down_btn = gr.Button("👎", scale=0, elem_id="down-btn")
+                    feedback_msg = gr.Markdown("")   # 新增这一行
                     clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)  # 有文件时才显示
 
             # 隐藏的文件输入：语音和粘贴
@@ -279,7 +280,7 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             with gr.Row():
                 refresh_workflow_btn = gr.Button("刷新列表")
-            workflow_list = gr.Dataframe(
+                workflow_list = gr.Dataframe(
                 headers=["名称", "描述", "创建者", "创建时间"],
                 interactive=False
             )
