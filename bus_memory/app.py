@@ -392,17 +392,24 @@ with gr.Blocks(title="AI 智能体") as demo:
         js="(text, history, state, file) => { const ta = document.querySelector('#input-row textarea'); if(ta) ta.value = ''; return [text, history, state, file]; }"
     )
 
-# ================= 启动入口（解决死锁） =================
+# ================= 启动入口（极稳启动模式） =================
 async def main():
     init_users_db()
     init_db()
     init_calendar()
     
-    # 正确获取当前运行的循环
+    # 正确获取当前正在运行的事件循环
     loop = asyncio.get_running_loop()
     loop.create_task(query_worker.run_loop())
     loop.create_task(command_worker.run_loop())
+    
+    # 获取 Render 分配的端口
     port = int(os.environ.get("PORT", 7860))
+    
+    # 先配置队列，再启动应用
+    demo.queue()
+    
+    # 启动服务，一定要有 server_name="0.0.0.0" 和 server_port=port
     demo.launch(
         server_name="0.0.0.0",
         server_port=port,
@@ -484,6 +491,6 @@ async def main():
             }
         """
     )
-    
+
 if __name__ == "__main__":
     asyncio.run(main())
