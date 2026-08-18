@@ -423,7 +423,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
 
                 except Exception as e:
                     print(f"[Saga] 步骤{step_id}异常，开始补偿: {e}")
-                    steps_summary = [f"✅ {comp_step.get('description', f'步骤{comp_step['id']}')}" for comp_step, _, _ in completed_steps]
+                    steps_summary = [f"✅ {(comp_step.get('description', '步骤' + str(comp_step['id'])))}" for comp_step, _, _ in completed_steps]
                     steps_summary.append(f"❌ {step_desc}（系统异常）")
                     compensation_msgs = [f"🔄 {comp_step.get('description', '未知步骤')} 已回滚" for comp_step, _, _ in completed_steps if comp_step.get("tool") in COMPENSATIONS]
                     answer = "任务执行情况：\n" + "\n".join(steps_summary)
