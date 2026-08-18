@@ -213,14 +213,15 @@ with gr.Blocks(title="AI 智能体") as demo:
                 clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
 
             # 输入框
-            text_input = gr.Textbox(
-                show_label=False,
-                placeholder="发送消息或按住空格说话，松开发送...",
-                scale=4,
-                debounce=0,       # ✅ 重点：彻底关闭防抖延迟，回车立即触发
-                interactive=True, # 确保长期可用
-                autofocus=True    # 刷新页面后自动聚焦，方便直接打字
-            )
+            with gr.Row(elem_id="input-row"):
+                text_input = gr.Textbox(
+                    show_label=False,
+                    placeholder="发送消息或按住空格说话，松开发送...",
+                    scale=4,           # 占据绝大部分宽度
+                    interactive=True,
+                    autofocus=True     # 刷新页面后自动聚焦
+                )
+                send_btn = gr.Button("➡️", scale=0, min_width=0, elem_id="send-btn") # 发送按钮
 
         # 其他 Tab 保持不变（略）
         with gr.Tab("系统健康"):
@@ -365,12 +366,21 @@ with gr.Blocks(title="AI 智能体") as demo:
         new_history.append({"role": "assistant", "content": answer})
         yield new_history, "", None, "", gr.update(visible=False)
 
-    text_input.submit(
-        fn=handle_text_with_file_generator,
-        inputs=[text_input, chatbot, user_state, pending_file],
-        outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn],
-        show_progress="hidden"  # ✅ 保留这个参数即可解决飞镖消失问题
-    )
+        # ✅ 定义好触发器变量，方便后面同时绑定回车和点击
+        submit_event = text_input.submit(
+            fn=handle_text_with_file_generator,
+            inputs=[text_input, chatbot, user_state, pending_file],
+            outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn],
+            show_progress="hidden"
+        )
+
+        # ✅ 新增：将按钮点击事件绑定到同一个处理函数上
+        send_btn.click(
+            fn=handle_text_with_file_generator,
+            inputs=[text_input, chatbot, user_state, pending_file],
+            outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn],
+            show_progress="hidden"
+        )
 
 # ================= 启动入口 =================
 if __name__ == "__main__":
