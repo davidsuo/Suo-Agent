@@ -392,24 +392,31 @@ with gr.Blocks(title="AI 智能体") as demo:
         js="(text, history, state, file) => { const ta = document.querySelector('#input-row textarea'); if(ta) ta.value = ''; return [text, history, state, file]; }"
     )
 
-# ================= 启动入口（极稳启动模式） =================
-async def main():
+# ================= 启动入口（多线程分离法，彻底解决端口绑定死锁） =================
+import threading
+
+def start_worker_loop():
+    """在独立的线程中运行 Worker 的异步死循环"""
+    # 每个线程必须拥有自己独立的事件循环
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(asyncio.gather(
+        query_worker.run_loop(),
+        command_worker.run_loop()
+    ))
+
+if __name__ == "__main__":
     init_users_db()
     init_db()
     init_calendar()
-    
-    # 正确获取当前正在运行的事件循环
-    loop = asyncio.get_running_loop()
-    loop.create_task(query_worker.run_loop())
-    loop.create_task(command_worker.run_loop())
-    
-    # 获取 Render 分配的端口
     port = int(os.environ.get("PORT", 7860))
     
-    # 先配置队列，再启动应用
+    # ✅ 启动独立的后台线程负责 Worker 任务，绝不干扰主线程
+    worker_thread = threading.Thread(target=start_worker_loop, daemon=True)
+    worker_thread.start()
+
+    # ✅ Gradio 的主服务在主线程中极速绑定端口
     demo.queue()
-    
-    # 启动服务，一定要有 server_name="0.0.0.0" 和 server_port=port
     demo.launch(
         server_name="0.0.0.0",
         server_port=port,
@@ -417,80 +424,39 @@ async def main():
         css="""
             #voice-file-input { display: none; }
             #paste-file-input { display: none; }
-            /* 隐藏加载旋转指示器 */
-            .loader, .spinner, .progress, .loading {
-                display: none !important;
-            }
-            /* 确保输入框占位符可见 */
-            #chat-input textarea::placeholder {
-                color: #aaa;
-                opacity: 1;
-            }
+            .loader, .spinner, .progress, .loading { display: none !important; }
+            #chat-input textarea::placeholder { color: #aaa; opacity: 1; }
             
-            /* ========= 终极修复上传区布局 ========= */
             #upload-row {
-                display: flex !important;
-                flex-direction: row !important;
-                flex-wrap: nowrap !important;
-                align-items: center !important;
-                gap: 0px !important;
-                justify-content: flex-start !important;
+                display: flex !important; flex-direction: row !important;
+                flex-wrap: nowrap !important; align-items: center !important;
+                gap: 0px !important; justify-content: flex-start !important;
                 margin-bottom: 10px !important;
             }
-
-            /* 对 row 里面的所有子容器强制取消自动拉伸 */
             #upload-row > div {
-                flex: 0 0 auto !important;
-                width: auto !important;
-                max-width: fit-content !important;
-                margin: 0 !important;
-                padding: 0 !important;
+                flex: 0 0 auto !important; width: auto !important;
+                max-width: fit-content !important; margin: 0 !important; padding: 0 !important;
             }
-
-            /* 修复上传按钮竖排的问题：强制按钮内部横向排列 */
             #upload-row .gr-box, #upload-row .gr-box > div {
-                display: flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-                background: transparent !important;
-                border: none !important;
-                box-shadow: none !important;
+                display: flex !important; align-items: center !important;
+                justify-content: center !important; background: transparent !important;
+                border: none !important; box-shadow: none !important;
             }
             #upload-row button {
-                white-space: nowrap !important;        /* 禁止文字换行 */
-                display: flex !important;              /* 强制 flex 布局 */
-                flex-direction: row !important;        /* 强制文字横向排列 */
-                align-items: center !important;        /* 图标和文字居中对齐 */
-                gap: 4px !important;                   /* 图标和文字间距 */
-                min-width: auto !important;
-                padding: 4px 8px !important;
+                white-space: nowrap !important; display: flex !important;
+                flex-direction: row !important; align-items: center !important;
+                gap: 4px !important; min-width: auto !important; padding: 4px 8px !important;
             }
-
-            /* 修复中间文件名组件：禁止抢空间 */
             #attachment-html {
-                flex: 0 0 auto !important;
-                width: auto !important;
-                margin: 0 6px !important; /* 给文件名左右留一点点阅读缝隙 */
-                padding: 0 !important;
+                flex: 0 0 auto !important; width: auto !important;
+                margin: 0 6px !important; padding: 0 !important;
             }
-
-            /* 修复❌按钮：紧紧挨着文件名 */
             #clear-btn {
-                flex: 0 0 auto !important;
-                width: auto !important;
-                margin: 0 0 0 4px !important;
-                padding: 0 2px !important;
-                background: transparent !important;
-                border: none !important;
-                box-shadow: none !important;
-                color: #ff5555 !important;
-                font-size: 14px !important;
-                font-weight: bold !important;
-                min-width: auto !important;
-                cursor: pointer !important;
+                flex: 0 0 auto !important; width: auto !important;
+                margin: 0 0 0 4px !important; padding: 0 2px !important;
+                background: transparent !important; border: none !important;
+                box-shadow: none !important; color: #ff5555 !important; font-size: 14px !important;
+                font-weight: bold !important; min-width: auto !important; cursor: pointer !important;
             }
         """
     )
-
-if __name__ == "__main__":
-    asyncio.run(main())
