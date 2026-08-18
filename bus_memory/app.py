@@ -326,37 +326,32 @@ with gr.Blocks(title="AI 智能体") as demo:
     # ================= 文本提交（生成器，使用 dict 字典格式兼容当前 Gradio） =================
     # ================= 文本提交（优化后的异步生成器，解决 2 秒延迟） =================
     # ================= 文本提交（优化：修正气泡先后顺序） =================
+    # ================= 文本提交（Gradio 3.x 最佳布局适配版） =================
     async def handle_text_with_file_generator(text, history, user_state, pending_file_val):
         history = list(history) if history else []
 
-        # 1. 构建消息列表（严格按照用户期望的顺序）
-        user_entries = []
-        has_pending_file = False  # 标记是否需要显示“正在分析”的提示
-
+        # 1. 将“上传文件”和“问题”合并为同一条用户气泡（用换行隔开，视觉整齐）
+        user_contents = []
         if pending_file_val:
-            has_pending_file = True
             file_name = os.path.basename(pending_file_val)
-            # 顺序 ①：先添加文件气泡
-            user_entries.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
+            user_contents.append(f"📎 上传文件：{file_name}")
             memory.set_file_context(user_state.get("username", "default") if user_state else "default", f"【上传文件：{file_name}】\n文件内容待分析")
             
         if text and text.strip():
-            # 顺序 ②：紧接着添加用户问题气泡
-            user_entries.append({"role": "user", "content": text})
-            
-        # 顺序 ③：最后才添加 AI 的分析提示气泡
-        if has_pending_file:
-            user_entries.append({"role": "assistant", "content": "⏳ 正在分析文件..."})
+            user_contents.append(f"💬 {text}")
 
-        if not user_entries:
-            user_entries = [{"role": "user", "content": ""}]
-            
-        # 2. 立即将前三步渲染到前端
-        new_history = history + user_entries
-        await asyncio.sleep(0)  # 确保异步队列优先处理
-        yield new_history, "", None, "", gr.update(visible=False)
-        
-        # 3. 调用 AI 后台逻辑
+        if not user_contents:
+            user_contents = [" "]
+
+        # 合并成带换行的单条用户消息
+        history.append({"role": "user", "content": "\n".join(user_contents)})
+        yield history, "", None, "", gr.update(visible=False)
+
+        # 2. AI 气泡先显示“正在分析”（这时用户能立刻看到反馈）
+        history.append({"role": "assistant", "content": "⏳ 正在分析文件，请稍候..."})
+        yield history, "", None, "", gr.update(visible=False)
+
+        # 3. 调用后台 AI 逻辑（此时不耽误界面渲染）
         session_id = user_state.get("username", "default") if user_state else "default"
         memory.set_tenant(session_id, user_state.get("tenant", session_id) if user_state else session_id)
         
@@ -364,10 +359,13 @@ with gr.Blocks(title="AI 智能体") as demo:
             answer = await chat_core(session_id, text, query_worker, command_worker, TOOL_ROUTER)
         else:
             answer = "文件已就绪，您可以基于该内容提问。"
-            
-        # 4. 追加 AI 最终回答（气泡 4：最终结论）
-        new_history.append({"role": "assistant", "content": answer})
-        yield new_history, "", None, "", gr.update(visible=False)
+
+        # 4. ⭐ 核心技巧：不追加新气泡，而是**原地更新**上一条 AI 气泡的内容！
+        if history and history[-1]["role"] == "assistant":
+            # 用 markdown 格式输出，结果非常清晰
+            history[-1]["content"] = f"✅ **分析完成！**\n\n{answer}"
+        
+        yield history, "", None, "", gr.update(visible=False)
 
     # ================= 事件绑定（优化：按下回车瞬间立刻清空输入框） =================
     # ================= 事件绑定（Gradio 3.x 兼容版：瞬间清空输入框） =================
