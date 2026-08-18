@@ -369,13 +369,14 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     # ================= 事件绑定（优化：按下回车瞬间立刻清空输入框） =================
     # ================= 事件绑定（Gradio 3.x 兼容版：瞬间清空输入框） =================
+    # ================= 事件绑定（彻底解决 3.x 丢失 text 输入的坑） =================
     text_input.submit(
         fn=handle_text_with_file_generator,
         inputs=[text_input, chatbot, user_state, pending_file],
         outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn],
         show_progress="minimal",
-        # ✅ 3.x 兼容写法：使用 js 参数，清除输入框后返回 true 让事件继续
-        js="() => { const ta = document.querySelector('#input-row textarea'); if(ta) ta.value = ''; return true; }"
+        # ✅ 修正版：接收 inputs 的 4 个参数，清空 UI 后，把原始参数数组传回给 Python，避免丢字
+        js="(text, history, state, file) => { const ta = document.querySelector('#input-row textarea'); if(ta) ta.value = ''; return [text, history, state, file]; }"
     )
 
     send_btn.click(
@@ -383,8 +384,8 @@ with gr.Blocks(title="AI 智能体") as demo:
         inputs=[text_input, chatbot, user_state, pending_file],
         outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn],
         show_progress="minimal",
-        # ✅ 同样兼容修改
-        js="() => { const ta = document.querySelector('#input-row textarea'); if(ta) ta.value = ''; return true; }"
+        # ✅ 同样修正
+        js="(text, history, state, file) => { const ta = document.querySelector('#input-row textarea'); if(ta) ta.value = ''; return [text, history, state, file]; }"
     )
 
 # ================= 启动入口（解决死锁） =================
