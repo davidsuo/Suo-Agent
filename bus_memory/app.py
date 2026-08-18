@@ -381,11 +381,11 @@ if __name__ == "__main__":
     loop.create_task(query_worker.run_loop())
     loop.create_task(command_worker.run_loop())
     port = int(os.environ.get("PORT", 7860))
+    demo.queue(),  # ✅ 确保生成器流式输出时不会因为状态冲突而锁死输入框
     demo.launch(
         server_name="0.0.0.0",
         server_port=port,
         theme=gr.themes.Soft(),
-        demo.queue(),  # ✅ 确保生成器流式输出时不会因为状态冲突而锁死输入框
         css="""
             #voice-file-input { display: none; }
             #paste-file-input { display: none; }
