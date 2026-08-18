@@ -198,8 +198,8 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             # ✅ 旧版 3.x 写法：chatbot = gr.Chatbot(label="对话", height=500, value=[])
             # ✅ 新版 4.x 写法：
-            chatbot = gr.Chatbot(label="对话", height=500, value=[], type="messages", show_copy_button=True)
-            #chatbot = gr.Chatbot(label="对话", height=500, value=[])
+            #chatbot = gr.Chatbot(label="对话", height=500, value=[], type="messages", show_copy_button=True)
+            chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
             # 上传按钮、文件名、清除按钮（紧密排列）
             with gr.Row(elem_id="upload-row"):   # ✅ 务必删除 equal_width=False
