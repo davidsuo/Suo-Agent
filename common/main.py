@@ -404,8 +404,10 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
 
                 except asyncio.TimeoutError:
                     print(f"[Saga] 步骤{step_id}超时，开始补偿...")
-                    steps_summary = [f"✅ {comp_step.get('description', f'步骤{comp_step['id']}')}" for comp_step, _, _ in completed_steps]
+                    # ✅ 修复步骤：将 f'步骤{comp_step['id']}' 改成 f'步骤{comp_step["id"]}'
+                    steps_summary = [f"✅ {comp_step.get('description', f'步骤{comp_step["id"]}')}" for comp_step, _, _ in completed_steps]
                     steps_summary.append(f"⏱️ {step_desc}（超时）")
+                    # 同样把内层的单引号改成双引号保持安全
                     compensation_msgs = [f"🔄 {comp_step.get('description', '未知步骤')} 已回滚" for comp_step, _, _ in completed_steps if comp_step.get("tool") in COMPENSATIONS]
                     answer = "任务执行情况：\n" + "\n".join(steps_summary)
                     if compensation_msgs:
