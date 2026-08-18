@@ -324,50 +324,55 @@ with gr.Blocks(title="AI 智能体") as demo:
     clear_file_btn.click(fn=clear_file, inputs=[], outputs=[pending_file, attachment_html, clear_file_btn])
 
     # ================= 文本提交（生成器，使用 dict 字典格式兼容当前 Gradio） =================
+    # ================= 文本提交（优化后的异步生成器，解决 2 秒延迟） =================
     async def handle_text_with_file_generator(text, history, user_state, pending_file_val):
         history = list(history) if history else []
-
-        # 1. 构建消息列表（加入一个 Assistant 状态作为分隔符）
-        user_entries = []
         
+        # 1. 准备 UI 消息内容
+        user_entries = []
+        file_name = None
         if pending_file_val:
             file_name = os.path.basename(pending_file_val)
-            # 气泡 1：上传文件（User）
             user_entries.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
-            # 气泡 2：分隔符（Assistant）。这里用作临时状态提示，完美分开相邻的用户气泡
             user_entries.append({"role": "assistant", "content": "⏳ 正在分析文件..."})
-            memory.set_file_context(user_state.get("username", "default"), f"【上传文件：{file_name}】\n文件内容待分析")
             
         if text and text.strip():
-            # 气泡 3：问题（User）
             user_entries.append({"role": "user", "content": text})
             
         if not user_entries:
             user_entries = [{"role": "user", "content": ""}]
             
-        # 2. 立即渲染（此时界面完美出现：文件气泡 -> 分析中 -> 问题气泡）
         new_history = history + user_entries
+        
+        # 2. ✅ 关键点 1：立刻将 UI 状态（含清空输入框）返回给前端，不要等待任何后台 IO
         yield new_history, "", None, "", gr.update(visible=False)
         
-        # 3. 调用 AI 后台
+        # 3. ✅ 关键点 2：主动让出 Python 的异步控制权（相当于对浏览器说“你先渲染”，延迟瞬间降至毫秒级）
+        await asyncio.sleep(0)
+        
+        # 4. 把耗时的文件上下文设置和 AI 思考，挪到 UI 渲染完成之后再做
         session_id = user_state.get("username", "default") if user_state else "default"
+        if pending_file_val and file_name:
+            memory.set_file_context(user_state.get("username", "default") if user_state else "default", f"【上传文件：{file_name}】\n文件内容待分析")
+            
         memory.set_tenant(session_id, user_state.get("tenant", session_id) if user_state else session_id)
         
+        # 5. 真正跑 AI 后台（如果只传了文件没提问，给一个默认提示）
         if text and text.strip():
             answer = await chat_core(session_id, text, query_worker, command_worker, TOOL_ROUTER)
         else:
             answer = "文件已就绪，您可以基于该内容提问。"
             
-        # 4. 追加 AI 最终回答（气泡 4：Assistant）
+        # 6. 追加 AI 的最终回答
         new_history.append({"role": "assistant", "content": answer})
         yield new_history, "", None, "", gr.update(visible=False)
 
     # ✅ 定义好触发器变量，方便后面同时绑定回车和点击
-    submit_event = text_input.submit(
+    text_input.submit(
         fn=handle_text_with_file_generator,
         inputs=[text_input, chatbot, user_state, pending_file],
         outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn],
-        show_progress="hidden"
+        show_progress="minimal"  # ✅ 改成 minimal，微小的加载提示，既隐蔽又能告诉用户“正在干活”
     )
 
     # ✅ 新增：将按钮点击事件绑定到同一个处理函数上
@@ -375,7 +380,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         fn=handle_text_with_file_generator,
         inputs=[text_input, chatbot, user_state, pending_file],
         outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn],
-        show_progress="hidden"
+        show_progress="minimal"  # ✅ 同样修改
     )
 
 # ================= 启动入口（解决死锁） =================
