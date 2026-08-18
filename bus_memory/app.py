@@ -394,15 +394,34 @@ with gr.Blocks(title="AI 智能体") as demo:
 
 # ================= 启动入口（多线程分离法，彻底解决端口绑定死锁） =================
 # ================= 启动入口（Gradio 4.x 最佳适配） =================
-async def main():
+# ================= 双线程分离启动入口（Gradio 3.x 最稳方案） =================
+import threading
+import asyncio
+
+def start_worker_thread():
+    """在独立的线程中启动异步 Worker，绝对不干扰主线程"""
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        # 同时运行 Query 和 Command 两个 Worker 的死循环
+        loop.run_until_complete(asyncio.gather(
+            query_worker.run_loop(),
+            command_worker.run_loop()
+        ))
+    except Exception as e:
+        print(f"[后台 Worker 异常] {e}")
+
+if __name__ == "__main__":
+    # 初始化数据库等
     init_users_db()
     init_db()
     init_calendar()
     
-    loop = asyncio.get_running_loop()
-    loop.create_task(query_worker.run_loop())
-    loop.create_task(command_worker.run_loop())
+    # 1. 启动后台 Worker 线程（Daemon 线程，随主线程自动退出）
+    worker_thread = threading.Thread(target=start_worker_thread, daemon=True)
+    worker_thread.start()
     
+    # 2. 主线程立即启动 Gradio 服务（无任何 asyncio 阻塞）
     port = int(os.environ.get("PORT", 7860))
     demo.queue()
     demo.launch(
@@ -448,6 +467,3 @@ async def main():
             }
         """
     )
-
-if __name__ == "__main__":
-    asyncio.run(main())
