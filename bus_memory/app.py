@@ -187,10 +187,6 @@ with gr.Blocks(title="AI 智能体") as demo:
     with gr.Column(visible=False) as chat_column:
         with gr.Tab("聊天"):
             gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具）")
-
-            with gr.Row():
-                text_input = gr.Textbox(..., scale=4)
-                send_btn = gr.Button("➡️", scale=0, min_width=0) # 发送按钮
                 
             with gr.Row():
                 tenant_dropdown = gr.Dropdown(choices=get_available_tenants(), value="default", label="当前租户", interactive=False, scale=1)
@@ -366,32 +362,33 @@ with gr.Blocks(title="AI 智能体") as demo:
         new_history.append({"role": "assistant", "content": answer})
         yield new_history, "", None, "", gr.update(visible=False)
 
-        # ✅ 定义好触发器变量，方便后面同时绑定回车和点击
-        submit_event = text_input.submit(
-            fn=handle_text_with_file_generator,
-            inputs=[text_input, chatbot, user_state, pending_file],
-            outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn],
-            show_progress="hidden"
-        )
+    # ✅ 定义好触发器变量，方便后面同时绑定回车和点击
+    submit_event = text_input.submit(
+        fn=handle_text_with_file_generator,
+        inputs=[text_input, chatbot, user_state, pending_file],
+        outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn],
+        show_progress="hidden"
+    )
 
-        # ✅ 新增：将按钮点击事件绑定到同一个处理函数上
-        send_btn.click(
-            fn=handle_text_with_file_generator,
-            inputs=[text_input, chatbot, user_state, pending_file],
-            outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn],
-            show_progress="hidden"
-        )
+    # ✅ 新增：将按钮点击事件绑定到同一个处理函数上
+    send_btn.click(
+        fn=handle_text_with_file_generator,
+        inputs=[text_input, chatbot, user_state, pending_file],
+        outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn],
+        show_progress="hidden"
+    )
 
-# ================= 启动入口 =================
-if __name__ == "__main__":
+# ================= 启动入口（解决死锁） =================
+async def main():
     init_users_db()
     init_db()
     init_calendar()
-    loop = asyncio.get_event_loop()
+    
+    # 正确获取当前运行的循环
+    loop = asyncio.get_running_loop()
     loop.create_task(query_worker.run_loop())
     loop.create_task(command_worker.run_loop())
     port = int(os.environ.get("PORT", 7860))
-    demo.queue(),  # ✅ 确保生成器流式输出时不会因为状态冲突而锁死输入框
     demo.launch(
         server_name="0.0.0.0",
         server_port=port,
@@ -473,3 +470,6 @@ if __name__ == "__main__":
             }
         """
     )
+    
+if __name__ == "__main__":
+    asyncio.run(main())
