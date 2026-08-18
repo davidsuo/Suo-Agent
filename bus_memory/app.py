@@ -219,7 +219,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                     scale=4,           # 占据绝大部分宽度
                     interactive=True,
                     autofocus=True,     # 刷新页面后自动聚焦
-                    debounce=0  # ✅ 4.x 完美支持，按回车即发
+                   # debounce=0  # ✅ 4.x 完美支持，按回车即发
                 )
                 send_btn = gr.Button("➡️", scale=0, min_width=0, elem_id="send-btn") # 发送按钮
 
