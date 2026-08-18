@@ -367,20 +367,23 @@ with gr.Blocks(title="AI 智能体") as demo:
         new_history.append({"role": "assistant", "content": answer})
         yield new_history, "", None, "", gr.update(visible=False)
 
-    # ✅ 定义好触发器变量，方便后面同时绑定回车和点击
+    # ================= 事件绑定（优化：按下回车瞬间立刻清空输入框） =================
     text_input.submit(
         fn=handle_text_with_file_generator,
         inputs=[text_input, chatbot, user_state, pending_file],
         outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn],
-        show_progress="minimal"  # ✅ 改成 minimal，微小的加载提示，既隐蔽又能告诉用户“正在干活”
+        show_progress="minimal",
+        # ✅ 关键新功能：在发给后端的瞬间，前端 JS 立即清空输入框内容！
+        _js="(text, history, state, file) => { const ta = document.querySelector('#input-row textarea'); if(ta) ta.value = ''; return [text, history, state, file]; }"
     )
 
-    # ✅ 新增：将按钮点击事件绑定到同一个处理函数上
     send_btn.click(
         fn=handle_text_with_file_generator,
         inputs=[text_input, chatbot, user_state, pending_file],
         outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn],
-        show_progress="minimal"  # ✅ 同样修改
+        show_progress="minimal",
+        # ✅ 同样，点击发送按钮时也立即清空内容
+        _js="(text, history, state, file) => { const ta = document.querySelector('#input-row textarea'); if(ta) ta.value = ''; return [text, history, state, file]; }"
     )
 
 # ================= 启动入口（解决死锁） =================
