@@ -325,45 +325,47 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     # ================= 文本提交（生成器，使用 dict 字典格式兼容当前 Gradio） =================
     # ================= 文本提交（优化后的异步生成器，解决 2 秒延迟） =================
+    # ================= 文本提交（优化：修正气泡先后顺序） =================
     async def handle_text_with_file_generator(text, history, user_state, pending_file_val):
         history = list(history) if history else []
-        
-        # 1. 准备 UI 消息内容
+
+        # 1. 构建消息列表（严格按照用户期望的顺序）
         user_entries = []
-        file_name = None
+        has_pending_file = False  # 标记是否需要显示“正在分析”的提示
+
         if pending_file_val:
+            has_pending_file = True
             file_name = os.path.basename(pending_file_val)
+            # 顺序 ①：先添加文件气泡
             user_entries.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
-            user_entries.append({"role": "assistant", "content": "⏳ 正在分析文件..."})
+            memory.set_file_context(user_state.get("username", "default") if user_state else "default", f"【上传文件：{file_name}】\n文件内容待分析")
             
         if text and text.strip():
+            # 顺序 ②：紧接着添加用户问题气泡
             user_entries.append({"role": "user", "content": text})
             
+        # 顺序 ③：最后才添加 AI 的分析提示气泡
+        if has_pending_file:
+            user_entries.append({"role": "assistant", "content": "⏳ 正在分析文件..."})
+
         if not user_entries:
             user_entries = [{"role": "user", "content": ""}]
             
+        # 2. 立即将前三步渲染到前端
         new_history = history + user_entries
-        
-        # 2. ✅ 关键点 2：主动让出 Python 的异步控制权（相当于对浏览器说“你先渲染”，延迟瞬间降至毫秒级）
-        await asyncio.sleep(0)
-        
-        # 3. ✅ 关键点 1：立刻将 UI 状态（含清空输入框）返回给前端，不要等待任何后台 IO
+        await asyncio.sleep(0)  # 确保异步队列优先处理
         yield new_history, "", None, "", gr.update(visible=False)
         
-        # 4. 把耗时的文件上下文设置和 AI 思考，挪到 UI 渲染完成之后再做
+        # 3. 调用 AI 后台逻辑
         session_id = user_state.get("username", "default") if user_state else "default"
-        if pending_file_val and file_name:
-            memory.set_file_context(user_state.get("username", "default") if user_state else "default", f"【上传文件：{file_name}】\n文件内容待分析")
-            
         memory.set_tenant(session_id, user_state.get("tenant", session_id) if user_state else session_id)
         
-        # 5. 真正跑 AI 后台（如果只传了文件没提问，给一个默认提示）
         if text and text.strip():
             answer = await chat_core(session_id, text, query_worker, command_worker, TOOL_ROUTER)
         else:
             answer = "文件已就绪，您可以基于该内容提问。"
             
-        # 6. 追加 AI 的最终回答
+        # 4. 追加 AI 最终回答（气泡 4：最终结论）
         new_history.append({"role": "assistant", "content": answer})
         yield new_history, "", None, "", gr.update(visible=False)
 
