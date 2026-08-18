@@ -189,6 +189,10 @@ with gr.Blocks(title="AI 智能体") as demo:
             gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具）")
 
             with gr.Row():
+                text_input = gr.Textbox(..., scale=4)
+                send_btn = gr.Button("➡️", scale=0, min_width=0) # 发送按钮
+                
+            with gr.Row():
                 tenant_dropdown = gr.Dropdown(choices=get_available_tenants(), value="default", label="当前租户", interactive=False, scale=1)
                 refresh_btn = gr.Button("刷新租户列表", size="sm", scale=0)
 
@@ -213,6 +217,9 @@ with gr.Blocks(title="AI 智能体") as demo:
                 show_label=False,
                 placeholder="发送消息或按住空格说话，松开发送...",
                 scale=4
+                debounce=0,       # ✅ 重点：彻底关闭防抖延迟，回车立即触发
+                interactive=True, # 确保长期可用
+                autofocus=True    # 刷新页面后自动聚焦，方便直接打字
             )
 
         # 其他 Tab 保持不变（略）
@@ -378,6 +385,7 @@ if __name__ == "__main__":
         server_name="0.0.0.0",
         server_port=port,
         theme=gr.themes.Soft(),
+        demo.queue(),  # ✅ 确保生成器流式输出时不会因为状态冲突而锁死输入框
         css="""
             #voice-file-input { display: none; }
             #paste-file-input { display: none; }
