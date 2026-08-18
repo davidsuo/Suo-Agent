@@ -344,11 +344,11 @@ with gr.Blocks(title="AI 智能体") as demo:
             
         new_history = history + user_entries
         
-        # 2. ✅ 关键点 1：立刻将 UI 状态（含清空输入框）返回给前端，不要等待任何后台 IO
-        yield new_history, "", None, "", gr.update(visible=False)
-        
-        # 3. ✅ 关键点 2：主动让出 Python 的异步控制权（相当于对浏览器说“你先渲染”，延迟瞬间降至毫秒级）
+        # 2. ✅ 关键点 2：主动让出 Python 的异步控制权（相当于对浏览器说“你先渲染”，延迟瞬间降至毫秒级）
         await asyncio.sleep(0)
+        
+        # 3. ✅ 关键点 1：立刻将 UI 状态（含清空输入框）返回给前端，不要等待任何后台 IO
+        yield new_history, "", None, "", gr.update(visible=False)
         
         # 4. 把耗时的文件上下文设置和 AI 思考，挪到 UI 渲染完成之后再做
         session_id = user_state.get("username", "default") if user_state else "default"
