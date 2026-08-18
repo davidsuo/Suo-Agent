@@ -198,8 +198,8 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             # ✅ 旧版 3.x 写法：chatbot = gr.Chatbot(label="对话", height=500, value=[])
             # ✅ 新版 4.x 写法：
-            #chatbot = gr.Chatbot(label="对话", height=500, value=[], type="messages", show_copy_button=True)
-            chatbot = gr.Chatbot(label="对话", height=500, value=[])
+            chatbot = gr.Chatbot(label="对话", height=500, value=[], type="messages", show_copy_button=True)
+            #chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
             # 上传按钮、文件名、清除按钮（紧密排列）
             with gr.Row(elem_id="upload-row"):   # ✅ 务必删除 equal_width=False
@@ -393,29 +393,17 @@ with gr.Blocks(title="AI 智能体") as demo:
     )
 
 # ================= 启动入口（多线程分离法，彻底解决端口绑定死锁） =================
-import threading
-
-def start_worker_loop():
-    """在独立的线程中运行 Worker 的异步死循环"""
-    # 每个线程必须拥有自己独立的事件循环
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(asyncio.gather(
-        query_worker.run_loop(),
-        command_worker.run_loop()
-    ))
-
-if __name__ == "__main__":
+# ================= 启动入口（Gradio 4.x 最佳适配） =================
+async def main():
     init_users_db()
     init_db()
     init_calendar()
-    port = int(os.environ.get("PORT", 7860))
     
-    # ✅ 启动独立的后台线程负责 Worker 任务，绝不干扰主线程
-    worker_thread = threading.Thread(target=start_worker_loop, daemon=True)
-    worker_thread.start()
-
-    # ✅ Gradio 的主服务在主线程中极速绑定端口
+    loop = asyncio.get_running_loop()
+    loop.create_task(query_worker.run_loop())
+    loop.create_task(command_worker.run_loop())
+    
+    port = int(os.environ.get("PORT", 7860))
     demo.queue()
     demo.launch(
         server_name="0.0.0.0",
@@ -460,3 +448,6 @@ if __name__ == "__main__":
             }
         """
     )
+
+if __name__ == "__main__":
+    asyncio.run(main())
