@@ -201,7 +201,9 @@ with gr.Blocks(title="AI 智能体") as demo:
             #chatbot = gr.Chatbot(label="对话", height=500, value=[], type="messages", show_copy_button=True)
             #chatbot = gr.Chatbot(label="对话", height=500, value=[])
             # ✅ 终极稳写：显式声明为 tuples 模式，同时保留按钮复制功能
-            chatbot = gr.Chatbot(label="对话", height=500, value=[], type="tuples", show_copy_button=True)
+            #chatbot = gr.Chatbot(label="对话", height=500, value=[], type="tuples", show_copy_button=True)
+            # 删掉 type="tuples" 和 type="messages"，完全去掉 type 参数
+            chatbot = gr.Chatbot(label="对话", height=500, value=[], show_copy_button=True)
 
             # 上传按钮、文件名、清除按钮（紧密排列）
             with gr.Row(elem_id="upload-row"):   # ✅ 务必删除 equal_width=False
