@@ -196,14 +196,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                 user_display = gr.Markdown("")
                 logout_btn = gr.Button("退出登录", size="sm")
 
-            # ✅ 旧版 3.x 写法：chatbot = gr.Chatbot(label="对话", height=500, value=[])
-            # ✅ 新版 4.x 写法：
-            #chatbot = gr.Chatbot(label="对话", height=500, value=[], type="messages", show_copy_button=True)
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
-            # ✅ 终极稳写：显式声明为 tuples 模式，同时保留按钮复制功能
-            #chatbot = gr.Chatbot(label="对话", height=500, value=[], type="tuples", show_copy_button=True)
-            # 删掉 type="tuples" 和 type="messages"，完全去掉 type 参数
-            #chatbot = gr.Chatbot(label="对话", height=500, value=[], show_copy_button=True)
 
             # 上传按钮、文件名、清除按钮（紧密排列）
             with gr.Row(elem_id="upload-row"):   # ✅ 务必删除 equal_width=False
@@ -222,8 +215,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                     placeholder="发送消息或按住空格说话，松开发送...",
                     scale=4,           # 占据绝大部分宽度
                     interactive=True,
-                    autofocus=True,     # 刷新页面后自动聚焦
-                    #debounce=0  # ✅ 4.x 完美支持，按回车即发
+                    autofocus=True     # 刷新页面后自动聚焦
                 )
                 send_btn = gr.Button("➡️", scale=0, min_width=0, elem_id="send-btn") # 发送按钮
 
@@ -333,52 +325,56 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     # ================= 文本提交（生成器，使用 dict 字典格式兼容当前 Gradio） =================
     # ================= 文本提交（优化后的异步生成器，解决 2 秒延迟） =================
-    # ================= 文本提交（优化：修正气泡先后顺序） =================
-    # ================= 文本提交（Gradio 3.x 最佳布局适配版） =================
-    # ================= 文本提交（转为标准的列表格式，适配不带 type 的 Chatbot） =================
     async def handle_text_with_file_generator(text, history, user_state, pending_file_val):
         history = list(history) if history else []
-
-        # 1. 上传文件气泡（独立呈现）
+        
+        # 1. 准备 UI 消息内容
+        user_entries = []
+        file_name = None
         if pending_file_val:
             file_name = os.path.basename(pending_file_val)
-            history.append([f"📎 上传文件：{file_name}", None])
-            memory.set_file_context(user_state.get("username", "default") if user_state else "default", f"【上传文件：{file_name}】\n文件内容待分析")
-            yield history, "", None, "", gr.update(visible=False)
+            user_entries.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
+            user_entries.append({"role": "assistant", "content": "⏳ 正在分析文件..."})
             
-        # 2. 提问气泡（独立呈现）
         if text and text.strip():
-            history.append([text, None])
-            yield history, "", None, "", gr.update(visible=False)
+            user_entries.append({"role": "user", "content": text})
             
-        # 3. 等待分析气泡（独立呈现）
-        history.append(["", "⏳ 正在分析文件，请稍候..."])
-        yield history, "", None, "", gr.update(visible=False)
+        if not user_entries:
+            user_entries = [{"role": "user", "content": ""}]
+            
+        new_history = history + user_entries
         
-        # 4. 调用后台逻辑
+        # 2. ✅ 关键点 2：主动让出 Python 的异步控制权（相当于对浏览器说“你先渲染”，延迟瞬间降至毫秒级）
+        await asyncio.sleep(0)
+        
+        # 3. ✅ 关键点 1：立刻将 UI 状态（含清空输入框）返回给前端，不要等待任何后台 IO
+        yield new_history, "", None, "", gr.update(visible=False)
+        
+        # 4. 把耗时的文件上下文设置和 AI 思考，挪到 UI 渲染完成之后再做
         session_id = user_state.get("username", "default") if user_state else "default"
+        if pending_file_val and file_name:
+            memory.set_file_context(user_state.get("username", "default") if user_state else "default", f"【上传文件：{file_name}】\n文件内容待分析")
+            
         memory.set_tenant(session_id, user_state.get("tenant", session_id) if user_state else session_id)
+        
+        # 5. 真正跑 AI 后台（如果只传了文件没提问，给一个默认提示）
         if text and text.strip():
             answer = await chat_core(session_id, text, query_worker, command_worker, TOOL_ROUTER)
         else:
             answer = "文件已就绪，您可以基于该内容提问。"
             
-        # 5. 把“分析中”替换为真正的 AI 回复
-        if history and len(history) > 0:
-            history[-1][1] = answer
-        
-        yield history, "", None, "", gr.update(visible=False)
+        # 6. 追加 AI 的最终回答
+        new_history.append({"role": "assistant", "content": answer})
+        yield new_history, "", None, "", gr.update(visible=False)
 
     # ================= 事件绑定（优化：按下回车瞬间立刻清空输入框） =================
-    # ================= 事件绑定（Gradio 3.x 兼容版：瞬间清空输入框） =================
-    # ================= 事件绑定（彻底解决 3.x 丢失 text 输入的坑） =================
     text_input.submit(
         fn=handle_text_with_file_generator,
         inputs=[text_input, chatbot, user_state, pending_file],
         outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn],
         show_progress="minimal",
-        # ✅ 修正版：接收 inputs 的 4 个参数，清空 UI 后，把原始参数数组传回给 Python，避免丢字
-        js="(text, history, state, file) => { const ta = document.querySelector('#input-row textarea'); if(ta) ta.value = ''; return [text, history, state, file]; }"
+        # ✅ 关键新功能：在发给后端的瞬间，前端 JS 立即清空输入框内容！
+        _js="(text, history, state, file) => { const ta = document.querySelector('#input-row textarea'); if(ta) ta.value = ''; return [text, history, state, file]; }"
     )
 
     send_btn.click(
@@ -386,42 +382,21 @@ with gr.Blocks(title="AI 智能体") as demo:
         inputs=[text_input, chatbot, user_state, pending_file],
         outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn],
         show_progress="minimal",
-        # ✅ 同样修正
-        js="(text, history, state, file) => { const ta = document.querySelector('#input-row textarea'); if(ta) ta.value = ''; return [text, history, state, file]; }"
+        # ✅ 同样，点击发送按钮时也立即清空内容
+        _js="(text, history, state, file) => { const ta = document.querySelector('#input-row textarea'); if(ta) ta.value = ''; return [text, history, state, file]; }"
     )
 
-# ================= 启动入口（多线程分离法，彻底解决端口绑定死锁） =================
-# ================= 启动入口（Gradio 4.x 最佳适配） =================
-# ================= 双线程分离启动入口（Gradio 3.x 最稳方案） =================
-import threading
-import asyncio
-
-def start_worker_thread():
-    """在独立的线程中启动异步 Worker，绝对不干扰主线程"""
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        # 同时运行 Query 和 Command 两个 Worker 的死循环
-        loop.run_until_complete(asyncio.gather(
-            query_worker.run_loop(),
-            command_worker.run_loop()
-        ))
-    except Exception as e:
-        print(f"[后台 Worker 异常] {e}")
-
-if __name__ == "__main__":
-    # 初始化数据库等
+# ================= 启动入口（解决死锁） =================
+async def main():
     init_users_db()
     init_db()
     init_calendar()
     
-    # 1. 启动后台 Worker 线程（Daemon 线程，随主线程自动退出）
-    worker_thread = threading.Thread(target=start_worker_thread, daemon=True)
-    worker_thread.start()
-    
-    # 2. 主线程立即启动 Gradio 服务（无任何 asyncio 阻塞）
+    # 正确获取当前运行的循环
+    loop = asyncio.get_running_loop()
+    loop.create_task(query_worker.run_loop())
+    loop.create_task(command_worker.run_loop())
     port = int(os.environ.get("PORT", 7860))
-    demo.queue()
     demo.launch(
         server_name="0.0.0.0",
         server_port=port,
@@ -429,39 +404,80 @@ if __name__ == "__main__":
         css="""
             #voice-file-input { display: none; }
             #paste-file-input { display: none; }
-            .loader, .spinner, .progress, .loading { display: none !important; }
-            #chat-input textarea::placeholder { color: #aaa; opacity: 1; }
+            /* 隐藏加载旋转指示器 */
+            .loader, .spinner, .progress, .loading {
+                display: none !important;
+            }
+            /* 确保输入框占位符可见 */
+            #chat-input textarea::placeholder {
+                color: #aaa;
+                opacity: 1;
+            }
             
+            /* ========= 终极修复上传区布局 ========= */
             #upload-row {
-                display: flex !important; flex-direction: row !important;
-                flex-wrap: nowrap !important; align-items: center !important;
-                gap: 0px !important; justify-content: flex-start !important;
+                display: flex !important;
+                flex-direction: row !important;
+                flex-wrap: nowrap !important;
+                align-items: center !important;
+                gap: 0px !important;
+                justify-content: flex-start !important;
                 margin-bottom: 10px !important;
             }
+
+            /* 对 row 里面的所有子容器强制取消自动拉伸 */
             #upload-row > div {
-                flex: 0 0 auto !important; width: auto !important;
-                max-width: fit-content !important; margin: 0 !important; padding: 0 !important;
+                flex: 0 0 auto !important;
+                width: auto !important;
+                max-width: fit-content !important;
+                margin: 0 !important;
+                padding: 0 !important;
             }
+
+            /* 修复上传按钮竖排的问题：强制按钮内部横向排列 */
             #upload-row .gr-box, #upload-row .gr-box > div {
-                display: flex !important; align-items: center !important;
-                justify-content: center !important; background: transparent !important;
-                border: none !important; box-shadow: none !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                background: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
             }
             #upload-row button {
-                white-space: nowrap !important; display: flex !important;
-                flex-direction: row !important; align-items: center !important;
-                gap: 4px !important; min-width: auto !important; padding: 4px 8px !important;
+                white-space: nowrap !important;        /* 禁止文字换行 */
+                display: flex !important;              /* 强制 flex 布局 */
+                flex-direction: row !important;        /* 强制文字横向排列 */
+                align-items: center !important;        /* 图标和文字居中对齐 */
+                gap: 4px !important;                   /* 图标和文字间距 */
+                min-width: auto !important;
+                padding: 4px 8px !important;
             }
+
+            /* 修复中间文件名组件：禁止抢空间 */
             #attachment-html {
-                flex: 0 0 auto !important; width: auto !important;
-                margin: 0 6px !important; padding: 0 !important;
+                flex: 0 0 auto !important;
+                width: auto !important;
+                margin: 0 6px !important; /* 给文件名左右留一点点阅读缝隙 */
+                padding: 0 !important;
             }
+
+            /* 修复❌按钮：紧紧挨着文件名 */
             #clear-btn {
-                flex: 0 0 auto !important; width: auto !important;
-                margin: 0 0 0 4px !important; padding: 0 2px !important;
-                background: transparent !important; border: none !important;
-                box-shadow: none !important; color: #ff5555 !important; font-size: 14px !important;
-                font-weight: bold !important; min-width: auto !important; cursor: pointer !important;
+                flex: 0 0 auto !important;
+                width: auto !important;
+                margin: 0 0 0 4px !important;
+                padding: 0 2px !important;
+                background: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
+                color: #ff5555 !important;
+                font-size: 14px !important;
+                font-weight: bold !important;
+                min-width: auto !important;
+                cursor: pointer !important;
             }
         """
     )
+    
+if __name__ == "__main__":
+    asyncio.run(main())
