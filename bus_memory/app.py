@@ -198,8 +198,8 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             # ✅ 旧版 3.x 写法：chatbot = gr.Chatbot(label="对话", height=500, value=[])
             # ✅ 新版 4.x 写法：
-            chatbot = gr.Chatbot(label="对话", height=500, value=[], type="messages", show_copy_button=True)
-            #chatbot = gr.Chatbot(label="对话", height=500, value=[])
+            #chatbot = gr.Chatbot(label="对话", height=500, value=[], type="messages", show_copy_button=True)
+            chatbot = gr.Chatbot(label="对话", height=500, value=[])
             # ✅ 终极稳写：显式声明为 tuples 模式，同时保留按钮复制功能
             #chatbot = gr.Chatbot(label="对话", height=500, value=[], type="tuples", show_copy_button=True)
             # 删掉 type="tuples" 和 type="messages"，完全去掉 type 参数
@@ -339,32 +339,31 @@ with gr.Blocks(title="AI 智能体") as demo:
     async def handle_text_with_file_generator(text, history, user_state, pending_file_val):
         history = list(history) if history else []
 
-        # 1. 第一步：添加文件气泡
+        # 1. 上传文件气泡（独立呈现）
         if pending_file_val:
             file_name = os.path.basename(pending_file_val)
             history.append([f"📎 上传文件：{file_name}", None])
             memory.set_file_context(user_state.get("username", "default") if user_state else "default", f"【上传文件：{file_name}】\n文件内容待分析")
             yield history, "", None, "", gr.update(visible=False)
             
-        # 2. 第二步：添加用户提问气泡
+        # 2. 提问气泡（独立呈现）
         if text and text.strip():
             history.append([text, None])
             yield history, "", None, "", gr.update(visible=False)
             
-        # 3. 第三步：添加“正在分析”气泡
+        # 3. 等待分析气泡（独立呈现）
         history.append(["", "⏳ 正在分析文件，请稍候..."])
         yield history, "", None, "", gr.update(visible=False)
         
-        # 4. 调用 AI 后台获取真回答
+        # 4. 调用后台逻辑
         session_id = user_state.get("username", "default") if user_state else "default"
         memory.set_tenant(session_id, user_state.get("tenant", session_id) if user_state else session_id)
-        
         if text and text.strip():
             answer = await chat_core(session_id, text, query_worker, command_worker, TOOL_ROUTER)
         else:
             answer = "文件已就绪，您可以基于该内容提问。"
             
-        # 5. 更新最后一条“分析中”的气泡为最终回答
+        # 5. 把“分析中”替换为真正的 AI 回复
         if history and len(history) > 0:
             history[-1][1] = answer
         
