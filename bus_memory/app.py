@@ -198,6 +198,9 @@ with gr.Blocks(title="AI 智能体") as demo:
                 user_display = gr.Markdown("")
                 logout_btn = gr.Button("退出登录", size="sm")
 
+            # 读取当前环境的 Gradio 主版本号
+            GRADIO_MAJOR_VERSION = int(gr.__version__.split('.')[0])
+
             # ✅ 终极自适应：根据当前 Gradio 版本选择正确的初始化方式
             if GRADIO_MAJOR_VERSION >= 4:
                 # 如果是 Gradio 4.x/6.x，我们需要用 type="messages" 并配合字典格式
