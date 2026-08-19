@@ -197,17 +197,8 @@ with gr.Blocks(title="AI 智能体") as demo:
             with gr.Row():
                 user_display = gr.Markdown("")
                 logout_btn = gr.Button("退出登录", size="sm")
-
-            # 读取当前环境的 Gradio 主版本号
-            GRADIO_MAJOR_VERSION = int(gr.__version__.split('.')[0])
-
-            # ✅ 终极自适应：根据当前 Gradio 版本选择正确的初始化方式
-            if GRADIO_MAJOR_VERSION >= 4:
-                # 如果是 Gradio 4.x/6.x，我们需要用 type="messages" 并配合字典格式
-                chatbot = gr.Chatbot(label="对话", height=500, value=[], type="messages", show_copy_button=True)
-            else:
-                # 如果是 Gradio 3.x，不带任何 type 参数，使用列表格式
-                chatbot = gr.Chatbot(label="对话", height=500, value=[])
+            
+            chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
             # 上传按钮、文件名、清除按钮（紧密排列）
             with gr.Row(elem_id="upload-row"):   # ✅ 务必删除 equal_width=False
