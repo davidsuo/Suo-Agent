@@ -196,7 +196,9 @@ with gr.Blocks(title="AI 智能体") as demo:
                 user_display = gr.Markdown("")
                 logout_btn = gr.Button("退出登录", size="sm")
 
-            chatbot = gr.Chatbot(label="对话", height=500, value=[])
+            #chatbot = gr.Chatbot(label="对话", height=500, value=[])
+            # 显式告诉 Gradio 6.x，我们要用传统的列表格式 (tuples)
+            chatbot = gr.Chatbot(label="对话", height=500, value=[], type="tuples", show_copy_button=True)
 
             # 上传按钮、文件名、清除按钮（紧密排列）
             with gr.Row(elem_id="upload-row"):   # ✅ 务必删除 equal_width=False
