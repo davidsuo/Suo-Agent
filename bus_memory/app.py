@@ -333,29 +333,27 @@ with gr.Blocks(title="AI 智能体") as demo:
     # ================= 文本提交（Gradio 3.x 最佳布局适配版） =================
     async def handle_text_with_file_generator(text, history, user_state, pending_file_val):
         history = list(history) if history else []
+        user_entries = []
 
-        # 1. 将“上传文件”和“问题”合并为同一条用户气泡（用换行隔开，视觉整齐）
-        user_contents = []
         if pending_file_val:
             file_name = os.path.basename(pending_file_val)
-            user_contents.append(f"📎 上传文件：{file_name}")
+            user_entries.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
             memory.set_file_context(user_state.get("username", "default") if user_state else "default", f"【上传文件：{file_name}】\n文件内容待分析")
             
         if text and text.strip():
-            user_contents.append(f"💬 {text}")
-
-        if not user_contents:
-            user_contents = [" "]
-
-        # 合并成带换行的单条用户消息
-        history.append({"role": "user", "content": "\n".join(user_contents)})
+            user_entries.append({"role": "user", "content": text})
+            
+        if not user_entries:
+            user_entries = [{"role": "user", "content": ""}]
+            
+        # 马上渲染文件与提问气泡
+        history.extend(user_entries)
         yield history, "", None, "", gr.update(visible=False)
-
-        # 2. AI 气泡先显示“正在分析”（这时用户能立刻看到反馈）
+        
+        # 追加 AI 分析中气泡
         history.append({"role": "assistant", "content": "⏳ 正在分析文件，请稍候..."})
         yield history, "", None, "", gr.update(visible=False)
-
-        # 3. 调用后台 AI 逻辑（此时不耽误界面渲染）
+        
         session_id = user_state.get("username", "default") if user_state else "default"
         memory.set_tenant(session_id, user_state.get("tenant", session_id) if user_state else session_id)
         
@@ -363,11 +361,10 @@ with gr.Blocks(title="AI 智能体") as demo:
             answer = await chat_core(session_id, text, query_worker, command_worker, TOOL_ROUTER)
         else:
             answer = "文件已就绪，您可以基于该内容提问。"
-
-        # 4. ⭐ 核心技巧：不追加新气泡，而是**原地更新**上一条 AI 气泡的内容！
+            
+        # 替换刚才的“分析中”气泡为真正的 AI 回答
         if history and history[-1]["role"] == "assistant":
-            # 用 markdown 格式输出，结果非常清晰
-            history[-1]["content"] = f"✅ **分析完成！**\n\n{answer}"
+            history[-1]["content"] = answer
         
         yield history, "", None, "", gr.update(visible=False)
 
