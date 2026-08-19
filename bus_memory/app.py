@@ -3,6 +3,8 @@ import sys, os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import gradio as gr
+# 读取当前环境的 Gradio 主版本号
+GRADIO_MAJOR_VERSION = int(gr.__version__.split('.')[0])
 import asyncio
 import json
 import pandas as pd
@@ -196,9 +198,13 @@ with gr.Blocks(title="AI 智能体") as demo:
                 user_display = gr.Markdown("")
                 logout_btn = gr.Button("退出登录", size="sm")
 
-            #chatbot = gr.Chatbot(label="对话", height=500, value=[])
-            # 显式告诉 Gradio 6.x，我们要用传统的列表格式 (tuples)
-            chatbot = gr.Chatbot(label="对话", height=500, value=[], type="tuples", show_copy_button=True)
+            # ✅ 终极自适应：根据当前 Gradio 版本选择正确的初始化方式
+            if GRADIO_MAJOR_VERSION >= 4:
+                # 如果是 Gradio 4.x/6.x，我们需要用 type="messages" 并配合字典格式
+                chatbot = gr.Chatbot(label="对话", height=500, value=[], type="messages", show_copy_button=True)
+            else:
+                # 如果是 Gradio 3.x，不带任何 type 参数，使用列表格式
+                chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
             # 上传按钮、文件名、清除按钮（紧密排列）
             with gr.Row(elem_id="upload-row"):   # ✅ 务必删除 equal_width=False
@@ -328,37 +334,65 @@ with gr.Blocks(title="AI 智能体") as demo:
     # ================= 文本提交（严格按“文件 -> 提问 -> 分析中 -> 结果”顺序生成气泡） =================
     async def handle_text_with_file_generator(text, history, user_state, pending_file_val):
         history = list(history) if history else []
+        
+        # ============ 分支 A：如果环境是 Gradio 4.x 或 6.x ============
+        if GRADIO_MAJOR_VERSION >= 4:
+            user_entries = []
+            if pending_file_val:
+                file_name = os.path.basename(pending_file_val)
+                user_entries.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
+                memory.set_file_context(user_state.get("username", "default") if user_state else "default", f"【上传文件：{file_name}】\n文件内容待分析")
+            if text and text.strip():
+                user_entries.append({"role": "user", "content": text})
+            if not user_entries:
+                user_entries = [{"role": "user", "content": ""}]
+            
+            # 先用字典格式渲染“文件”和“问题”气泡
+            new_history = history + user_entries
+            yield new_history, "", None, "", gr.update(visible=False)
 
-        # 1. 第一步：先渲染“上传文件”气泡
-        if pending_file_val:
-            file_name = os.path.basename(pending_file_val)
-            history.append([f"📎 上传文件：{file_name}", None])
-            memory.set_file_context(user_state.get("username", "default") if user_state else "default", f"【上传文件：{file_name}】\n文件内容待分析")
-            yield history, "", None, "", gr.update(visible=False)
-            
-        # 2. 第二步：再渲染“用户提问”气泡
-        if text and text.strip():
-            history.append([text, None])
-            yield history, "", None, "", gr.update(visible=False)
-            
-        # 3. 第三步：追加“正在分析”气泡（作为 AI 回答的占位符）
-        history.append(["", "⏳ 正在分析文件，请稍候..."])
-        yield history, "", None, "", gr.update(visible=False)
-        
-        # 4. 第四步：调用真正的 AI 后台逻辑
-        session_id = user_state.get("username", "default") if user_state else "default"
-        memory.set_tenant(session_id, user_state.get("tenant", session_id) if user_state else session_id)
-        
-        if text and text.strip():
-            answer = await chat_core(session_id, text, query_worker, command_worker, TOOL_ROUTER)
+            # 再追加“分析中”气泡
+            new_history.append({"role": "assistant", "content": "⏳ 正在分析文件，请稍候..."})
+            yield new_history, "", None, "", gr.update(visible=False)
+
+            # 后台调用
+            session_id = user_state.get("username", "default") if user_state else "default"
+            memory.set_tenant(session_id, user_state.get("tenant", session_id) if user_state else session_id)
+            if text and text.strip():
+                answer = await chat_core(session_id, text, query_worker, command_worker, TOOL_ROUTER)
+            else:
+                answer = "文件已就绪，您可以基于该内容提问。"
+                
+            # 更新“分析中”气泡为最终结果
+            if new_history and new_history[-1]["role"] == "assistant":
+                new_history[-1]["content"] = answer
+            yield new_history, "", None, "", gr.update(visible=False)
+
+        # ============ 分支 B：如果环境是 Gradio 3.x ============
         else:
-            answer = "文件已就绪，您可以基于该内容提问。"
+            if pending_file_val:
+                file_name = os.path.basename(pending_file_val)
+                history.append([f"📎 上传文件：{file_name}", None])
+                memory.set_file_context(user_state.get("username", "default") if user_state else "default", f"【上传文件：{file_name}】\n文件内容待分析")
+                yield history, "", None, "", gr.update(visible=False)
+                
+            if text and text.strip():
+                history.append([text, None])
+                yield history, "", None, "", gr.update(visible=False)
+                
+            history.append(["", "⏳ 正在分析文件，请稍候..."])
+            yield history, "", None, "", gr.update(visible=False)
             
-        # 5. 第五步：将刚刚的“正在分析”气泡，无缝替换为 AI 的最终回答
-        if history and len(history) > 0:
-            history[-1][1] = answer
-        
-        yield history, "", None, "", gr.update(visible=False)
+            session_id = user_state.get("username", "default") if user_state else "default"
+            memory.set_tenant(session_id, user_state.get("tenant", session_id) if user_state else session_id)
+            if text and text.strip():
+                answer = await chat_core(session_id, text, query_worker, command_worker, TOOL_ROUTER)
+            else:
+                answer = "文件已就绪，您可以基于该内容提问。"
+                
+            if history and len(history) > 0:
+                history[-1][1] = answer
+            yield history, "", None, "", gr.update(visible=False)
 
     # ================= 事件绑定（优化：按下回车瞬间立刻清空输入框） =================
     # ================= 事件绑定（Gradio 3.x 兼容版：瞬间清空输入框） =================
