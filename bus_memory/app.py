@@ -323,49 +323,40 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     clear_file_btn.click(fn=clear_file, inputs=[], outputs=[pending_file, attachment_html, clear_file_btn])
 
-    # ================= 文本提交（生成器，使用 dict 字典格式兼容当前 Gradio） =================
-    # ================= 文本提交（优化后的异步生成器，解决 2 秒延迟） =================
+    # ================= 文本提交（严格按“文件 -> 提问 -> 分析中 -> 结果”顺序生成气泡） =================
     async def handle_text_with_file_generator(text, history, user_state, pending_file_val):
         history = list(history) if history else []
-        
-        # 1. 准备 UI 消息内容
-        user_entries = []
-        file_name = None
+
+        # 1. 第一步：先渲染“上传文件”气泡
         if pending_file_val:
             file_name = os.path.basename(pending_file_val)
-            user_entries.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
-            user_entries.append({"role": "assistant", "content": "⏳ 正在分析文件..."})
-            
-        if text and text.strip():
-            user_entries.append({"role": "user", "content": text})
-            
-        if not user_entries:
-            user_entries = [{"role": "user", "content": ""}]
-            
-        new_history = history + user_entries
-        
-        # 2. ✅ 关键点 1：立刻将 UI 状态（含清空输入框）返回给前端，不要等待任何后台 IO
-        yield new_history, "", None, "", gr.update(visible=False)
-        
-        # 3. ✅ 关键点 2：主动让出 Python 的异步控制权（相当于对浏览器说“你先渲染”，延迟瞬间降至毫秒级）
-        await asyncio.sleep(0)
-        
-        # 4. 把耗时的文件上下文设置和 AI 思考，挪到 UI 渲染完成之后再做
-        session_id = user_state.get("username", "default") if user_state else "default"
-        if pending_file_val and file_name:
+            history.append([f"📎 上传文件：{file_name}", None])
             memory.set_file_context(user_state.get("username", "default") if user_state else "default", f"【上传文件：{file_name}】\n文件内容待分析")
+            yield history, "", None, "", gr.update(visible=False)
             
+        # 2. 第二步：再渲染“用户提问”气泡
+        if text and text.strip():
+            history.append([text, None])
+            yield history, "", None, "", gr.update(visible=False)
+            
+        # 3. 第三步：追加“正在分析”气泡（作为 AI 回答的占位符）
+        history.append(["", "⏳ 正在分析文件，请稍候..."])
+        yield history, "", None, "", gr.update(visible=False)
+        
+        # 4. 第四步：调用真正的 AI 后台逻辑
+        session_id = user_state.get("username", "default") if user_state else "default"
         memory.set_tenant(session_id, user_state.get("tenant", session_id) if user_state else session_id)
         
-        # 5. 真正跑 AI 后台（如果只传了文件没提问，给一个默认提示）
         if text and text.strip():
             answer = await chat_core(session_id, text, query_worker, command_worker, TOOL_ROUTER)
         else:
             answer = "文件已就绪，您可以基于该内容提问。"
             
-        # 6. 追加 AI 的最终回答
-        new_history.append({"role": "assistant", "content": answer})
-        yield new_history, "", None, "", gr.update(visible=False)
+        # 5. 第五步：将刚刚的“正在分析”气泡，无缝替换为 AI 的最终回答
+        if history and len(history) > 0:
+            history[-1][1] = answer
+        
+        yield history, "", None, "", gr.update(visible=False)
 
     # ================= 事件绑定（优化：按下回车瞬间立刻清空输入框） =================
     # ================= 事件绑定（Gradio 3.x 兼容版：瞬间清空输入框） =================
