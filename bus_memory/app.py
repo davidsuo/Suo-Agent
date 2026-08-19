@@ -368,22 +368,23 @@ with gr.Blocks(title="AI 智能体") as demo:
         yield new_history, "", None, "", gr.update(visible=False)
 
     # ================= 事件绑定（优化：按下回车瞬间立刻清空输入框） =================
+    # ================= 事件绑定（Gradio 3.x 兼容版：瞬间清空输入框） =================
     text_input.submit(
         fn=handle_text_with_file_generator,
         inputs=[text_input, chatbot, user_state, pending_file],
         outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn],
-        show_progress="minimal",
-        # ✅ 关键新功能：在发给后端的瞬间，前端 JS 立即清空输入框内容！
-        _js="(text, history, state, file) => { const ta = document.querySelector('#input-row textarea'); if(ta) ta.value = ''; return [text, history, state, file]; }"
+        show_progress="hidden",
+        # ✅ 修复：将 _js 换成 js
+        js="(text, history, state, file) => { const ta = document.querySelector('#input-row textarea'); if(ta) ta.value = ''; return [text, history, state, file]; }"
     )
 
     send_btn.click(
         fn=handle_text_with_file_generator,
         inputs=[text_input, chatbot, user_state, pending_file],
         outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn],
-        show_progress="minimal",
-        # ✅ 同样，点击发送按钮时也立即清空内容
-        _js="(text, history, state, file) => { const ta = document.querySelector('#input-row textarea'); if(ta) ta.value = ''; return [text, history, state, file]; }"
+        show_progress="hidden",
+        # ✅ 同样修复这里
+        js="(text, history, state, file) => { const ta = document.querySelector('#input-row textarea'); if(ta) ta.value = ''; return [text, history, state, file]; }"
     )
 
 # ================= 启动入口（解决死锁） =================
