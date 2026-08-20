@@ -454,26 +454,32 @@ with gr.Blocks(title="AI 智能体") as demo:
             history.append({"role": "assistant", "content": answer})
             return history, "", None, "", ""
 
-        # 文件/音频处理
+        # ================= 文件/音频处理 (完整替换块) =================
         if file is not None:
             file_path = file if isinstance(file, str) else (file.name if hasattr(file, 'name') else str(file))
             ext = os.path.splitext(file_path)[1].lower()
             file_name = os.path.basename(file_path)
             file_result = ""
 
+            # 1. 图片处理 (OCR / 表格识别)
             if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif'):
                 if message and "表格" in message:
                     file_result = await asyncio.to_thread(recognize_table, file_path)
                 else:
                     file_result = await asyncio.to_thread(ocr_image, file_path)
+            
+            # 2. 表格处理 (CSV/Excel)
             elif ext in ('.csv', '.xlsx', '.xls'):
                 file_result = await asyncio.to_thread(analyze_file, file_path)
+            
+            # 3. 音频处理 (支持 webm)
             elif ext in ('.wav', '.mp3', '.m4a', '.ogg', '.webm'):
-                # ✅ 支持 webm 格式
                 file_result = await asyncio.to_thread(speech_to_text, file_path)
+            
             else:
                 file_result = "不支持的文件类型"
 
+            # 统一保存上下文和日志
             file_result = str(file_result)
             memory.set_file_context(session_id, f"【上传文件：{file_name}】\n{file_result}")
             memory.add_uploaded_file(session_id, file_name, file_result)
@@ -481,21 +487,25 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             history = history or []
 
+            # 4. 分支处理：语音输入和图文/表格输入
             if ext in ('.wav', '.mp3', '.m4a', '.ogg', '.webm'):
+                # 语音输入：直接返回转写结果
                 history.append({"role": "user", "content": f"🎤 语音输入：{file_result}"})
                 answer = await chat_core(session_id, file_result, query_worker, command_worker, TOOL_ROUTER)
                 history.append({"role": "assistant", "content": answer})
                 return history, "", None, file_result, answer
             else:
+                # 图文/表格输入：将文件气泡和附带文字同时显示
                 history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
                 
-                # 🔥 核心修复：如果用户输入了文字，就立刻跳过“就绪”提示，直接生成答案
                 if message and message.strip():
+                    # ✅ 如果用户在同一句话里输入了附带提示词，先显示提示词气泡
+                    history.append({"role": "user", "content": message})
                     answer = await chat_core(session_id, message, query_worker, command_worker, TOOL_ROUTER)
                     history.append({"role": "assistant", "content": answer})
                     return history, "", None, message, answer
                 else:
-                    # 如果是单纯点上传没打字，保留原逻辑
+                    # 如果只上传了文件，没有输入附带文字
                     history.append({"role": "assistant", "content": "文件已就绪，您可以基于该内容提问。"})
                     return history, "", None, file_name, "文件已就绪，您可以基于该内容提问。"
 
@@ -538,6 +548,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         fn=handle_file_upload,
         inputs=[file_upload_btn],
         outputs=[pending_file, attachment_html, clear_file_btn]
+        show_progress="hidden"  # ✅ 增加这一行，隐藏上传文件时的进度条
     )
 
     def clear_file():
@@ -565,6 +576,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         fn=submit_text_with_file,
         inputs=[text_input, chatbot, user_state, pending_file],
         outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn, last_user_message, last_assistant_message]
+        show_progress="hidden"  # ✅ 增加这一行，隐藏发送时的飞镖加载圈
     )
 
     # ================= 语音文件事件 =================
