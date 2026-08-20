@@ -292,8 +292,8 @@ with gr.Blocks(title="AI 智能体") as demo:
         fn=login,
         inputs=[username_input, pin_input],
         outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab],
-        # ✅ 新增：登录成功后，将用户名存入 sessionStorage，并且动态修改地址栏的 user 参数
-        js="(username, pin) => { sessionStorage.setItem('suo_user', username); window.history.replaceState({}, '', '/?user=' + username); return true; }"
+        # ✅ 修复：将返回布尔值改为返回原参数列表，确保后端能收到用户名和密码
+        js="(username, pin) => { sessionStorage.setItem('suo_user', username); window.history.replaceState({}, '', '/?user=' + username); return [username, pin]; }"
     )
 
     def logout():
@@ -321,13 +321,12 @@ with gr.Blocks(title="AI 智能体") as demo:
                 return (user, gr.update(visible=False), gr.update(visible=True), hist if hist else [], gr.Dropdown(choices=tenants, value=user["tenant"]), "", f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**", gr.update(visible=(user.get("role") == "admin")))
         return (None, gr.update(visible=True), gr.update(visible=False), [], gr.Dropdown(choices=get_available_tenants(), value="default"), "", "", gr.update(visible=False))
 
-    # 将现有的 demo.load 的 js 替换为下面这个增强版：
     demo.load(
         fn=load_history, 
         inputs=[session_user_input], 
         outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab], 
-        # ✅ 增强：读取 URL 参数或 sessionStorage，确保地址栏和系统状态完全同步
-        js="() => { const urlParams = new URLSearchParams(window.location.search); const user = urlParams.get('user') || sessionStorage.getItem('suo_user') || ''; if (user && !sessionStorage.getItem('suo_user')) { sessionStorage.setItem('suo_user', user); } return user; }"
+        # ✅ 增强：优先读取 URL 参数，其次读取 localStorage
+        js="() => { const urlParams = new URLSearchParams(window.location.search); const user = urlParams.get('user') || sessionStorage.getItem('suo_user') || ''; if (user) sessionStorage.setItem('suo_user', user); return user; }"
     )
 
     # ================= 文件上传暂存 =================
