@@ -493,9 +493,15 @@ with gr.Blocks(title="AI 智能体") as demo:
                 return history, "", None, file_result, answer
             else:
                 history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
-                history.append({"role": "assistant", "content": "文件已就绪，您可以基于该内容提问。"})
-                # ✅ 修复：把文件名和提示语存入 last_user_message 和 last_assistant_message，让反馈按钮有数据可判！
-                return history, "", None, file_name, "文件已就绪，您可以基于该内容提问。"
+                # ✅ 关键改进：如果用户在同一时间输入了提示词，直接跳过 AI 的“已就绪”提示，直接回答问题！
+                if message and message.strip():
+                    answer = await chat_core(session_id, message, query_worker, command_worker, TOOL_ROUTER)
+                    history.append({"role": "assistant", "content": answer})
+                    return history, "", None, message, answer
+                else:
+                    # 只有纯粹的单独上传文件（没有附带提问），才发送“已就绪”
+                    history.append({"role": "assistant", "content": "文件已就绪，您可以基于该内容提问。"})
+                    return history, "", None, file_name, "文件已就绪，您可以基于该内容提问。"
 
         # 纯文本处理
         if not message or not message.strip():
@@ -510,11 +516,15 @@ with gr.Blocks(title="AI 智能体") as demo:
         # ✅ 注意这里：必须确保返回的 4 个参数依次是：用户消息、助手消息
         return history, "", None, message, answer
         
-    # ✅ 新增：包装提交函数，让 `text_input.submit` 能够读取暂存文件，并清空暂存状态
+    # ✅ 全新逻辑：一次性把“文件”和“文字”传给 AI，秒回结果！
     async def submit_text_with_file(message, history, user_state, pending_file_val):
-        # 调用 unified_handler，传入暂存的文件
+        if not message and not pending_file_val:
+            return history, "", None, "", gr.update(visible=False), "", ""
+            
+        # 直接调用 unified_handler，让它在内部同时处理文件和文字
         new_history, clear_text, _, user_msg, assistant_msg = await unified_handler(message, history, pending_file_val, user_state)
-        # 发送成功后，清除底部的 pending_file 以及文件名和 ❌ 按钮
+        
+        # 发送成功后，清空底部的 pending_file 以及文件名和 ❌ 按钮
         return new_history, clear_text, None, "", gr.update(visible=False), user_msg, assistant_msg
 
 
