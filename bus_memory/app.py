@@ -188,7 +188,13 @@ with gr.Blocks(title="AI 智能体") as demo:
             gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具）")
 
             with gr.Row():
-                tenant_dropdown = gr.Dropdown(choices=get_available_tenants(), value="default", label="当前租户", interactive=False, scale=1)
+                tenant_dropdown = gr.Dropdown(
+                    choices=get_available_tenants(),
+                    value="default",
+                    label="当前租户",
+                    interactive=False,
+                    scale=1
+                )
                 refresh_btn = gr.Button("刷新租户列表", size="sm", scale=0)
 
             with gr.Row():
@@ -197,25 +203,15 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
-            # ---------- 全局状态（文件暂存和反馈） ----------
-            pending_file = gr.State(None)
-            attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
-            clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
-
-            # 输入框
-            text_input = gr.Textbox(
-                label="输入文字（可用 /logs 查看日志）",
-                placeholder="发消息或按住空格说话，松开发送...",
-                scale=4
-            )
-
-            # ✅ 新增：反馈按钮行（放在上传文件之前）
+            # 1️⃣ 反馈按钮行（已移除顶部重复的按钮，移到了上传文件前面）
+            # 使用 scale=0, min_width=0 让按钮自适应文字长度，不再被拉伸
             with gr.Row():
-                up_btn = gr.Button("👍 有帮助")
-                down_btn = gr.Button("👎 无帮助")
+                up_btn = gr.Button("👍 有帮助", scale=0, min_width=0)
+                down_btn = gr.Button("👎 无帮助", scale=0, min_width=0)
                 feedback_msg = gr.Markdown("")
 
-            # ✅ 恢复：紧凑的上传文件、文件名和清除按钮布局
+            # 2️⃣ 输入框与上传按钮组合行
+            # 将上传按钮放在 text_input 的左边，形成“左上角”的视觉效果
             with gr.Row(elem_id="upload-row"):
                 file_upload_btn = gr.UploadButton(
                     "📎 上传文件",
@@ -224,7 +220,14 @@ with gr.Blocks(title="AI 智能体") as demo:
                 )
                 attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
                 clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
-            
+                
+                # 3️⃣ 去除 label 标签，只保留 placeholder
+                text_input = gr.Textbox(
+                    show_label=False,  # ✅ 核心修改：隐藏标签
+                    placeholder="发消息或按住空格说话，松开发送...",
+                    scale=4
+                )
+
             # 隐藏的语音输入文件组件（保持不变）
             voice_file_input = gr.File(
                 visible=True,
@@ -511,6 +514,13 @@ with gr.Blocks(title="AI 智能体") as demo:
         answer = await chat_core(session_id, message, query_worker, command_worker, TOOL_ROUTER)
         history.append({"role": "assistant", "content": answer})
         return history, "", None, message, answer
+        
+    # ✅ 新增：包装提交函数，让 `text_input.submit` 能够读取暂存文件，并清空暂存状态
+    async def submit_text_with_file(message, history, user_state, pending_file_val):
+        # 调用 unified_handler，传入暂存的文件
+        new_history, clear_text, _, user_msg, assistant_msg = await unified_handler(message, history, pending_file_val, user_state)
+        # 发送成功后，清除底部的 pending_file 以及文件名和 ❌ 按钮
+        return new_history, clear_text, None, "", gr.update(visible=False), user_msg, assistant_msg
 
 
     # ================= 事件绑定（文本、文件、语音） =================
@@ -523,7 +533,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         html = f"<span style='display:inline-block; margin:0; padding:0;'>{file_name}</span>"
         return file_path, html, gr.update(visible=True)
 
-    # 点击上传按钮时，只暂存文件，不触发大模型
+    # ✅ 文件上传按钮：只负责暂存文件，绝对不触发聊天历史！
     file_upload_btn.upload(
         fn=handle_file_upload,
         inputs=[file_upload_btn],
@@ -538,25 +548,27 @@ with gr.Blocks(title="AI 智能体") as demo:
         inputs=[],
         outputs=[pending_file, attachment_html, clear_file_btn]
     )
-    
-    # ✅ 修改 text_input.submit 绑定：自动读取暂存文件
-    async def submit_text_with_file(message, history, user, pending_file_val):
-        return await unified_handler(message, history, pending_file_val, user)
 
+    # ================= 文本提交事件 =================
+    # ✅ 文本输入框：绑定我们新增的 submit_text_with_file，发送后自动清空文件
     text_input.submit(
         fn=submit_text_with_file,
         inputs=[text_input, chatbot, user_state, pending_file],
-        outputs=[chatbot, text_input, file_upload_btn, last_user_message, last_assistant_message]
+        outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn, last_user_message, last_assistant_message]
     )
-    file_upload_btn.upload(
-        unified_handler,
-        [text_input, chatbot, file_upload_btn, user_state],
-        [chatbot, text_input, file_upload_btn, last_user_message, last_assistant_message]
-    )
+
+    # ================= 语音文件事件 =================
+    # 语音上传触发统一处理，并更新最后一条消息状态以便反馈
+    async def voice_upload_handler(message, history, file, user):
+        if not user:
+            return history or [], "", None, "", ""
+        new_history, _, _, user_msg, assistant_msg = await unified_handler(message, history, file, user)
+        return new_history, "", None, user_msg, assistant_msg
+
     voice_file_input.upload(
-        unified_handler,
-        [text_input, chatbot, voice_file_input, user_state],
-        [chatbot, text_input, voice_file_input, last_user_message, last_assistant_message]
+        fn=voice_upload_handler,
+        inputs=[text_input, chatbot, voice_file_input, user_state],
+        outputs=[chatbot, text_input, voice_file_input, last_user_message, last_assistant_message]
     )
 
     # ================= 反馈处理 =================
