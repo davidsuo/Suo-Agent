@@ -1,4 +1,5 @@
 # bus_memory/app.py
+
 import sys, os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -8,6 +9,7 @@ import json
 import pandas as pd
 from common.main import chat_core, set_workers, simple_log_tool
 from common.memory import memory
+from common.pending_file import pending_file
 from common.tools import (
     get_current_time, calculator,
     query_database, web_search, execute_python,
