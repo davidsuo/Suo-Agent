@@ -498,7 +498,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                 history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
                 history.append({"role": "assistant", "content": "文件已就绪，您可以基于该内容提问。"})
                 # ✅ 修复：把文件名和提示语存入 last_user_message 和 last_assistant_message，让反馈按钮有数据可判！
-                return history, "", None, file_name, "文件已就绪，您可以基于该内容提问。
+                return history, "", None, file_name, "文件已就绪，您可以基于该内容提问。"
 
         # 纯文本处理
         if not message or not message.strip():
