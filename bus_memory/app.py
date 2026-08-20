@@ -197,7 +197,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             with gr.Row():
                 user_display = gr.Markdown("")
                 logout_btn = gr.Button("退出登录", size="sm")
-            
+
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
             # 上传按钮、文件名、清除按钮（紧密排列）
@@ -287,13 +287,27 @@ with gr.Blocks(title="AI 智能体") as demo:
         else:
             return (None, gr.update(visible=True), gr.update(visible=False), [], gr.update(), "❌ 用户名或 PIN 码错误", "", gr.update(visible=False))
 
-    login_btn.click(fn=login, inputs=[username_input, pin_input], outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab])
+    # ================= 修改 Login 绑定（同步 URL 和 sessionStorage） =================
+    login_btn.click(
+        fn=login,
+        inputs=[username_input, pin_input],
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab],
+        # ✅ 新增：登录成功后，将用户名存入 sessionStorage，并且动态修改地址栏的 user 参数
+        js="(username, pin) => { sessionStorage.setItem('suo_user', username); window.history.replaceState({}, '', '/?user=' + username); return true; }"
+    )
 
     def logout():
         memory.set_current_user(None)
         return (None, gr.update(visible=True), gr.update(visible=False), gr.update(), gr.update(), "", "", gr.update(visible=False))
 
-    logout_btn.click(fn=logout, inputs=[], outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab])
+    # ================= 修改 Logout 绑定（清除状态） =================
+    logout_btn.click(
+        fn=logout,
+        inputs=[],
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab],
+        # ✅ 新增：登出时清除 sessionStorage，并将地址栏恢复为根路径
+        js="() => { sessionStorage.removeItem('suo_user'); window.history.replaceState({}, '', '/'); return true; }"
+    )
 
     def load_history(session_username):
         if session_username:
@@ -307,7 +321,14 @@ with gr.Blocks(title="AI 智能体") as demo:
                 return (user, gr.update(visible=False), gr.update(visible=True), hist if hist else [], gr.Dropdown(choices=tenants, value=user["tenant"]), "", f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**", gr.update(visible=(user.get("role") == "admin")))
         return (None, gr.update(visible=True), gr.update(visible=False), [], gr.Dropdown(choices=get_available_tenants(), value="default"), "", "", gr.update(visible=False))
 
-    demo.load(fn=load_history, inputs=[session_user_input], outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab], js="() => sessionStorage.getItem('suo_user') || ''")
+    # 将现有的 demo.load 的 js 替换为下面这个增强版：
+    demo.load(
+        fn=load_history, 
+        inputs=[session_user_input], 
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab], 
+        # ✅ 增强：读取 URL 参数或 sessionStorage，确保地址栏和系统状态完全同步
+        js="() => { const urlParams = new URLSearchParams(window.location.search); const user = urlParams.get('user') || sessionStorage.getItem('suo_user') || ''; if (user && !sessionStorage.getItem('suo_user')) { sessionStorage.setItem('suo_user', user); } return user; }"
+    )
 
     # ================= 文件上传暂存 =================
     def handle_file_upload(file):
