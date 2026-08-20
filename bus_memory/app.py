@@ -189,7 +189,6 @@ with gr.Blocks(title="AI 智能体") as demo:
         with gr.Tab("聊天"):
             gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具）")
 
-            # 顶部租户与用户信息行（保持不变）
             with gr.Row():
                 tenant_dropdown = gr.Dropdown(choices=get_available_tenants(), value="default", label="当前租户", interactive=False, scale=1)
                 refresh_btn = gr.Button("刷新租户列表", size="sm", scale=0)
@@ -198,31 +197,27 @@ with gr.Blocks(title="AI 智能体") as demo:
                 user_display = gr.Markdown("")
                 logout_btn = gr.Button("退出登录", size="sm")
 
-            # 聊天窗口
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
-            # =========================================================
-            # ✅ 完美布局区（按照您的红线要求严格排列）
-            # =========================================================
-            
-            # 第 1 行：反馈按钮 + 上传文件按钮 + 文件名 + 清除按钮
-            with gr.Row():
-                # 反馈按钮：使用 scale=0 和 min_width=0 自适应文字长度，且紧靠左侧
+            # ======= 修复布局：所有元素放在同一个带有强制 CSS 的行中 =======
+            with gr.Row(elem_id="upload-row"):
+                # 反馈按钮（在前面）
                 up_btn = gr.Button("👍 有帮助", scale=0, min_width=0)
                 down_btn = gr.Button("👎 无帮助", scale=0, min_width=0)
                 feedback_msg = gr.Markdown("")
 
-                # 上传文件按钮
+                # 上传按钮（紧跟反馈）
                 file_upload_btn = gr.UploadButton(
                     "📎 上传文件",
                     file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
                     scale=0, min_width=0
                 )
-                # 文件名展示与清除
+                
+                # 文件名展示与清除按钮（紧跟上传按钮）
                 attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
                 clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
 
-            # 第 2 行：纯粹的输入框（隐藏了标签，完全符合您的预期）
+            # ======= 下面单独一行放置输入框 =======
             with gr.Row():
                 text_input = gr.Textbox(
                     show_label=False,
@@ -230,10 +225,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                     scale=4
                 )
 
-            # ✅ 布局区结束
-            # =========================================================
-
-            # 隐藏的语音输入组件（功能不受干扰，放心保留）
+            # 隐藏的语音输入组件（放在最后，不影响 UI 布局）
             voice_file_input = gr.File(
                 visible=True,
                 type="filepath",
@@ -518,6 +510,7 @@ with gr.Blocks(title="AI 智能体") as demo:
 
         answer = await chat_core(session_id, message, query_worker, command_worker, TOOL_ROUTER)
         history.append({"role": "assistant", "content": answer})
+        # ✅ 注意这里：必须确保返回的 4 个参数依次是：用户消息、助手消息
         return history, "", None, message, answer
         
     # ✅ 新增：包装提交函数，让 `text_input.submit` 能够读取暂存文件，并清空暂存状态
@@ -670,85 +663,32 @@ if __name__ == "__main__":
         server_name="0.0.0.0",
         server_port=port,
         theme=gr.themes.Soft(),
-        # ✅ 替换为新版 Gradio 官方参数格式
         head=voice_script,
         css="""
             #voice-file-input {
-                display: none;
-            }
-            #voice-file-input { display: none; }
-            #paste-file-input { display: none; }
-            /* 隐藏加载旋转指示器 */
-            .loader, .spinner, .progress, .loading {
                 display: none !important;
             }
-            /* 确保输入框占位符可见 */
-            #chat-input textarea::placeholder {
-                color: #aaa;
-                opacity: 1;
-            }
-            
-            /* ========= 终极修复上传区布局 ========= */
+            /* 强制这一行的所有元素水平排列，绝不换行或飞散 */
             #upload-row {
                 display: flex !important;
                 flex-direction: row !important;
                 flex-wrap: nowrap !important;
                 align-items: center !important;
-                gap: 0px !important;
-                justify-content: flex-start !important;
-                margin-bottom: 10px !important;
+                gap: 6px !important;
+                padding: 4px 0 !important;
             }
-
-            /* 对 row 里面的所有子容器强制取消自动拉伸 */
-            #upload-row > div {
+            /* 禁止里面的任何子元素无限拉伸 */
+            #upload-row > div, #upload-row > button, #upload-row > span {
                 flex: 0 0 auto !important;
                 width: auto !important;
-                max-width: fit-content !important;
                 margin: 0 !important;
-                padding: 0 !important;
             }
-
-            /* 修复上传按钮竖排的问题：强制按钮内部横向排列 */
-            #upload-row .gr-box, #upload-row .gr-box > div {
-                display: flex !important;
-                align-items: center !important;
-                justify-content: center !important;
+            /* 去掉 Gradio 包裹组件的默认卡片阴影和边距 */
+            #upload-row .gr-box {
                 background: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
-            }
-            #upload-row button {
-                white-space: nowrap !important;        /* 禁止文字换行 */
-                display: flex !important;              /* 强制 flex 布局 */
-                flex-direction: row !important;        /* 强制文字横向排列 */
-                align-items: center !important;        /* 图标和文字居中对齐 */
-                gap: 4px !important;                   /* 图标和文字间距 */
-                min-width: auto !important;
-                padding: 4px 8px !important;
-            }
-
-            /* 修复中间文件名组件：禁止抢空间 */
-            #attachment-html {
-                flex: 0 0 auto !important;
-                width: auto !important;
-                margin: 0 6px !important; /* 给文件名左右留一点点阅读缝隙 */
                 padding: 0 !important;
-            }
-
-            /* 修复❌按钮：紧紧挨着文件名 */
-            #clear-btn {
-                flex: 0 0 auto !important;
-                width: auto !important;
-                margin: 0 0 0 4px !important;
-                padding: 0 2px !important;
-                background: transparent !important;
-                border: none !important;
-                box-shadow: none !important;
-                color: #ff5555 !important;
-                font-size: 14px !important;
-                font-weight: bold !important;
-                min-width: auto !important;
-                cursor: pointer !important;
             }
         """
     )
