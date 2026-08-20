@@ -53,10 +53,10 @@ class ConversationMemory:
             
     def save_history(self, session_id, history):
         """保存指定用户的历史记录"""
-        # 1. 将最新的会话历史更新到内存字典中
-        self.sessions[session_id] = history
-        # 2. 直接调用你现有的 _save_to_file 方法保存到文件
-        self._save_to_file()    
+        # ✅ 修复：必须使用 _get_session_key 获取带租户的真实键
+        key = self._get_session_key(session_id)
+        self.sessions[key] = history
+        self._save_to_file()   
 
     def load_from_file(self) -> None:
         """从 JSON 文件加载记忆状态"""
@@ -140,8 +140,9 @@ class ConversationMemory:
 
     def get_history(self, session_id):
         """获取指定用户的历史记录"""
-        # 直接从内存字典中获取，如果不存在则返回空列表
-        return self.sessions.get(session_id, [])
+        # ✅ 修复：同样使用 _get_session_key 才能读到正确数据
+        key = self._get_session_key(session_id)
+        return self.sessions.get(key, [])
 
     def set_history(self, session_id: str, history: List[Dict[str, str]]) -> None:
         """直接设置会话历史（覆盖），线程安全"""
