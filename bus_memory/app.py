@@ -380,6 +380,8 @@ with gr.Blocks(title="AI 智能体") as demo:
             # 更新“分析中”气泡为最终结果
             if new_history and new_history[-1]["role"] == "assistant":
                 new_history[-1]["content"] = answer
+            # ✅ 新增：立刻把包含“文件气泡”的完整历史记录保存到文件中
+            memory.save_history(session_id, new_history)
             yield new_history, "", None, "", gr.update(visible=False)
 
         # ============ 分支 B：如果环境是 Gradio 3.x ============
@@ -406,6 +408,8 @@ with gr.Blocks(title="AI 智能体") as demo:
                 
             if history and len(history) > 0:
                 history[-1][1] = answer
+            # ✅ 新增：同样保存包含文件气泡的完整历史
+            memory.save_history(session_id, history)
             yield history, "", None, "", gr.update(visible=False)
 
     # ================= 事件绑定（优化：按下回车瞬间立刻清空输入框） =================
