@@ -547,7 +547,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     file_upload_btn.upload(
         fn=handle_file_upload,
         inputs=[file_upload_btn],
-        outputs=[pending_file, attachment_html, clear_file_btn]
+        outputs=[pending_file, attachment_html, clear_file_btn],
         show_progress="hidden"  # ✅ 增加这一行，隐藏上传文件时的进度条
     )
 
@@ -575,7 +575,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     text_input.submit(
         fn=submit_text_with_file,
         inputs=[text_input, chatbot, user_state, pending_file],
-        outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn, last_user_message, last_assistant_message]
+        outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn, last_user_message, last_assistant_message],
         show_progress="hidden"  # ✅ 增加这一行，隐藏发送时的飞镖加载圈
     )
 
