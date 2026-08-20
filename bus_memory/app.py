@@ -230,11 +230,6 @@ with gr.Blocks(title="AI 智能体") as demo:
                 label=""
             )
 
-            with gr.Row():
-                up_btn = gr.Button("👍 有帮助")
-                down_btn = gr.Button("👎 无帮助")
-                feedback_msg = gr.Markdown("")
-
         with gr.Tab("系统健康"):
             gr.Markdown("## 🏥 系统健康仪表板")
             health_refresh_btn = gr.Button("刷新数据")
@@ -493,13 +488,14 @@ with gr.Blocks(title="AI 智能体") as demo:
                 return history, "", None, file_result, answer
             else:
                 history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
-                # ✅ 关键改进：如果用户在同一时间输入了提示词，直接跳过 AI 的“已就绪”提示，直接回答问题！
+                
+                # 🔥 核心修复：如果用户输入了文字，就立刻跳过“就绪”提示，直接生成答案
                 if message and message.strip():
                     answer = await chat_core(session_id, message, query_worker, command_worker, TOOL_ROUTER)
                     history.append({"role": "assistant", "content": answer})
                     return history, "", None, message, answer
                 else:
-                    # 只有纯粹的单独上传文件（没有附带提问），才发送“已就绪”
+                    # 如果是单纯点上传没打字，保留原逻辑
                     history.append({"role": "assistant", "content": "文件已就绪，您可以基于该内容提问。"})
                     return history, "", None, file_name, "文件已就绪，您可以基于该内容提问。"
 
@@ -553,21 +549,17 @@ with gr.Blocks(title="AI 智能体") as demo:
         outputs=[pending_file, attachment_html, clear_file_btn]
     )
 
-    # ================= 纯文本及混合输入事件（修复提示词丢失） =================
-    # ✅ 全新逻辑：将“文件”和“文字”分离执行，确保两条消息都能生成
+    # ================= 纯文本及混合输入事件（完美融合版） =================
     async def submit_text_with_file(message, history, user_state, pending_file_val):
-        # 1. 如果有待上传的文件，先处理文件并更新历史
-        if pending_file_val:
-            history, _, _, _, _ = await unified_handler("", history, pending_file_val, user_state)
+        # 如果没有输入文字也没有上传文件，直接返回
+        if not message and not pending_file_val:
+            return history, "", None, "", gr.update(visible=False), "", ""
             
-        # 2. 如果输入框有文字，再处理文字，且此时 file 参数传 None
-        user_msg = ""
-        assistant_msg = ""
-        if message and message.strip():
-            history, _, _, user_msg, assistant_msg = await unified_handler(message, history, user_state, None)
+        # 核心优化：一次性将文件路径和文字传给后端，AI 生成完整对话
+        new_history, clear_text, _, user_msg, assistant_msg = await unified_handler(message, history, pending_file_val, user_state)
         
-        # 3. 发送成功后，清空底部的 pending_file 以及文件名和 ❌ 按钮
-        return history, "", None, "", gr.update(visible=False), user_msg, assistant_msg
+        # 发送成功后，清空底部的 pending_file 以及文件名和 ❌ 按钮
+        return new_history, clear_text, None, "", gr.update(visible=False), user_msg, assistant_msg
 
     text_input.submit(
         fn=submit_text_with_file,
