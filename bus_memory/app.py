@@ -9,7 +9,6 @@ import json
 import pandas as pd
 from common.main import chat_core, set_workers, simple_log_tool
 from common.memory import memory
-from common.pending_file import pending_file
 from common.tools import (
     get_current_time, calculator,
     query_database, web_search, execute_python,
@@ -175,6 +174,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     last_assistant_message = gr.State("")
     feedback_up = gr.State("up")
     feedback_down = gr.State("down")
+    pending_file = gr.State(None)
 
     # ---------- 登录界面 ----------
     with gr.Column(visible=False) as login_column:
