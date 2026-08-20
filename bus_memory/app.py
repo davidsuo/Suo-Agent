@@ -3,8 +3,6 @@ import sys, os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import gradio as gr
-# 读取当前环境的 Gradio 主版本号
-GRADIO_MAJOR_VERSION = int(gr.__version__.split('.')[0])
 import asyncio
 import json
 import pandas as pd
@@ -89,6 +87,7 @@ def get_available_tenants():
     return sorted(list(memory.all_tenants))
 
 
+# ================= 自定义 JavaScript（按住空格录音） =================
 voice_script = """
 <script>
 (function() {
@@ -101,81 +100,79 @@ voice_script = """
     statusDiv.style.cssText = 'position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #333; color: #fff; padding: 8px 16px; border-radius: 20px; display: none; z-index: 9999;';
     document.body.appendChild(statusDiv);
 
-    function showStatus(text) { statusDiv.textContent = text; statusDiv.style.display = 'block'; }
-    function hideStatus() { statusDiv.style.display = 'none'; }
+    function showStatus(text) {
+        statusDiv.textContent = text;
+        statusDiv.style.display = 'block';
+    }
+    function hideStatus() {
+        statusDiv.style.display = 'none';
+    }
 
     document.addEventListener('keydown', async (e) => {
         if (e.code !== 'Space' || isRecording) return;
+
         const active = document.activeElement;
-        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') && active.value && active.value.trim() !== '') return;
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') && active.value && active.value.trim() !== '') {
+            return;
+        }
+
         e.preventDefault();
-        isRecording = true; audioChunks = []; showStatus('🎤 正在录音...');
+        isRecording = true;
+        audioChunks = [];
+        showStatus('🎤 正在录音...');
+
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaRecorder = new MediaRecorder(stream);
-            mediaRecorder.ondataavailable = event => { if (event.data.size > 0) audioChunks.push(event.data); };
+            mediaRecorder.ondataavailable = event => {
+                if (event.data.size > 0) audioChunks.push(event.data);
+            };
             mediaRecorder.onstop = () => {
                 hideStatus();
                 const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
                 const file = new File([audioBlob], 'voice_message.webm', { type: audioBlob.type });
+
                 const wrapper = document.getElementById('voice-file-input');
-                const fileInput = wrapper ? wrapper.querySelector('input[type="file"]') : null;
-                if (fileInput) {
-                    const dt = new DataTransfer(); dt.items.add(file); fileInput.files = dt.files;
-                    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-                } else { console.error('未找到隐藏的 file input'); }
-                mediaRecorder.stream.getTracks().forEach(track => track.stop());
-                mediaRecorder = null;
-            };
-            mediaRecorder.start();
-        } catch (err) {
-            console.error('录音失败:', err); showStatus('❌ 无法访问麦克风，请检查权限');
-            setTimeout(hideStatus, 2000); isRecording = false;
-        }
-    });
-
-    document.addEventListener('keyup', (e) => {
-        if (e.code !== 'Space' || !isRecording) return;
-        e.preventDefault(); isRecording = false;
-        if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
-    });
-})();
-</script>
-"""
-
-paste_script = """
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    document.addEventListener('paste', function(e) {
-        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-        for (let i = 0; i < items.length; i++) {
-            if (items[i].kind === 'file') {
-                const file = items[i].getAsFile();
-                const wrapper = document.getElementById('paste-file-input');
                 const fileInput = wrapper ? wrapper.querySelector('input[type="file"]') : null;
                 if (fileInput) {
                     const dt = new DataTransfer();
                     dt.items.add(file);
                     fileInput.files = dt.files;
                     fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-                    e.preventDefault();
-                    break;
                 }
-            }
+                mediaRecorder.stream.getTracks().forEach(track => track.stop());
+                mediaRecorder = null;
+            };
+            mediaRecorder.start();
+        } catch (err) {
+            console.error('录音失败:', err);
+            showStatus('❌ 无法访问麦克风，请检查权限');
+            setTimeout(hideStatus, 2000);
+            isRecording = false;
         }
     });
-});
+
+    document.addEventListener('keyup', (e) => {
+        if (e.code !== 'Space' || !isRecording) return;
+        e.preventDefault();
+        isRecording = false;
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+        }
+    });
+})();
 </script>
 """
 
 
 with gr.Blocks(title="AI 智能体") as demo:
     # ---------- 全局状态 ----------
-    user_state = gr.State(value=None)
-    session_user_input = gr.Textbox(visible=False)
-    pending_file = gr.State(None)
-    attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
-    clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
+    user_state = gr.State(value=None)              # 当前登录用户信息
+    session_user_input = gr.Textbox(visible=False)   # 用于接收 sessionStorage 中的用户名
+    last_user_message = gr.State("")
+    last_assistant_message = gr.State("")
+    feedback_up = gr.State("up")
+    feedback_down = gr.State("down")
 
     # ---------- 登录界面 ----------
     with gr.Column(visible=False) as login_column:
@@ -189,9 +186,15 @@ with gr.Blocks(title="AI 智能体") as demo:
     with gr.Column(visible=False) as chat_column:
         with gr.Tab("聊天"):
             gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具）")
-                
+
             with gr.Row():
-                tenant_dropdown = gr.Dropdown(choices=get_available_tenants(), value="default", label="当前租户", interactive=False, scale=1)
+                tenant_dropdown = gr.Dropdown(
+                    choices=get_available_tenants(),
+                    value="default",
+                    label="当前租户",
+                    interactive=False,
+                    scale=1
+                )
                 refresh_btn = gr.Button("刷新租户列表", size="sm", scale=0)
 
             with gr.Row():
@@ -200,51 +203,67 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
-            # 上传按钮、文件名、清除按钮（紧密排列）
-            with gr.Row(elem_id="upload-row"):   # ✅ 务必删除 equal_width=False
-                file_upload_btn = gr.UploadButton(
-                    "📎 上传文件",
-                    file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
-                    scale=0, min_width=0   # ✅ scale=0 让它不强行拉伸
-                )
-                attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0) # ✅ 核心：禁止 HTML 抢占空白
-                clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
-
-            # 输入框
-            with gr.Row(elem_id="input-row"):
+            with gr.Row():
                 text_input = gr.Textbox(
-                    show_label=False,
-                    placeholder="发送消息或按住空格说话，松开发送...",
-                    scale=4,           # 占据绝大部分宽度
-                    interactive=True,
-                    autofocus=True     # 刷新页面后自动聚焦
+                    label="输入文字（可用 /logs 查看日志）",
+                    placeholder="发消息或按住空格说话，松开发送...",
+                    scale=4
                 )
-                send_btn = gr.Button("➡️", scale=0, min_width=0, elem_id="send-btn") # 发送按钮
 
-        # 其他 Tab 保持不变（略）
+            with gr.Row():
+                file_upload_btn = gr.UploadButton(
+                    "📁 上传文件",
+                    file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
+                    scale=0
+                )
+                # ✅ 隐藏的语音输入文件组件（通过 launch 里的 CSS 隐藏）
+                voice_file_input = gr.File(
+                    visible=True,
+                    type="filepath",
+                    elem_id="voice-file-input",
+                    label=""
+                )
+
+            with gr.Row():
+                up_btn = gr.Button("👍 有帮助")
+                down_btn = gr.Button("👎 无帮助")
+                feedback_msg = gr.Markdown("")
+
         with gr.Tab("系统健康"):
             gr.Markdown("## 🏥 系统健康仪表板")
             health_refresh_btn = gr.Button("刷新数据")
             health_summary_md = gr.Markdown("加载中...")
-            health_tool_table = gr.Dataframe(headers=["工具名称", "调用次数"], interactive=False)
+            health_tool_table = gr.Dataframe(
+                headers=["工具名称", "调用次数"],
+                interactive=False
+            )
 
         with gr.Tab("Worker 监控"):
             gr.Markdown("## 实时 Worker 状态")
             refresh_btn2 = gr.Button("刷新")
-            status_table = gr.Dataframe(headers=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度", "平均耗时(s)", "错误率"], interactive=False)
-
+            status_table = gr.Dataframe(
+                headers=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度", "平均耗时(s)", "错误率"],
+                interactive=False
+            )
+            
         with gr.Tab("工作流管理", visible=False) as workflow_tab:
             gr.Markdown("## 🧩 低代码工作流配置")
             gr.Markdown("仅管理员可配置。定义工作流后，在聊天中可说“执行工作流 xxx”来调用。")
             workflow_name_input = gr.Textbox(label="工作流名称")
             workflow_desc_input = gr.Textbox(label="描述")
-            workflow_steps_input = gr.Textbox(label="步骤 JSON", placeholder='[{"tool": "get_current_time", "arguments": {}}, {"tool": "web_search", "arguments": {"query": "今日新闻"}}]')
+            workflow_steps_input = gr.Textbox(
+                label="步骤 JSON",
+                placeholder='[{"tool": "get_current_time", "arguments": {}}, {"tool": "web_search", "arguments": {"query": "今日新闻"}}]'
+            )
             workflow_create_btn = gr.Button("创建工作流")
             workflow_create_msg = gr.Markdown("")
 
             with gr.Row():
                 refresh_workflow_btn = gr.Button("刷新列表")
-            workflow_list = gr.Dataframe(headers=["名称", "描述", "创建者", "创建时间"], interactive=False)
+            workflow_list = gr.Dataframe(
+                headers=["名称", "描述", "创建者", "创建时间"],
+                interactive=False
+            )
 
             def create_workflow(name, desc, steps_json, user):
                 if not user or user.get("role") != "admin":
@@ -270,9 +289,20 @@ with gr.Blocks(title="AI 智能体") as demo:
                     df = pd.DataFrame(columns=["名称", "描述", "创建者", "创建时间"])
                 return df
 
-            workflow_create_btn.click(fn=create_workflow, inputs=[workflow_name_input, workflow_desc_input, workflow_steps_input, user_state], outputs=[workflow_create_msg, workflow_list])
-            refresh_workflow_btn.click(fn=refresh_workflows, inputs=[], outputs=[workflow_list])
+            workflow_create_btn.click(
+                fn=create_workflow,
+                inputs=[workflow_name_input, workflow_desc_input, workflow_steps_input, user_state],
+                outputs=[workflow_create_msg, workflow_list]
+            )
+
+            refresh_workflow_btn.click(
+                fn=refresh_workflows,
+                inputs=[],
+                outputs=[workflow_list]
+            )
+
             workflow_list.value = refresh_workflows()
+
 
     # ================= 登录、退出、加载函数 =================
     def login(username, pin):
@@ -283,30 +313,51 @@ with gr.Blocks(title="AI 智能体") as demo:
             memory.set_current_user(user)
             hist = memory.get_history(session_id)
             tenants = get_available_tenants()
-            return (user, gr.update(visible=False), gr.update(visible=True), hist if hist else [], gr.Dropdown(choices=tenants, value=user["tenant"]), f"✅ 登录成功，欢迎 {user['display_name']}！", f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**", gr.update(visible=(user.get("role") == "admin")))
+            return (
+                user,
+                gr.update(visible=False),
+                gr.update(visible=True),
+                hist if hist else [],
+                gr.Dropdown(choices=tenants, value=user["tenant"]),
+                f"✅ 登录成功，欢迎 {user['display_name']}！",
+                f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**",
+                gr.update(visible=(user.get("role") == "admin"))
+            )
         else:
-            return (None, gr.update(visible=True), gr.update(visible=False), [], gr.update(), "❌ 用户名或 PIN 码错误", "", gr.update(visible=False))
+            return (
+                None,
+                gr.update(visible=True),
+                gr.update(visible=False),
+                [],
+                gr.update(),
+                "❌ 用户名或 PIN 码错误",
+                "",
+                gr.update(visible=False)
+            )
 
-    # ================= 修改 Login 绑定（同步 URL 和 sessionStorage） =================
     login_btn.click(
         fn=login,
         inputs=[username_input, pin_input],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab],
-        # ✅ 修复：将返回布尔值改为返回原参数列表，确保后端能收到用户名和密码
-        js="(username, pin) => { sessionStorage.setItem('suo_user', username); window.history.replaceState({}, '', '/?user=' + username); return [username, pin]; }"
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab]
     )
 
     def logout():
         memory.set_current_user(None)
-        return (None, gr.update(visible=True), gr.update(visible=False), gr.update(), gr.update(), "", "", gr.update(visible=False))
+        return (
+            None,
+            gr.update(visible=True),
+            gr.update(visible=False),
+            gr.update(),
+            gr.update(),
+            "",
+            "",
+            gr.update(visible=False)
+        )
 
-    # ================= 修改 Logout 绑定（清除状态） =================
     logout_btn.click(
         fn=logout,
         inputs=[],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab],
-        # ✅ 新增：登出时清除 sessionStorage，并将地址栏恢复为根路径
-        js="() => { sessionStorage.removeItem('suo_user'); window.history.replaceState({}, '', '/'); return true; }"
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab]
     )
 
     def load_history(session_username):
@@ -318,128 +369,232 @@ with gr.Blocks(title="AI 智能体") as demo:
                 memory.set_current_user(user)
                 hist = memory.get_history(session_id)
                 tenants = get_available_tenants()
-                return (user, gr.update(visible=False), gr.update(visible=True), hist if hist else [], gr.Dropdown(choices=tenants, value=user["tenant"]), "", f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**", gr.update(visible=(user.get("role") == "admin")))
-        return (None, gr.update(visible=True), gr.update(visible=False), [], gr.Dropdown(choices=get_available_tenants(), value="default"), "", "", gr.update(visible=False))
+                return (
+                    user,
+                    gr.update(visible=False),
+                    gr.update(visible=True),
+                    hist if hist else [],
+                    gr.Dropdown(choices=tenants, value=user["tenant"]),
+                    "",
+                    f"**当前用户：{user['display_name']} ({user['department']} - {user['position']})**",
+                    gr.update(visible=(user.get("role") == "admin"))
+                )
+        return (
+            None,
+            gr.update(visible=True),
+            gr.update(visible=False),
+            [],
+            gr.Dropdown(choices=get_available_tenants(), value="default"),
+            "",
+            "",
+            gr.update(visible=False)
+        )
 
     demo.load(
-        fn=load_history, 
-        inputs=[session_user_input], 
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab], 
-        # ✅ 增强：优先读取 URL 参数，其次读取 localStorage
-        js="() => { const urlParams = new URLSearchParams(window.location.search); const user = urlParams.get('user') || sessionStorage.getItem('suo_user') || ''; if (user) sessionStorage.setItem('suo_user', user); return user; }"
+        fn=load_history,
+        inputs=[session_user_input],
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab],
+        js="() => sessionStorage.getItem('suo_user') || ''"
     )
 
-    # ================= 文件上传暂存 =================
-    def handle_file_upload(file):
-        if file is None:
-            return None, "", gr.update(visible=False)
-        file_path = file.name if hasattr(file, 'name') else str(file)
-        file_name = os.path.basename(file_path)
-        html = f"<span style='display:inline-block; margin:0; padding:0;'>{file_name}</span>"
-        return file_path, html, gr.update(visible=True)
 
-    file_upload_btn.upload(fn=handle_file_upload, inputs=[file_upload_btn], outputs=[pending_file, attachment_html, clear_file_btn])
+    # ================= 主处理函数（文本、文件、音频） =================
+    async def unified_handler(message, history, file, user):
+        if not user:
+            return history or [], "", None, "", ""
 
-    def clear_file():
-        return None, "", gr.update(visible=False)
+        session_id = user.get("username", "default")
+        memory.set_tenant(session_id, user.get("tenant", session_id))
 
-    clear_file_btn.click(fn=clear_file, inputs=[], outputs=[pending_file, attachment_html, clear_file_btn])
+        # 处理 /logs
+        if message and message.strip().lower() == "/logs":
+            try:
+                if os.path.exists("plan_log.json"):
+                    with open("plan_log.json", "r", encoding="utf-8") as f:
+                        lines = f.readlines()
+                    valid_entries = []
+                    for line in lines:
+                        try:
+                            entry = json.loads(line.strip())
+                            if isinstance(entry, dict):
+                                valid_entries.append(entry)
+                        except json.JSONDecodeError:
+                            continue
+                    if not valid_entries:
+                        answer = "暂无规划日志。"
+                    else:
+                        recent = valid_entries[-5:] if len(valid_entries) > 5 else valid_entries
+                        logs_display = "**📋 最近操作日志（审计）**\n\n"
+                        for idx, entry in enumerate(recent, 1):
+                            timestamp = entry.get('timestamp', '未知')
+                            username = entry.get('username', '未知')
+                            role = entry.get('role', '未知')
+                            mode = entry.get('mode', '规划')
+                            status = entry.get('status', entry.get('final_status', '未知'))
+                            user_query = entry.get('user_query', '')
+                            logs_display += f"**记录{idx}** | 时间: {timestamp}\n"
+                            logs_display += f"用户: {username} | 角色: {role} | 模式: {mode} | 状态: {status}\n"
+                            logs_display += f"请求: {user_query[:80]}\n"
+                            if mode == "regular":
+                                tool = entry.get('tool', '')
+                                result = entry.get('result', '')
+                                logs_display += f"工具: {tool} | 结果: {result[:60]}\n"
+                            else:
+                                plan = entry.get('plan', [])
+                                logs_display += f"步骤数: {len(plan)}\n"
+                            logs_display += "\n"
+                        answer = logs_display
+                else:
+                    answer = "暂无规划日志文件。"
+            except Exception as e:
+                answer = f"读取日志失败: {e}"
+            history = history or []
+            history.append({"role": "user", "content": "/logs"})
+            history.append({"role": "assistant", "content": answer})
+            return history, "", None, "", ""
 
-    # ================= 文本提交（严格按“文件 -> 提问 -> 分析中 -> 结果”顺序生成气泡） =================
-    async def handle_text_with_file_generator(text, history, user_state, pending_file_val):
-        history = list(history) if history else []
-        
-        # ============ 分支 A：如果环境是 Gradio 4.x 或 6.x ============
-        if GRADIO_MAJOR_VERSION >= 4:
-            user_entries = []
-            if pending_file_val:
-                file_name = os.path.basename(pending_file_val)
-                user_entries.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
-                memory.set_file_context(user_state.get("username", "default") if user_state else "default", f"【上传文件：{file_name}】\n文件内容待分析")
-            if text and text.strip():
-                user_entries.append({"role": "user", "content": text})
-            if not user_entries:
-                user_entries = [{"role": "user", "content": ""}]
-            
-            # 先用字典格式渲染“文件”和“问题”气泡
-            new_history = history + user_entries
-            yield new_history, "", None, "", gr.update(visible=False)
+        # 文件/音频处理
+        if file is not None:
+            file_path = file if isinstance(file, str) else (file.name if hasattr(file, 'name') else str(file))
+            ext = os.path.splitext(file_path)[1].lower()
+            file_name = os.path.basename(file_path)
+            file_result = ""
 
-            # 再追加“分析中”气泡
-            new_history.append({"role": "assistant", "content": "⏳ 正在分析文件，请稍候..."})
-            yield new_history, "", None, "", gr.update(visible=False)
-
-            # 后台调用
-            session_id = user_state.get("username", "default") if user_state else "default"
-            memory.set_tenant(session_id, user_state.get("tenant", session_id) if user_state else session_id)
-            if text and text.strip():
-                answer = await chat_core(session_id, text, query_worker, command_worker, TOOL_ROUTER)
+            if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif'):
+                if message and "表格" in message:
+                    file_result = await asyncio.to_thread(recognize_table, file_path)
+                else:
+                    file_result = await asyncio.to_thread(ocr_image, file_path)
+            elif ext in ('.csv', '.xlsx', '.xls'):
+                file_result = await asyncio.to_thread(analyze_file, file_path)
+            elif ext in ('.wav', '.mp3', '.m4a', '.ogg', '.webm'):
+                # ✅ 支持 webm 格式
+                file_result = await asyncio.to_thread(speech_to_text, file_path)
             else:
-                answer = "文件已就绪，您可以基于该内容提问。"
-                
-            # 更新“分析中”气泡为最终结果
-            if new_history and new_history[-1]["role"] == "assistant":
-                new_history[-1]["content"] = answer
-            # ✅ 新增：立刻把包含“文件气泡”的完整历史记录保存到文件中
-            memory.save_history(session_id, new_history)
-            yield new_history, "", None, "", gr.update(visible=False)
+                file_result = "不支持的文件类型"
 
-        # ============ 分支 B：如果环境是 Gradio 3.x ============
-        else:
-            if pending_file_val:
-                file_name = os.path.basename(pending_file_val)
-                history.append([f"📎 上传文件：{file_name}", None])
-                memory.set_file_context(user_state.get("username", "default") if user_state else "default", f"【上传文件：{file_name}】\n文件内容待分析")
-                yield history, "", None, "", gr.update(visible=False)
-                
-            if text and text.strip():
-                history.append([text, None])
-                yield history, "", None, "", gr.update(visible=False)
-                
-            history.append(["", "⏳ 正在分析文件，请稍候..."])
-            yield history, "", None, "", gr.update(visible=False)
-            
-            session_id = user_state.get("username", "default") if user_state else "default"
-            memory.set_tenant(session_id, user_state.get("tenant", session_id) if user_state else session_id)
-            if text and text.strip():
-                answer = await chat_core(session_id, text, query_worker, command_worker, TOOL_ROUTER)
+            file_result = str(file_result)
+            memory.set_file_context(session_id, f"【上传文件：{file_name}】\n{file_result}")
+            memory.add_uploaded_file(session_id, file_name, file_result)
+            simple_log_tool(session_id, file_name, "file_upload", {"file_name": file_name}, "文件上传成功")
+
+            history = history or []
+
+            if ext in ('.wav', '.mp3', '.m4a', '.ogg', '.webm'):
+                history.append({"role": "user", "content": f"🎤 语音输入：{file_result}"})
+                answer = await chat_core(session_id, file_result, query_worker, command_worker, TOOL_ROUTER)
+                history.append({"role": "assistant", "content": answer})
+                return history, "", None, file_result, answer
             else:
-                answer = "文件已就绪，您可以基于该内容提问。"
-                
-            if history and len(history) > 0:
-                history[-1][1] = answer
-            # ✅ 新增：同样保存包含文件气泡的完整历史
-            memory.save_history(session_id, history)
-            yield history, "", None, "", gr.update(visible=False)
+                history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
+                history.append({"role": "assistant", "content": "文件已就绪，您可以基于该内容提问。"})
+                return history, "", None, "", ""
 
-    # ================= 事件绑定（优化：按下回车瞬间立刻清空输入框） =================
-    # ================= 事件绑定（Gradio 3.x 兼容版：瞬间清空输入框） =================
+        # 纯文本处理
+        if not message or not message.strip():
+            return history or [], "", None, "", ""
+
+        display_msg = message
+        history = history or []
+        history.append({"role": "user", "content": display_msg})
+
+        answer = await chat_core(session_id, message, query_worker, command_worker, TOOL_ROUTER)
+        history.append({"role": "assistant", "content": answer})
+        return history, "", None, message, answer
+
+
+    # ================= 事件绑定（文本、文件、语音） =================
     text_input.submit(
-        fn=handle_text_with_file_generator,
-        inputs=[text_input, chatbot, user_state, pending_file],
-        outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn],
-        show_progress="hidden",
-        # ✅ 修复：将 _js 换成 js
-        js="(text, history, state, file) => { const ta = document.querySelector('#input-row textarea'); if(ta) ta.value = ''; return [text, history, state, file]; }"
+        unified_handler,
+        [text_input, chatbot, file_upload_btn, user_state],
+        [chatbot, text_input, file_upload_btn, last_user_message, last_assistant_message]
+    )
+    file_upload_btn.upload(
+        unified_handler,
+        [text_input, chatbot, file_upload_btn, user_state],
+        [chatbot, text_input, file_upload_btn, last_user_message, last_assistant_message]
+    )
+    voice_file_input.upload(
+        unified_handler,
+        [text_input, chatbot, voice_file_input, user_state],
+        [chatbot, text_input, voice_file_input, last_user_message, last_assistant_message]
     )
 
-    send_btn.click(
-        fn=handle_text_with_file_generator,
-        inputs=[text_input, chatbot, user_state, pending_file],
-        outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn],
-        show_progress="hidden",
-        # ✅ 同样修复这里
-        js="(text, history, state, file) => { const ta = document.querySelector('#input-row textarea'); if(ta) ta.value = ''; return [text, history, state, file]; }"
+    # ================= 反馈处理 =================
+    async def handle_feedback(feedback, user_msg_state, assistant_msg_state, user_state):
+        if not user_state:
+            return "⚠️ 请先登录。"
+        if not user_msg_state or not assistant_msg_state:
+            return "⚠️ 暂无可以评价的对话。"
+        try:
+            from common.feedback import save_feedback
+            save_feedback(user_state["username"], user_msg_state, assistant_msg_state, feedback)
+            return f"感谢您的反馈！({feedback})"
+        except Exception as e:
+            return f"反馈保存失败: {e}"
+
+    up_btn.click(
+        fn=handle_feedback,
+        inputs=[feedback_up, last_user_message, last_assistant_message, user_state],
+        outputs=[feedback_msg]
+    )
+    down_btn.click(
+        fn=handle_feedback,
+        inputs=[feedback_down, last_user_message, last_assistant_message, user_state],
+        outputs=[feedback_msg]
     )
 
-# ================= 启动入口（解决死锁） =================
-async def main():
+    # ================= Worker 监控刷新 =================
+    def refresh_status():
+        workers = [query_worker, command_worker]
+        data = []
+        for w in workers:
+            stats = w.get_stats()
+            data.append([
+                stats["name"],
+                str(stats["is_running"]),
+                stats["task_count"],
+                stats["error_count"],
+                stats["queue_size"],
+                stats["avg_time"],
+                stats["error_rate"]
+            ])
+        return pd.DataFrame(data, columns=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度", "平均耗时(s)", "错误率"])
+
+    refresh_btn2.click(fn=refresh_status, outputs=status_table)
+    status_table.value = refresh_status()
+
+    # ================= 健康仪表板更新 =================
+    def update_health_dashboard():
+        from common.health import get_system_health
+        health = get_system_health()
+        summary = f"""
+**📊 总体统计**
+- 总任务数：{health['total_tasks']}
+- 成功任务：{health['success_tasks']} | 失败任务：{health['failed_tasks']}
+- 成功率：{health['success_rate']}%
+- 活跃用户（24h）：{health['active_users']} | 总用户：{health['total_users']}
+- 反馈总数：{health['total_feedback']}（👍 {health['up_feedback']} / 👎 {health['down_feedback']}）
+        """
+        tool_data = [[tool, count] for tool, count in health['sorted_tools']]
+        if not tool_data:
+            tool_data = [["暂无数据", 0]]
+        tool_df = pd.DataFrame(tool_data, columns=["工具名称", "调用次数"])
+        return summary, tool_df
+
+    health_refresh_btn.click(
+        fn=update_health_dashboard,
+        inputs=[],
+        outputs=[health_summary_md, health_tool_table]
+    )
+
+
+# ================= 启动入口 =================
+if __name__ == "__main__":
     init_users_db()
     init_db()
     init_calendar()
-    
-    # 正确获取当前运行的循环
-    loop = asyncio.get_running_loop()
+    loop = asyncio.get_event_loop()
     loop.create_task(query_worker.run_loop())
     loop.create_task(command_worker.run_loop())
     port = int(os.environ.get("PORT", 7860))
@@ -447,7 +602,12 @@ async def main():
         server_name="0.0.0.0",
         server_port=port,
         theme=gr.themes.Soft(),
+        # ✅ 替换为新版 Gradio 官方参数格式
+        head=voice_script,
         css="""
+            #voice-file-input {
+                display: none;
+            }
             #voice-file-input { display: none; }
             #paste-file-input { display: none; }
             /* 隐藏加载旋转指示器 */
@@ -525,5 +685,3 @@ async def main():
         """
     )
     
-if __name__ == "__main__":
-    asyncio.run(main())
