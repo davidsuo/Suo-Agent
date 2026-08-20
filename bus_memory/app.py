@@ -199,25 +199,22 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
-            # ======= 修复布局：所有元素放在同一个带有强制 CSS 的行中 =======
+            # ========== 纯净核心交互区 ==========
+            # 第一行：反馈按钮 + 上传按钮 + 文件名 + 清除按钮
             with gr.Row(elem_id="upload-row"):
-                # 反馈按钮（在前面）
                 up_btn = gr.Button("👍 有帮助", scale=0, min_width=0)
                 down_btn = gr.Button("👎 无帮助", scale=0, min_width=0)
                 feedback_msg = gr.Markdown("")
 
-                # 上传按钮（紧跟反馈）
                 file_upload_btn = gr.UploadButton(
                     "📎 上传文件",
                     file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
                     scale=0, min_width=0
                 )
-                
-                # 文件名展示与清除按钮（紧跟上传按钮）
                 attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
                 clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
 
-            # ======= 下面单独一行放置输入框 =======
+            # 第二行：纯粹的输入框
             with gr.Row():
                 text_input = gr.Textbox(
                     show_label=False,
@@ -225,7 +222,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                     scale=4
                 )
 
-            # 隐藏的语音输入组件（放在最后，不影响 UI 布局）
+            # 隐藏的语音文件组件
             voice_file_input = gr.File(
                 visible=True,
                 type="filepath",
@@ -531,7 +528,6 @@ with gr.Blocks(title="AI 智能体") as demo:
         html = f"<span style='display:inline-block; margin:0; padding:0;'>{file_name}</span>"
         return file_path, html, gr.update(visible=True)
 
-    # 上传只负责暂存文件，绝对不触发聊天
     file_upload_btn.upload(
         fn=handle_file_upload,
         inputs=[file_upload_btn],
@@ -547,20 +543,21 @@ with gr.Blocks(title="AI 智能体") as demo:
         outputs=[pending_file, attachment_html, clear_file_btn]
     )
 
-    # ================= 纯文本及混合输入事件（修复提示词不显示） =================
+    # ================= 纯文本及混合输入事件（修复提示词丢失） =================
+    # ✅ 全新逻辑：将“文件”和“文字”分离执行，确保两条消息都能生成
     async def submit_text_with_file(message, history, user_state, pending_file_val):
-        # ✅ 核心修复：如果既有文件又有文字，先处理文件，再处理文字，最后清空文件
-        if pending_file_val and message and message.strip():
-            # 1. 先调用 unified_handler 处理文件（把 pending_file_val 传进去）
+        # 1. 如果有待上传的文件，先处理文件并更新历史
+        if pending_file_val:
             history, _, _, _, _ = await unified_handler("", history, pending_file_val, user_state)
-            # 2. 把 file 参数设为 None，再调用一次处理文字
-            new_history, clear_text, _, user_msg, assistant_msg = await unified_handler(message, history, user_state, None)
-            # 3. 返回并清除界面上的文件名和 ❌
-            return new_history, clear_text, None, "", gr.update(visible=False), user_msg, assistant_msg
+            
+        # 2. 如果输入框有文字，再处理文字，且此时 file 参数传 None
+        user_msg = ""
+        assistant_msg = ""
+        if message and message.strip():
+            history, _, _, user_msg, assistant_msg = await unified_handler(message, history, user_state, None)
         
-        # 正常的文字输入逻辑
-        new_history, clear_text, _, user_msg, assistant_msg = await unified_handler(message, history, pending_file_val, user_state)
-        return new_history, clear_text, None, "", gr.update(visible=False), user_msg, assistant_msg
+        # 3. 发送成功后，清空底部的 pending_file 以及文件名和 ❌ 按钮
+        return history, "", None, "", gr.update(visible=False), user_msg, assistant_msg
 
     text_input.submit(
         fn=submit_text_with_file,
