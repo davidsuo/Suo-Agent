@@ -189,6 +189,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         with gr.Tab("聊天"):
             gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具）")
 
+            # 顶部租户与用户信息行（保持不变）
             with gr.Row():
                 tenant_dropdown = gr.Dropdown(choices=get_available_tenants(), value="default", label="当前租户", interactive=False, scale=1)
                 refresh_btn = gr.Button("刷新租户列表", size="sm", scale=0)
@@ -197,23 +198,31 @@ with gr.Blocks(title="AI 智能体") as demo:
                 user_display = gr.Markdown("")
                 logout_btn = gr.Button("退出登录", size="sm")
 
+            # 聊天窗口
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
-            # 第1行：反馈按钮、文件上传按钮、文件名、清除按钮（同一行，反馈在前面）
-            with gr.Row(elem_id="action-row"):
+            # =========================================================
+            # ✅ 完美布局区（按照您的红线要求严格排列）
+            # =========================================================
+            
+            # 第 1 行：反馈按钮 + 上传文件按钮 + 文件名 + 清除按钮
+            with gr.Row():
+                # 反馈按钮：使用 scale=0 和 min_width=0 自适应文字长度，且紧靠左侧
                 up_btn = gr.Button("👍 有帮助", scale=0, min_width=0)
                 down_btn = gr.Button("👎 无帮助", scale=0, min_width=0)
                 feedback_msg = gr.Markdown("")
-                
+
+                # 上传文件按钮
                 file_upload_btn = gr.UploadButton(
                     "📎 上传文件",
                     file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
                     scale=0, min_width=0
                 )
+                # 文件名展示与清除
                 attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
                 clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
 
-            # 第2行：输入框（单独放在文件上传按钮的下面）
+            # 第 2 行：纯粹的输入框（隐藏了标签，完全符合您的预期）
             with gr.Row():
                 text_input = gr.Textbox(
                     show_label=False,
@@ -221,7 +230,10 @@ with gr.Blocks(title="AI 智能体") as demo:
                     scale=4
                 )
 
-            # 隐藏的语音输入文件组件
+            # ✅ 布局区结束
+            # =========================================================
+
+            # 隐藏的语音输入组件（功能不受干扰，放心保留）
             voice_file_input = gr.File(
                 visible=True,
                 type="filepath",
