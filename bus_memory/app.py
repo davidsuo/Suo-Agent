@@ -227,13 +227,6 @@ with gr.Blocks(title="AI 智能体") as demo:
                         max_lines=4
                     )
                     send_btn = gr.Button("➡️ 发送", scale=0, min_width=0, size="sm")
-                    
-            send_btn.click(
-                fn=submit_text_with_file,
-                inputs=[text_input, chatbot, user_state, pending_file],
-                outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn, last_user_message, last_assistant_message],
-                show_progress="hidden"
-            )
 
             voice_file_input = gr.File(
                 visible=True,
@@ -583,13 +576,20 @@ with gr.Blocks(title="AI 智能体") as demo:
         
         # 发送成功后，清空底部的 pending_file 以及文件名和 ❌ 按钮
         return new_history, clear_text, None, "", gr.update(visible=False), user_msg, assistant_msg
-
+    # 绑定回车发送
     text_input.submit(
         fn=submit_text_with_file,
         inputs=[text_input, chatbot, user_state, pending_file],
         outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn, last_user_message, last_assistant_message],
         show_progress="hidden"  # ✅ 增加这一行，隐藏发送时的飞镖加载圈
     )
+    # 绑定发送按钮
+    send_btn.click(
+        fn=submit_text_with_file,
+        inputs=[text_input, chatbot, user_state, pending_file],
+        outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn, last_user_message, last_assistant_message],
+        show_progress="hidden"
+    )    
 
     # ================= 语音文件事件 =================
     async def voice_upload_handler(message, history, file, user):
