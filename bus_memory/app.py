@@ -178,6 +178,8 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     # ---------- 登录界面 ----------
     with gr.Column(visible=False) as login_column:
+        # ✅ 新增：在登录界面最上方插入 Logo
+        gr.Image("assets/logo.png", show_label=False, height=100, interactive=False)
         gr.Markdown("# 🔐 AI 智能体 - 请登录")
         username_input = gr.Textbox(label="用户名（小写）")
         pin_input = gr.Textbox(label="PIN 码", type="password")
@@ -199,30 +201,40 @@ with gr.Blocks(title="AI 智能体") as demo:
 
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
-            # ========== 纯净核心交互区 ==========
-            # 第一行：反馈按钮 + 上传按钮 + 文件名 + 清除按钮
-            with gr.Row(elem_id="upload-row"):
-                up_btn = gr.Button("👍 有帮助", scale=0, min_width=0)
-                down_btn = gr.Button("👎 无帮助", scale=0, min_width=0)
-                feedback_msg = gr.Markdown("")
+            # ========== 全新卡片式交互区 ==========
+            with gr.Group() as input_card:
+                # 第一行：反馈 + 上传 + 清除（紧贴排列）
+                with gr.Row(elem_id="card-top-row"):
+                    up_btn = gr.Button("👍 有帮助", scale=0, min_width=0, size="sm")
+                    down_btn = gr.Button("👎 无帮助", scale=0, min_width=0, size="sm")
+                    feedback_msg = gr.Markdown("")
 
-                file_upload_btn = gr.UploadButton(
-                    "📎 上传文件",
-                    file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
-                    scale=0, min_width=0
-                )
-                attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
-                clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
+                    file_upload_btn = gr.UploadButton(
+                        "📎 上传文件",
+                        file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
+                        scale=0, min_width=0, size="sm"
+                    )
+                    attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
+                    clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False, size="sm")
 
-            # 第二行：纯粹的输入框
-            with gr.Row():
-                text_input = gr.Textbox(
-                    show_label=False,
-                    placeholder="发消息或按住空格说话，松开发送...",
-                    scale=4
-                )
+                # 第二行：输入框 + 发送按钮
+                with gr.Row(elem_id="card-bottom-row"):
+                    text_input = gr.Textbox(
+                        show_label=False,
+                        placeholder="发消息或按住空格说话，松开发送...",
+                        scale=4,
+                        lines=1,
+                        max_lines=4
+                    )
+                    send_btn = gr.Button("➡️ 发送", scale=0, min_width=0, size="sm")
+                    
+            send_btn.click(
+                fn=submit_text_with_file,
+                inputs=[text_input, chatbot, user_state, pending_file],
+                outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn, last_user_message, last_assistant_message],
+                show_progress="hidden"
+            )
 
-            # 隐藏的语音文件组件
             voice_file_input = gr.File(
                 visible=True,
                 type="filepath",
@@ -675,6 +687,7 @@ if __name__ == "__main__":
         server_port=port,
         theme=gr.themes.Soft(),
         head=voice_script,
+        favicon_path="assets/favicon.ico",  # ✅ 新增：浏览器标签图标
         css="""
             #voice-file-input {
                 display: none !important;
@@ -700,6 +713,24 @@ if __name__ == "__main__":
                 border: none !important;
                 box-shadow: none !important;
                 padding: 0 !important;
+            }
+            /* 交互卡片统一样式 */
+            #input_card {
+                background: #ffffff;
+                border-radius: 12px;
+                padding: 8px 12px;
+                border: 1px solid #e5e7eb;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+            }
+            /* 用户气泡偏蓝 */
+            .message.user {
+                background: #e6f0ff !important; 
+                border-radius: 12px 12px 0 12px;
+            }
+            /* AI气泡偏灰 */
+            .message.bot {
+                background: #f3f4f6 !important; 
+                border-radius: 12px 12px 12px 0;
             }
         """
     )
