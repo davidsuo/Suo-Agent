@@ -737,8 +737,10 @@ if __name__ == "__main__":
                 margin-bottom: 8px !important;
             }
 
-            /* 统一输入框的基础样式 */
-            #login-box .block input {
+            /* 统一所有输入框的基础样式（强制覆盖默认） */
+            #login-box input,
+            #login-box input[type="text"],
+            #login-box input[type="password"] {
                 font-size: 18px !important;
                 padding: 12px 15px !important;
                 background: #ffffff !important;
@@ -749,14 +751,34 @@ if __name__ == "__main__":
                 transition: all 0.3s ease !important;
             }
 
-            /* ✅ 修复2：无论什么类型的输入框（用户名/密码），聚焦时强制显示深蓝色边框 */
-            #login-box .block input:focus {
+            /* ✅ 核心修复：无论点击用户名还是密码，外层容器一旦获得焦点，立刻显示蓝框 */
+            #login-box .block:focus-within,
+            #login-box .block:has(input:focus) {
                 border: 1px solid #1E4D8C !important;
                 box-shadow: 0 0 0 3px rgba(30, 77, 140, 0.1) !important;
                 outline: none !important;
+                background-color: #ffffff !important;
+            }
+            
+            /* 同时强制原生的 input 也显示蓝框 */
+            #login-box input:focus {
+                border: 1px solid #1E4D8C !important;
+                box-shadow: 0 0 0 3px rgba(30, 77, 140, 0.1) !important;
+                outline: none !important;
+                background-color: #ffffff !important;
             }
 
-            /* ✅ 修复3：登录按钮固定为品牌深蓝，不允许变成橙色 */
+            /* 修复浏览器自动填充（黄色/蓝色背景）导致样式丢失的问题 */
+            #login-box input:-webkit-autofill,
+            #login-box input:-webkit-autofill:hover,
+            #login-box input:-webkit-autofill:focus {
+                -webkit-box-shadow: 0 0 0 1000px white inset !important;
+                -webkit-text-fill-color: #000 !important;
+                border: 1px solid #e5e7eb !important;
+                transition: background-color 5000s ease-in-out 0s !important;
+            }
+
+            /* 登录按钮保持品牌深蓝，不允许变成橙色 */
             #login-box button,
             #login-box button.primary {
                 background-color: #1E4D8C !important;
@@ -772,17 +794,12 @@ if __name__ == "__main__":
                 transition: transform 0.1s ease !important;
                 opacity: 1 !important;
             }
-
-            /* 悬停时只变深一点点，绝对不变成橙色 */
             #login-box button:hover,
             #login-box button.primary:hover {
-                background-color: #16386B !important; /* 深一点的品牌蓝 */
+                background-color: #16386B !important;
                 background-image: none !important;
-                color: white !important;
                 transform: translateY(-1px) !important;
             }
-
-            /* 点击（按下）时轻微下沉，依然保持深蓝 */
             #login-box button:active,
             #login-box button.primary:active {
                 background-color: #16386B !important;
