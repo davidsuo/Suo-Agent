@@ -178,8 +178,9 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     # ---------- 登录界面 ----------
     with gr.Column(visible=False) as login_column:
-        # ✅ 新增：在登录界面最上方插入 Logo
-        gr.Image("assets/logo.png", show_label=False, height=100, interactive=False)
+        # 动态获取项目根目录下的 assets 目录
+        logo_path = os.path.join(os.getcwd(), "assets", "logo.png")
+        gr.Image(logo_path, show_label=False, height=120, interactive=False)
         gr.Markdown("# 🔐 AI 智能体 - 请登录")
         username_input = gr.Textbox(label="用户名（小写）")
         pin_input = gr.Textbox(label="PIN 码", type="password")
@@ -189,44 +190,41 @@ with gr.Blocks(title="AI 智能体") as demo:
     # ---------- 主聊天界面 ----------
     with gr.Column(visible=False) as chat_column:
         with gr.Tab("聊天"):
-            gr.Markdown("# 🤖 AI 智能体（记忆 + 知识库 + 工具）")
-
-            with gr.Row():
-                tenant_dropdown = gr.Dropdown(choices=get_available_tenants(), value="default", label="当前租户", interactive=False, scale=1)
-                refresh_btn = gr.Button("刷新租户列表", size="sm", scale=0)
-
-            with gr.Row():
-                user_display = gr.Markdown("")
+            # === 顶部导航条 ===
+            with gr.Row(elem_id="top-nav"):
+                gr.Markdown("# 🤖 AI 智能体")
+                user_display = gr.Markdown("")  # 这里显示当前用户名
                 logout_btn = gr.Button("退出登录", size="sm")
 
+            gr.Markdown("")  # 间隔
+
+            # === 聊天内容区 ===
             chatbot = gr.Chatbot(label="对话", height=500, value=[])
 
-            # ========== 全新卡片式交互区 ==========
-            with gr.Group() as input_card:
-                # 第一行：反馈 + 上传 + 清除（紧贴排列）
-                with gr.Row(elem_id="card-top-row"):
-                    up_btn = gr.Button("👍 有帮助", scale=0, min_width=0, size="sm")
-                    down_btn = gr.Button("👎 无帮助", scale=0, min_width=0, size="sm")
+            # === 底部交互区（加入统一卡片） ===
+            with gr.Row(elem_id="input-card"):
+                # 第一行：反馈 + 上传 + 文件名 + 清除
+                with gr.Row(elem_id="action-row"):
+                    up_btn = gr.Button("👍 有帮助", scale=0, min_width=0)
+                    down_btn = gr.Button("👎 无帮助", scale=0, min_width=0)
                     feedback_msg = gr.Markdown("")
 
                     file_upload_btn = gr.UploadButton(
                         "📎 上传文件",
                         file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
-                        scale=0, min_width=0, size="sm"
+                        scale=0, min_width=0
                     )
                     attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
-                    clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False, size="sm")
-
+                    clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
+                
                 # 第二行：输入框 + 发送按钮
-                with gr.Row(elem_id="card-bottom-row"):
+                with gr.Row(elem_id="action-row"):
                     text_input = gr.Textbox(
                         show_label=False,
                         placeholder="发消息或按住空格说话，松开发送...",
-                        scale=4,
-                        lines=1,
-                        max_lines=4
+                        scale=4
                     )
-                    send_btn = gr.Button("➡️ 发送", scale=0, min_width=0, size="sm")
+                    send_btn = gr.Button("➡️ 发送", scale=0, min_width=0)
 
             voice_file_input = gr.File(
                 visible=True,
@@ -687,51 +685,65 @@ if __name__ == "__main__":
         server_port=port,
         theme=gr.themes.Soft(),
         head=voice_script,
-        favicon_path="assets/favicon.ico",  # ✅ 新增：浏览器标签图标
         css="""
-            #voice-file-input {
-                display: none !important;
-            }
-            /* 强制这一行的所有元素水平排列，绝不换行或飞散 */
-            #upload-row {
+            /* 隐藏默认顶栏，改成我们的自定义导航 */
+            .gradio-container { background-color: #f9fafb !important; }
+            .main { max-width: 900px !important; margin: 0 auto !important; }
+
+            /* 顶部品牌导航栏 */
+            #top-nav {
                 display: flex !important;
-                flex-direction: row !important;
-                flex-wrap: nowrap !important;
+                justify-content: space-between !important;
                 align-items: center !important;
-                gap: 6px !important;
-                padding: 4px 0 !important;
+                background: white !important;
+                padding: 12px 20px !important;
+                border-bottom: 1px solid #e5e7eb !important;
             }
-            /* 禁止里面的任何子元素无限拉伸 */
-            #upload-row > div, #upload-row > button, #upload-row > span {
-                flex: 0 0 auto !important;
-                width: auto !important;
-                margin: 0 !important;
+            #top-nav .logo-title {
+                display: flex !important;
+                align-items: center !important;
+                font-size: 22px !important;
+                font-weight: bold !important;
+                color: #111827 !important;
             }
-            /* 去掉 Gradio 包裹组件的默认卡片阴影和边距 */
-            #upload-row .gr-box {
-                background: transparent !important;
-                border: none !important;
-                box-shadow: none !important;
-                padding: 0 !important;
+            #top-nav .user-info {
+                font-size: 14px !important;
+                color: #4b5563 !important;
             }
-            /* 交互卡片统一样式 */
-            #input_card {
-                background: #ffffff;
-                border-radius: 12px;
-                padding: 8px 12px;
-                border: 1px solid #e5e7eb;
-                box-shadow: 0 2px 6px rgba(0,0,0,0.05);
-            }
-            /* 用户气泡偏蓝 */
+
+            /* 聊天气泡美化 */
             .message.user {
-                background: #e6f0ff !important; 
-                border-radius: 12px 12px 0 12px;
+                background-color: #2563eb !important;
+                color: white !important;
+                border-radius: 12px 12px 0 12px !important;
             }
-            /* AI气泡偏灰 */
             .message.bot {
-                background: #f3f4f6 !important; 
-                border-radius: 12px 12px 12px 0;
+                background-color: #f3f4f6 !important;
+                color: #111827 !important;
+                border-radius: 12px 12px 12px 0 !important;
             }
+
+            /* 底部交互卡片容器 */
+            #input-card {
+                background: white !important;
+                border-radius: 16px !important;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
+                padding: 12px !important;
+                margin-top: 10px !important;
+                border: 1px solid #e5e7eb !important;
+            }
+            /* 卡片内部的按钮行 */
+            #action-row button {
+                border: none !important;
+                background: transparent !important;
+                color: #6b7280 !important;
+                box-shadow: none !important;
+            }
+            #action-row button:hover { color: #111 !important; }
+            
+            /* 隐藏语音输入框 */
+            #voice-file-input { display: none !important; }
         """
+    )
     )
     
