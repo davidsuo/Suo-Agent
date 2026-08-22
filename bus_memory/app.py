@@ -706,7 +706,7 @@ if __name__ == "__main__":
             /* 隐藏语音输入组件 */
             #voice-file-input { display: none !important; }
             
-            /* ========== 登录页面最终形态 ========== */
+            /* ========== 登录页面最终完美形态 ========== */
             body, .gradio-container {
                 background: linear-gradient(135deg, #f3f4f6 0%, #e0e7ff 50%, #ffffff 100%) !important;
             }
@@ -737,10 +737,9 @@ if __name__ == "__main__":
                 margin-bottom: 8px !important;
             }
 
-            /* 基础输入框样式 */
-            #login-box .block input,
-            #login-box .block input[type="text"],
-            #login-box .block input[type="password"] {
+            /* 基础输入框样式（同时覆盖 input 和 textarea） */
+            #login-box input,
+            #login-box textarea {
                 font-size: 18px !important;
                 padding: 12px 15px !important;
                 background: #ffffff !important;
@@ -749,27 +748,30 @@ if __name__ == "__main__":
                 box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important;
                 margin-bottom: 20px !important;
                 transition: all 0.3s ease !important;
+                width: 100% !important;
+                box-sizing: border-box !important;
             }
 
-            /* ✅ 终极强制：强制用户名和密码框聚焦时显示蓝框 */
-            #login-box .block input[type="text"]:focus,
-            #login-box .block input[type="password"]:focus {
+            /* ✅ 终极修复：同时包含 input 和 textarea 的聚焦态！
+               这样用户名（textarea）和密码（input）就完全一致了 */
+            #login-box input:focus,
+            #login-box textarea:focus {
                 border: 1px solid #1E4D8C !important;
                 box-shadow: 0 0 0 3px rgba(30, 77, 140, 0.1) !important;
                 outline: none !important;
                 background-color: #ffffff !important;
             }
 
-            /* 阻止浏览器自动填充覆盖焦点样式（重要！） */
-            #login-box .block input:-webkit-autofill,
-            #login-box .block input:-webkit-autofill:hover,
-            #login-box .block input:-webkit-autofill:focus {
+            /* 阻止浏览器自动填充覆盖焦点样式 */
+            #login-box input:-webkit-autofill,
+            #login-box input:-webkit-autofill:hover,
+            #login-box input:-webkit-autofill:focus {
                 -webkit-box-shadow: 0 0 0 1000px white inset, 0 0 0 3px rgba(30, 77, 140, 0.1) !important;
                 -webkit-text-fill-color: #000 !important;
                 border: 1px solid #1E4D8C !important;
             }
 
-            /* 登录按钮固定为品牌深蓝，不允许变成橙色 */
+            /* 登录按钮固定为品牌深蓝 */
             #login-box button,
             #login-box button.primary {
                 background-color: #1E4D8C !important;
