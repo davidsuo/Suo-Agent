@@ -737,7 +737,7 @@ if __name__ == "__main__":
                 margin-bottom: 8px !important;
             }
 
-            /* 统一所有输入框的基础样式（强制覆盖默认） */
+            /* 统一输入框基础样式 */
             #login-box input,
             #login-box input[type="text"],
             #login-box input[type="password"] {
@@ -751,24 +751,17 @@ if __name__ == "__main__":
                 transition: all 0.3s ease !important;
             }
 
-            /* ✅ 核心修复：无论点击用户名还是密码，外层容器一旦获得焦点，立刻显示蓝框 */
-            #login-box .block:focus-within,
-            #login-box .block:has(input:focus) {
-                border: 1px solid #1E4D8C !important;
-                box-shadow: 0 0 0 3px rgba(30, 77, 140, 0.1) !important;
-                outline: none !important;
-                background-color: #ffffff !important;
-            }
-            
-            /* 同时强制原生的 input 也显示蓝框 */
-            #login-box input:focus {
+            /* ✅ 精确修复：只给内部输入框加焦点蓝框，绝不波及外部的标签容器 */
+            #login-box input:focus,
+            #login-box input[type="text"]:focus,
+            #login-box input[type="password"]:focus {
                 border: 1px solid #1E4D8C !important;
                 box-shadow: 0 0 0 3px rgba(30, 77, 140, 0.1) !important;
                 outline: none !important;
                 background-color: #ffffff !important;
             }
 
-            /* 修复浏览器自动填充（黄色/蓝色背景）导致样式丢失的问题 */
+            /* 修复浏览器自动填充导致样式丢失的问题 */
             #login-box input:-webkit-autofill,
             #login-box input:-webkit-autofill:hover,
             #login-box input:-webkit-autofill:focus {
