@@ -359,7 +359,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     login_btn.click(
         fn=login,
         inputs=[username_input, pin_input],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab]
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab],
         show_progress="hidden"  # ✅ 加上这个，隐藏按钮的“加载中...”
     )
 
@@ -379,7 +379,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     logout_btn.click(
         fn=logout,
         inputs=[],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab]
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab],
         show_progress="hidden"  # ✅ 加上这个，隐藏按钮的“加载中...”
     )
 
@@ -417,7 +417,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         fn=load_history,
         inputs=[session_user_input],
         outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab],
-        js="() => sessionStorage.getItem('suo_user') || ''"
+        js="() => sessionStorage.getItem('suo_user') || ''",
         show_progress="hidden"  # ✅ 加上这个，隐藏刷新时的飞镖
     )
 
