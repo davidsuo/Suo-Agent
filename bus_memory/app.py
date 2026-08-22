@@ -351,7 +351,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                 gr.update(visible=False),
                 [],
                 gr.update(),
-                "❌ 用户名或 PIN 码错误",
+                "❌ 用户名或密码错误",
                 "",
                 gr.update(visible=False)
             )
@@ -706,12 +706,11 @@ if __name__ == "__main__":
             /* 隐藏语音输入组件 */
             #voice-file-input { display: none !important; }
             
-            /* ========== 登录页面终极修复 ========== */
+            /* ========== 登录页面终极精修版 ========== */
             body, .gradio-container {
                 background: linear-gradient(135deg, #f3f4f6 0%, #e0e7ff 50%, #ffffff 100%) !important;
             }
 
-            /* 1. 登录框下移：调整 padding-top 到 20vh 左右 */
             #login-wrapper {
                 min-height: 100vh;
                 display: flex !important;
@@ -738,31 +737,28 @@ if __name__ == "__main__":
                 margin-bottom: 8px !important;
             }
 
-            /* 2. 去掉密码的橙色线，两个输入框统一为干净的白底透明无边框样式 */
-            #login-box input {
+            /* 统一输入框的基础样式 */
+            #login-box .block input {
                 font-size: 18px !important;
                 padding: 12px 15px !important;
-                background: #ffffff !important; /* 保持干净的白底 */
-                border: 1px solid #e5e7eb !important; /* 加个极浅的灰色描边代替下划线 */
+                background: #ffffff !important;
+                border: 1px solid #e5e7eb !important;
                 border-radius: 10px !important;
                 box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important;
                 margin-bottom: 20px !important;
                 transition: all 0.3s ease !important;
-                border-bottom: 1px solid #e5e7eb !important; /* 彻底去掉之前的橙色下划线 */
             }
 
-            /* 聚焦时统一用深蓝色描边 */
-            #login-box input:focus {
+            /* ✅ 修复2：无论什么类型的输入框（用户名/密码），聚焦时强制显示深蓝色边框 */
+            #login-box .block input:focus {
                 border: 1px solid #1E4D8C !important;
-                border-bottom: 1px solid #1E4D8C !important;
                 box-shadow: 0 0 0 3px rgba(30, 77, 140, 0.1) !important;
                 outline: none !important;
             }
 
-            /* 3. 登录按钮颜色转换终极修复：覆盖 Gradio 原生主题 */
+            /* ✅ 修复3：登录按钮固定为品牌深蓝，不允许变成橙色 */
             #login-box button,
-            #login-box button.primary,
-            #login-box button.secondary {
+            #login-box button.primary {
                 background-color: #1E4D8C !important;
                 background-image: none !important;
                 color: white !important;
@@ -773,25 +769,25 @@ if __name__ == "__main__":
                 padding: 16px !important;
                 margin-top: 30px !important;
                 box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
-                transition: all 0.2s ease !important;
+                transition: transform 0.1s ease !important;
                 opacity: 1 !important;
             }
 
-            /* 强制覆盖 hover 和 active 状态变为橙色 */
+            /* 悬停时只变深一点点，绝对不变成橙色 */
             #login-box button:hover,
             #login-box button.primary:hover {
-                background-color: #F97316 !important;
+                background-color: #16386B !important; /* 深一点的品牌蓝 */
                 background-image: none !important;
                 color: white !important;
-                box-shadow: 0 6px 12px rgba(249, 115, 22, 0.3) !important;
-                transform: translateY(-2px) !important;
+                transform: translateY(-1px) !important;
             }
 
+            /* 点击（按下）时轻微下沉，依然保持深蓝 */
             #login-box button:active,
             #login-box button.primary:active {
-                background-color: #ea580c !important; /* 点击时更深的橙色 */
+                background-color: #16386B !important;
                 background-image: none !important;
-                transform: translateY(0) !important;
+                transform: translateY(1px) !important;
             }
         """
 
