@@ -360,6 +360,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         fn=login,
         inputs=[username_input, pin_input],
         outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab]
+        show_progress="hidden"  # ✅ 加上这个，隐藏按钮的“加载中...”
     )
 
     def logout():
@@ -379,6 +380,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         fn=logout,
         inputs=[],
         outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab]
+        show_progress="hidden"  # ✅ 加上这个，隐藏按钮的“加载中...”
     )
 
     def load_history(session_username):
@@ -416,6 +418,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         inputs=[session_user_input],
         outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab],
         js="() => sessionStorage.getItem('suo_user') || ''"
+        show_progress="hidden"  # ✅ 加上这个，隐藏刷新时的飞镖
     )
 
 
@@ -798,6 +801,10 @@ if __name__ == "__main__":
                 background-color: #16386B !important;
                 background-image: none !important;
                 transform: translateY(1px) !important;
+            }
+            /* 隐藏全局默认加载指示器（飞镖） */
+            .loading-container, .progress, #loading, .spinner {
+                display: none !important;
             }
         """
 
