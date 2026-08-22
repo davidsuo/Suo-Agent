@@ -177,15 +177,30 @@ with gr.Blocks(title="AI 智能体") as demo:
     pending_file = gr.State(None)
 
     # ---------- 登录界面 ----------
-    with gr.Column(visible=False) as login_column:
-        # 动态获取项目根目录下的 assets 目录
-        logo_path = os.path.join(os.getcwd(), "assets", "logo.png")
-        gr.Image(logo_path, show_label=False, height=120, interactive=False)
-        gr.Markdown("# 🔐 AI 智能体 - 请登录")
-        username_input = gr.Textbox(label="用户名（小写）")
-        pin_input = gr.Textbox(label="PIN 码", type="password")
-        login_btn = gr.Button("登录")
-        login_msg = gr.Markdown("")
+    # 用 Row 和 CSS 包裹，实现水平居中、垂直居中、且宽度自适应的效果
+    with gr.Row(elem_id="login-wrapper"):
+        with gr.Column(scale=1):
+            pass
+        with gr.Column(scale=1, elem_id="login-box") as login_column:
+            # ✅ 解决 Logo 显示问题：直接使用 HTML 标签。请确保 logo.png 在 bus_memory/ 目录下
+            gr.HTML("""
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <img src="assets/logo.png" style="max-width: 150px; max-height: 120px; object-fit: contain;" alt="企业Logo">
+                </div>
+            """)
+            # 1. 标题修改
+            gr.Markdown("## 🚀 企业AI原生系统")
+            
+            # 2. 用户名标签修改
+            username_input = gr.Textbox(label="用户名：")
+            
+            # 3. 密码标签修改
+            pin_input = gr.Textbox(label="密码：", type="password")
+            
+            login_btn = gr.Button("登录", variant="primary")
+            login_msg = gr.Markdown("")
+        with gr.Column(scale=1):
+            pass
 
     # ---------- 主聊天界面 ----------
     with gr.Column(visible=False) as chat_column:
@@ -696,63 +711,30 @@ if __name__ == "__main__":
         theme=gr.themes.Soft(),
         head=voice_script,
         css="""
-            /* 隐藏默认顶栏，改成我们的自定义导航 */
-            .gradio-container { background-color: #f9fafb !important; }
-            .main { max-width: 900px !important; margin: 0 auto !important; }
-
-            /* 顶部品牌导航栏 */
-            #top-nav {
-                display: flex !important;
-                justify-content: space-between !important;
-                align-items: center !important;
-                background: white !important;
-                padding: 12px 20px !important;
-                border-bottom: 1px solid #e5e7eb !important;
+            /* 隐藏语音输入组件 */
+            #voice-file-input { display: none !important; }
+            
+            /* ========== 登录页面专属样式 ========== */
+            #login-wrapper {
+                min-height: 100vh;           /* 占满整个视口高度 */
+                align-items: center;         /* 4. 垂直居中！ */
             }
-            #top-nav .logo-title {
-                display: flex !important;
-                align-items: center !important;
-                font-size: 22px !important;
-                font-weight: bold !important;
-                color: #111827 !important;
+            #login-box {
+                max-width: 500px !important; /* 5. 登录框尺寸变小，限宽 */
+                border: 2px solid #4a5568 !important; /* 5. 边框线条颜色稍微加深 */
+                border-radius: 16px !important; 
+                padding: 40px !important;
+                background: #ffffff !important;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.1) !important;
             }
-            #top-nav .user-info {
-                font-size: 14px !important;
-                color: #4b5563 !important;
-            }
-
-            /* 聊天气泡美化 */
-            .message.user {
-                background-color: #2563eb !important;
-                color: white !important;
-                border-radius: 12px 12px 0 12px !important;
-            }
-            .message.bot {
-                background-color: #f3f4f6 !important;
-                color: #111827 !important;
-                border-radius: 12px 12px 12px 0 !important;
-            }
-
-            /* 底部交互卡片容器 */
-            #input-card {
-                background: white !important;
-                border-radius: 16px !important;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
-                padding: 12px !important;
-                margin-top: 10px !important;
-                border: 1px solid #e5e7eb !important;
-            }
-            /* 卡片内部的按钮行 */
-            #action-row button {
+            /* 去除登录框内部自带的怪异边框和阴影，保持干净 */
+            #login-box .block {
                 border: none !important;
-                background: transparent !important;
-                color: #6b7280 !important;
                 box-shadow: none !important;
             }
-            #action-row button:hover { color: #111 !important; }
-            
-            /* 隐藏语音输入框 */
-            #voice-file-input { display: none !important; }
+            #login-box .form {
+                border: none !important;
+            }
         """
     )
     
