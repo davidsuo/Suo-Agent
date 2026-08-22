@@ -711,13 +711,13 @@ if __name__ == "__main__":
                 background: linear-gradient(135deg, #f3f4f6 0%, #e0e7ff 50%, #ffffff 100%) !important;
             }
 
-            /* 1. 登录框向上移动：去掉垂直居中，靠顶部排列，并加上合适的顶部留白 */
+            /* 1. 登录框下移：调整 padding-top 到 20vh 左右 */
             #login-wrapper {
                 min-height: 100vh;
                 display: flex !important;
                 justify-content: center !important;
-                align-items: flex-start !important; /* 重要：改为顶部对齐 */
-                padding-top: 12vh !important;        /* 重要：向上调整数值（比如12vh或15vh） */
+                align-items: flex-start !important;
+                padding-top: 22vh !important;
             }
 
             #login-box {
@@ -728,10 +728,9 @@ if __name__ == "__main__":
                 background: rgba(255, 255, 255, 0.95) !important;
                 padding: 50px 50px !important;
                 box-shadow: 0 20px 50px rgba(30, 77, 140, 0.15) !important;
-                margin-top: 0 !important; /* 清除可能存在的额外偏移 */
+                margin-top: 0 !important;
             }
 
-            /* 字体与间距优化 */
             #login-box label span {
                 font-size: 20px !important;
                 font-weight: 700 !important;
@@ -739,34 +738,33 @@ if __name__ == "__main__":
                 margin-bottom: 8px !important;
             }
 
-            /* 2. 强制用户名和密码框都显示橙色线条（无论是否聚焦） */
+            /* 2. 去掉密码的橙色线，两个输入框统一为干净的白底透明无边框样式 */
             #login-box input {
                 font-size: 18px !important;
                 padding: 12px 15px !important;
-                background: transparent !important;
-                border: none !important;
-                border-radius: 12px !important;
-                /* 强制所有输入框底部都有橙色线 */
-                border-bottom: 3px solid #F97316 !important;
-                box-shadow: none !important;
+                background: #ffffff !important; /* 保持干净的白底 */
+                border: 1px solid #e5e7eb !important; /* 加个极浅的灰色描边代替下划线 */
+                border-radius: 10px !important;
+                box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important;
                 margin-bottom: 20px !important;
                 transition: all 0.3s ease !important;
-            }
-            /* 为用户名和密码的输入框再特别加一层保证，防止样式被覆盖 */
-            #login-box input[type="text"], #login-box input[type="password"] {
-                border-bottom: 3px solid #F97316 !important;
+                border-bottom: 1px solid #e5e7eb !important; /* 彻底去掉之前的橙色下划线 */
             }
 
-            /* 聚焦时线条变深蓝色 */
+            /* 聚焦时统一用深蓝色描边 */
             #login-box input:focus {
-                border-bottom: 3px solid #1E4D8C !important;
-                background: #f9fafb !important;
+                border: 1px solid #1E4D8C !important;
+                border-bottom: 1px solid #1E4D8C !important;
+                box-shadow: 0 0 0 3px rgba(30, 77, 140, 0.1) !important;
+                outline: none !important;
             }
 
-            /* 3. 登录按钮：去除原生的渐变，确保悬停和点击时变为橙色 */
-            #login-box button {
+            /* 3. 登录按钮颜色转换终极修复：覆盖 Gradio 原生主题 */
+            #login-box button,
+            #login-box button.primary,
+            #login-box button.secondary {
                 background-color: #1E4D8C !important;
-                background-image: none !important; /* 覆盖Gradio自带渐变 */
+                background-image: none !important;
                 color: white !important;
                 font-size: 20px !important;
                 font-weight: bold !important;
@@ -774,18 +772,26 @@ if __name__ == "__main__":
                 border-radius: 12px !important;
                 padding: 16px !important;
                 margin-top: 30px !important;
-                transition: background-color 0.2s ease, transform 0.1s ease !important;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
+                transition: all 0.2s ease !important;
+                opacity: 1 !important;
             }
-            #login-box button:hover {
+
+            /* 强制覆盖 hover 和 active 状态变为橙色 */
+            #login-box button:hover,
+            #login-box button.primary:hover {
                 background-color: #F97316 !important;
                 background-image: none !important;
-                transform: translateY(-1px) !important;
+                color: white !important;
+                box-shadow: 0 6px 12px rgba(249, 115, 22, 0.3) !important;
+                transform: translateY(-2px) !important;
             }
-            /* 用户说“点击”时不显示橙色，这里加上 active 状态 */
-            #login-box button:active {
-                background-color: #F97316 !important;
+
+            #login-box button:active,
+            #login-box button.primary:active {
+                background-color: #ea580c !important; /* 点击时更深的橙色 */
                 background-image: none !important;
-                transform: translateY(1px) !important;
+                transform: translateY(0) !important;
             }
         """
 
