@@ -806,6 +806,18 @@ if __name__ == "__main__":
             .loading-container, .progress, #loading, .spinner {
                 display: none !important;
             }
+            /* ========== 终极隐藏 Gradio 6.x 初始化加载动画 ========== */
+            .gradio-container .loading-container,
+            .gradio-container .progress,
+            .gradio-container .spinner,
+            .gradio-container .loading,
+            .gradio-container [class*="loading"],
+            .gradio-container .status-tracker,
+            .gradio-container [class*="svelte-"] {
+                display: none !important;
+                visibility: hidden !important;
+                opacity: 0 !important;
+                pointer-events: none !important;
+            }
         """
-
     )
