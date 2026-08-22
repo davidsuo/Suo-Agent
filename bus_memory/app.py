@@ -190,9 +190,19 @@ with gr.Blocks(title="AI 智能体") as demo:
     # ---------- 主聊天界面 ----------
     with gr.Column(visible=False) as chat_column:
         with gr.Tab("聊天"):
-            # === 顶部导航条 ===
+            # === 顶部品牌导航栏（含隐藏的租户下拉框，防止事件绑定报错） ===
             with gr.Row(elem_id="top-nav"):
                 gr.Markdown("# 🤖 AI 智能体")
+                # ✅ 将租户下拉框隐藏在这里，代码不会被误删
+                tenant_dropdown = gr.Dropdown(
+                    choices=get_available_tenants(),
+                    value="default",
+                    label="",
+                    interactive=False,
+                    scale=0,
+                    min_width=0,
+                    visible=False  # 隐藏视觉，只保留逻辑
+                )
                 user_display = gr.Markdown("")  # 这里显示当前用户名
                 logout_btn = gr.Button("退出登录", size="sm")
 
