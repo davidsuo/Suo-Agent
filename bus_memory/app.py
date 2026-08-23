@@ -299,7 +299,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                 status_table = gr.Dataframe(headers=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度", "平均耗时(s)", "错误率"], interactive=False)
 
             # ================= 工作流管理 Tab =================
-            with gr.Tab("工作流管理"):
+            with gr.Tab("工作流管理", visible=False) as workflow_tab:
                 # 原本工作流管理的代码移到这里...
                 gr.Markdown("## 🧩 低代码工作流配置")
                 workflow_name_input = gr.Textbox(label="工作流名称")
