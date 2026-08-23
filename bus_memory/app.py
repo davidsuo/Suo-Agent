@@ -197,6 +197,8 @@ with gr.Blocks(title="AI 智能体") as demo:
     # ---------- 主聊天界面 ----------
     with gr.Column(visible=False) as chat_column:
         # ================= 模块一：顶部品牌栏 + 顶部导航（贴合顶部） =================
+        # ✅ 补回隐藏的用户状态组件（用于满足后端 outputs 的绑定要求，不在界面上显示）
+        user_display = gr.Markdown("", visible=False)
         with gr.Row(elem_id="main-layout-top"):
             # 左侧品牌
             gr.HTML("""
