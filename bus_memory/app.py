@@ -234,14 +234,33 @@ with gr.Blocks(title="AI 智能体") as demo:
                             scale=4
                         )   
                 
-                        # 项目 + 按钮
-                        add_project_btn = gr.Button("项目 +", elem_id="add-project-btn", scale=0)
-                
-                        # 项目列表（只保留一个，不要重复定义）
+                        # 项目 + 按钮（默认状态）
+                        add_project_btn = gr.Button("项目 +", elem_id="add-project-btn", scale=0, visible=True)
+                        
+                        # 内联创建区域（默认隐藏，点击“+”后显示）
+                        with gr.Row(visible=False) as project_creation_row:
+                            project_input = gr.Textbox(placeholder="输入项目名称...", scale=4, show_label=False)
+                            create_project_btn = gr.Button("创建", scale=1)
+                            cancel_project_btn = gr.Button("✖", scale=0, min_width=0)
+                            
+                        # 项目列表
                         project_list = gr.Dataframe(
                             headers=["项目名称"],
                             interactive=False,
                             row_count=(5, "fixed")
+                        )
+                        
+                        # 事件绑定：点击“+”显示输入框，点击“✖”隐藏
+                        add_project_btn.click(
+                            fn=lambda: (gr.update(visible=False), gr.update(visible=True)),
+                            inputs=None,
+                            outputs=[add_project_btn, project_creation_row]
+                        )
+                        
+                        cancel_project_btn.click(
+                            fn=lambda: (gr.update(visible=True), gr.update(visible=False)),
+                            inputs=None,
+                            outputs=[add_project_btn, project_creation_row]
                         )
 
                     # 右侧 2/3：聊天主区
