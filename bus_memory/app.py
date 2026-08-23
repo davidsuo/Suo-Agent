@@ -217,6 +217,14 @@ with gr.Blocks(title="AI 智能体") as demo:
                     
                     # 左侧 1/3：项目侧边栏
                     with gr.Column(scale=1, min_width=280, elem_id="project-sidebar"):
+                        ✅ 必须保留的租户下拉框（隐藏状态，只参与逻辑，不显示）
+                        tenant_dropdown = gr.Dropdown(
+                            choices=get_available_tenants(),
+                            value="default",
+                            label="",
+                            interactive=False,
+                            visible=False
+                        )
                         # 左上角：当前用户下拉菜单
                         user_switch_dropdown = gr.Dropdown(
                             label="当前用户/部门",
