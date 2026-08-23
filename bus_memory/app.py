@@ -196,133 +196,115 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     # ---------- 主聊天界面 ----------
     with gr.Column(visible=False) as chat_column:
-        with gr.Tab("聊天"):
-            # === 顶部品牌导航栏（含隐藏的租户下拉框，防止事件绑定报错） ===
-            with gr.Row(elem_id="top-nav"):
-                gr.Markdown("# 🤖 AI 智能体")
-                # ✅ 将租户下拉框隐藏在这里，代码不会被误删
-                tenant_dropdown = gr.Dropdown(
-                    choices=get_available_tenants(),
-                    value="default",
-                    label="",
-                    interactive=False,
-                    scale=0,
-                    min_width=0,
-                    visible=False  # 隐藏视觉，只保留逻辑
-                )
-                user_display = gr.Markdown("")  # 这里显示当前用户名
-                logout_btn = gr.Button("退出登录", size="sm")
+        # ================= 模块一：顶部品牌栏（第一行） =================
+        with gr.Row(elem_id="top-brand-bar"):
+            # 左侧：Logo和名称
+            gr.HTML("""
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <h2 style="margin:0; color:#1E4D8C;">🚀 某某企业AI原生系统平台</h2>
+                    <span style="font-size:14px; color:#888;">(AI智能体系统+记忆+知识库+工具)</span>
+                </div>
+            """)
+            # 右侧：退出登录按钮
+            logout_btn = gr.Button("退出登录", elem_id="top-logout-btn", scale=0, min_width=0)
+        
+        # ================= 模块二：顶部导航条（第二行） =================
+        with gr.Tabs(elem_id="top-nav-bar") as main_tabs:
+            # ================= 聊天 Tab（主区，接下来分左右） =================
+            with gr.Tab("聊天"):
+                # ================= 核心工作区（第三行：左1/3 + 右2/3） =================
+                with gr.Row(elem_id="core-work-area"):
+                    
+                    # 左侧 1/3：项目侧边栏
+                    with gr.Column(scale=1, min_width=280, elem_id="project-sidebar"):
+                        # 左上角：当前用户下拉菜单
+                        user_switch_dropdown = gr.Dropdown(
+                            label="当前用户/部门",
+                            choices=["Alice Wang (产品部)", "Bob Zhang (研发部)"],
+                            value="Alice Wang (产品部)",
+                            interactive=True
+                        )
+                        
+                        # “项目 +” 按钮
+                        with gr.Row():
+                            add_project_btn = gr.Button("➕ 项目 +", elem_id="add-project-btn")
+                            project_input = gr.Textbox(placeholder="输入新项目名称...", show_label=False, scale=3)
+                            create_project_btn = gr.Button("创建", scale=1)
+                        
+                        # 项目列表（这里先用一个空的列表组件占位，后续再开发添加/切换逻辑）
+                        project_list = gr.Dataframe(
+                            headers=["项目名称"],
+                            interactive=False,
+                            row_count=(5, "fixed")
+                        )
 
-            gr.Markdown("")  # 间隔
+                    # 右侧 2/3：聊天主区
+                    with gr.Column(scale=2, elem_id="chat-main-area"):
+                        # 聊天框
+                        chatbot = gr.Chatbot(label="对话", height=500, value=[])
+                        
+                        # 底部输入区（按之前的“上下两行”优化方案）
+                        # 第一行：工具行（反馈/上传/清除）
+                        with gr.Row(elem_id="input-card-row"):
+                            up_btn = gr.Button("👍 有帮助", scale=0, min_width=0)
+                            down_btn = gr.Button("👎 无帮助", scale=0, min_width=0)
+                            feedback_msg = gr.Markdown("")
+                            
+                            file_upload_btn = gr.UploadButton(
+                                "📎 上传文件",
+                                file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
+                                scale=0, min_width=0
+                            )
+                            attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
+                            clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
+                        
+                        # 第二行：输入框 + 发送按钮
+                        with gr.Row(elem_id="input-card-bottom"):
+                            text_input = gr.Textbox(
+                                show_label=False,
+                                placeholder="发消息或按住空格说话，松开发送...",
+                                scale=4
+                            )
+                            send_btn = gr.Button("➡️ 发送", scale=0, min_width=0)
 
-            # === 聊天内容区 ===
-            chatbot = gr.Chatbot(label="对话", height=500, value=[])
+                        # 隐藏的语音输入组件
+                        voice_file_input = gr.File(
+                            visible=True,
+                            type="filepath",
+                            elem_id="voice-file-input",
+                            label=""
+                        )
 
-            # === 底部交互区（加入统一卡片） ===
-            with gr.Row(elem_id="input-card"):
-                # 第一行：反馈 + 上传 + 文件名 + 清除
-                with gr.Row(elem_id="action-row"):
-                    up_btn = gr.Button("👍 有帮助", scale=0, min_width=0)
-                    down_btn = gr.Button("👎 无帮助", scale=0, min_width=0)
-                    feedback_msg = gr.Markdown("")
+            # ================= 系统健康 Tab =================
+            with gr.Tab("系统健康"):
+                gr.Markdown("## 🏥 系统健康仪表板")
+                health_refresh_btn = gr.Button("刷新数据")
+                health_summary_md = gr.Markdown("加载中...")
+                health_tool_table = gr.Dataframe(headers=["工具名称", "调用次数"], interactive=False)
 
-                    file_upload_btn = gr.UploadButton(
-                        "📎 上传文件",
-                        file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
-                        scale=0, min_width=0
-                    )
-                    attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
-                    clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
-                
-                # 第二行：输入框 + 发送按钮
-                with gr.Row(elem_id="action-row"):
-                    text_input = gr.Textbox(
-                        show_label=False,
-                        placeholder="发消息或按住空格说话，松开发送...",
-                        scale=4
-                    )
-                    send_btn = gr.Button("➡️ 发送", scale=0, min_width=0)
+            # ================= 状态监控 Tab =================
+            with gr.Tab("状态监控"):
+                gr.Markdown("## 实时 Worker 状态")
+                refresh_btn2 = gr.Button("刷新")
+                status_table = gr.Dataframe(headers=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度", "平均耗时(s)", "错误率"], interactive=False)
 
-            voice_file_input = gr.File(
-                visible=True,
-                type="filepath",
-                elem_id="voice-file-input",
-                label=""
-            )
-
-        with gr.Tab("系统健康"):
-            gr.Markdown("## 🏥 系统健康仪表板")
-            health_refresh_btn = gr.Button("刷新数据")
-            health_summary_md = gr.Markdown("加载中...")
-            health_tool_table = gr.Dataframe(
-                headers=["工具名称", "调用次数"],
-                interactive=False
-            )
-
-        with gr.Tab("Worker 监控"):
-            gr.Markdown("## 实时 Worker 状态")
-            refresh_btn2 = gr.Button("刷新")
-            status_table = gr.Dataframe(
-                headers=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度", "平均耗时(s)", "错误率"],
-                interactive=False
-            )
-            
-        with gr.Tab("工作流管理", visible=False) as workflow_tab:
-            gr.Markdown("## 🧩 低代码工作流配置")
-            gr.Markdown("仅管理员可配置。定义工作流后，在聊天中可说“执行工作流 xxx”来调用。")
-            workflow_name_input = gr.Textbox(label="工作流名称")
-            workflow_desc_input = gr.Textbox(label="描述")
-            workflow_steps_input = gr.Textbox(
-                label="步骤 JSON",
-                placeholder='[{"tool": "get_current_time", "arguments": {}}, {"tool": "web_search", "arguments": {"query": "今日新闻"}}]'
-            )
-            workflow_create_btn = gr.Button("创建工作流")
-            workflow_create_msg = gr.Markdown("")
-
-            with gr.Row():
+            # ================= 工作流管理 Tab =================
+            with gr.Tab("工作流管理"):
+                # 原本工作流管理的代码移到这里...
+                gr.Markdown("## 🧩 低代码工作流配置")
+                workflow_name_input = gr.Textbox(label="工作流名称")
+                workflow_desc_input = gr.Textbox(label="描述")
+                workflow_steps_input = gr.Textbox(label="步骤 JSON", placeholder='[...]')
+                workflow_create_btn = gr.Button("创建工作流")
+                workflow_create_msg = gr.Markdown("")
                 refresh_workflow_btn = gr.Button("刷新列表")
-            workflow_list = gr.Dataframe(
-                headers=["名称", "描述", "创建者", "创建时间"],
-                interactive=False
-            )
+                workflow_list = gr.Dataframe(headers=["名称", "描述", "创建者", "创建时间"], interactive=False)
 
-            def create_workflow(name, desc, steps_json, user):
-                if not user or user.get("role") != "admin":
-                    return "❌ 只有管理员可以创建工作流。"
-                try:
-                    steps = json.loads(steps_json)
-                    if not isinstance(steps, list):
-                        return "❌ 步骤必须是 JSON 数组。"
-                    ok = add_workflow(name, desc, steps, user["username"])
-                    if ok:
-                        updated_list = refresh_workflows()
-                        return f"✅ 工作流 {name} 已创建。", updated_list
-                    else:
-                        return "❌ 工作流名称已存在。", refresh_workflows()
-                except Exception as e:
-                    return f"❌ 步骤 JSON 解析失败: {e}", refresh_workflows()
-
-            def refresh_workflows():
-                workflows = list_workflows()
-                if workflows:
-                    df = pd.DataFrame(workflows, columns=["名称", "描述", "创建者", "创建时间"])
-                else:
-                    df = pd.DataFrame(columns=["名称", "描述", "创建者", "创建时间"])
-                return df
-
-            workflow_create_btn.click(
-                fn=create_workflow,
-                inputs=[workflow_name_input, workflow_desc_input, workflow_steps_input, user_state],
-                outputs=[workflow_create_msg, workflow_list]
-            )
-
-            refresh_workflow_btn.click(
-                fn=refresh_workflows,
-                inputs=[],
-                outputs=[workflow_list]
-            )
-
-            workflow_list.value = refresh_workflows()
+            # ================= 日志 Tab =================
+            with gr.Tab("日志"):
+                gr.Markdown("## 📜 系统运行日志")
+                logs_output = gr.Textbox(label="日志内容", lines=20, interactive=False)
+                refresh_logs_btn = gr.Button("刷新日志")
 
 
     # ================= 登录、退出、加载函数 =================
