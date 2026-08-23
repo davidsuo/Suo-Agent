@@ -298,13 +298,11 @@ with gr.Blocks(title="AI 智能体") as demo:
                             label=""
                         )
 
-                # ✅ 将 Modal 弹窗放布局外层，确保全局居中！
-                with gr.Modal() as project_modal:
-                    gr.Markdown("### 创建新项目")
-                    project_input = gr.Textbox(label="项目名称")
-                    with gr.Row():
-                        create_project_btn = gr.Button("创建", variant="primary")
-                        cancel_btn = gr.Button("取消")
+                # ✅ 项目创建的“内联展开”区域（已彻底告别 gr.Modal）
+                with gr.Row(visible=False) as project_creation_row:
+                    project_input = gr.Textbox(placeholder="输入项目名称...", scale=4, show_label=False)
+                    create_project_btn = gr.Button("创建", scale=1)
+                    cancel_project_btn = gr.Button("✖", scale=0, min_width=0)
 
             # ================= 系统健康 Tab =================
             with gr.Tab("系统健康"):
@@ -594,10 +592,6 @@ with gr.Blocks(title="AI 智能体") as demo:
         inputs=[],
         outputs=[pending_file, attachment_html, clear_file_btn]
     )
-    
-    # 打开/关闭项目弹窗
-    add_project_btn.click(fn=lambda: gr.update(visible=True), inputs=None, outputs=project_modal)
-    cancel_btn.click(fn=lambda: gr.update(visible=False), inputs=None, outputs=project_modal)
 
     # ================= 纯文本及混合输入事件（完美融合版） =================
     async def submit_text_with_file(message, history, user_state, pending_file_val):
