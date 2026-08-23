@@ -205,6 +205,8 @@ with gr.Blocks(title="AI 智能体") as demo:
                     <span style="font-size:14px; color:#888;">(AI智能体系统+记忆+知识库+工具)</span>
                 </div>
             """)
+            # ✅ 必须补上：右侧用于显示当前用户名的组件
+            user_display = gr.Markdown("")
             # 右侧：退出登录按钮
             logout_btn = gr.Button("退出登录", elem_id="top-logout-btn", scale=0, min_width=0)
         
