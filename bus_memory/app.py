@@ -196,30 +196,28 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     # ---------- 主聊天界面 ----------
     with gr.Column(visible=False) as chat_column:
-        # ================= 模块一：顶部品牌栏（第一行） =================
-        with gr.Row(elem_id="top-brand-bar"):
-            # 左侧：Logo和名称
+        # ================= 模块一：顶部品牌栏 + 顶部导航（贴合顶部） =================
+        with gr.Row(elem_id="main-layout-top"):
+            # 左侧品牌
             gr.HTML("""
                 <div style="display:flex; align-items:center; gap:10px;">
                     <h2 style="margin:0; color:#1E4D8C;">🚀 某某企业AI原生系统平台</h2>
                     <span style="font-size:14px; color:#888;">(AI智能体系统+记忆+知识库+工具)</span>
                 </div>
             """)
-            # ✅ 必须补上：右侧用于显示当前用户名的组件
-            user_display = gr.Markdown("")
-            # 右侧：退出登录按钮
+            # 右侧：退出登录直接放这里，和导航条保持在一个视觉区域
             logout_btn = gr.Button("退出登录", elem_id="top-logout-btn", scale=0, min_width=0)
         
-        # ================= 模块二：顶部导航条（第二行） =================
+        # ================= 模块二：顶部导航条 =================
         with gr.Tabs(elem_id="top-nav-bar") as main_tabs:
-            # ================= 聊天 Tab（主区，接下来分左右） =================
+            # ================= 聊天 Tab =================
             with gr.Tab("聊天"):
-                # ================= 核心工作区（第三行：左1/3 + 右2/3） =================
+                # ================= 核心工作区：左 1/3 + 右 2/3 =================
                 with gr.Row(elem_id="core-work-area"):
-                    
-                    # 左侧 1/3：项目侧边栏
+            
+                    # 左侧 1/3：项目侧边栏（只保留一个 Column）
                     with gr.Column(scale=1, min_width=280, elem_id="project-sidebar"):
-                        #✅ 必须保留的租户下拉框（隐藏状态，只参与逻辑，不显示）
+                        # 必须保留的租户下拉框（隐藏状态）
                         tenant_dropdown = gr.Dropdown(
                             choices=get_available_tenants(),
                             value="default",
@@ -227,21 +225,19 @@ with gr.Blocks(title="AI 智能体") as demo:
                             interactive=False,
                             visible=False
                         )
-                        # 左上角：当前用户下拉菜单
+                        # 当前用户下拉菜单（无需再嵌套 Column）
                         user_switch_dropdown = gr.Dropdown(
-                            label="当前用户/部门",
-                            choices=["Alice Wang (产品部)", "Bob Zhang (研发部)"],
-                            value="Alice Wang (产品部)",
-                            interactive=True
-                        )
-                        
-                        # “项目 +” 按钮
-                        with gr.Row():
-                            add_project_btn = gr.Button("➕ 项目 +", elem_id="add-project-btn")
-                            project_input = gr.Textbox(placeholder="输入新项目名称...", show_label=False, scale=3)
-                            create_project_btn = gr.Button("创建", scale=1)
-                        
-                        # 项目列表（这里先用一个空的列表组件占位，后续再开发添加/切换逻辑）
+                            label="当前用户：",
+                            choices=["Alice Wang (产品部 - 产品经理)", "Bob Zhang (研发部 - 高级工程师)"],
+                            value="Alice Wang (产品部 - 产品经理)",
+                            interactive=True,
+                            scale=4
+                        )   
+                
+                        # 项目 + 按钮
+                        add_project_btn = gr.Button("项目 +", elem_id="add-project-btn", scale=0)
+                
+                        # 项目列表（只保留一个，不要重复定义）
                         project_list = gr.Dataframe(
                             headers=["项目名称"],
                             interactive=False,
@@ -252,14 +248,13 @@ with gr.Blocks(title="AI 智能体") as demo:
                     with gr.Column(scale=2, elem_id="chat-main-area"):
                         # 聊天框
                         chatbot = gr.Chatbot(label="对话", height=500, value=[])
-                        
-                        # 底部输入区（按之前的“上下两行”优化方案）
-                        # 第一行：工具行（反馈/上传/清除）
+                
+                        # 底部输入区
                         with gr.Row(elem_id="input-card-row"):
                             up_btn = gr.Button("👍 有帮助", scale=0, min_width=0)
                             down_btn = gr.Button("👎 无帮助", scale=0, min_width=0)
                             feedback_msg = gr.Markdown("")
-                            
+                    
                             file_upload_btn = gr.UploadButton(
                                 "📎 上传文件",
                                 file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
@@ -267,8 +262,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                             )
                             attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
                             clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
-                        
-                        # 第二行：输入框 + 发送按钮
+                
                         with gr.Row(elem_id="input-card-bottom"):
                             text_input = gr.Textbox(
                                 show_label=False,
@@ -284,6 +278,14 @@ with gr.Blocks(title="AI 智能体") as demo:
                             elem_id="voice-file-input",
                             label=""
                         )
+
+                # ✅ 将 Modal 弹窗放布局外层，确保全局居中！
+                with gr.Modal() as project_modal:
+                    gr.Markdown("### 创建新项目")
+                    project_input = gr.Textbox(label="项目名称")
+                    with gr.Row():
+                        create_project_btn = gr.Button("创建", variant="primary")
+                        cancel_btn = gr.Button("取消")
 
             # ================= 系统健康 Tab =================
             with gr.Tab("系统健康"):
@@ -550,7 +552,6 @@ with gr.Blocks(title="AI 智能体") as demo:
 
 
     # ================= 事件绑定（文本、文件、语音） =================
-    # ================= 文件暂存与清除事件 =================
     def handle_file_upload(file):
         if file is None:
             return None, "", gr.update(visible=False)
@@ -574,6 +575,10 @@ with gr.Blocks(title="AI 智能体") as demo:
         inputs=[],
         outputs=[pending_file, attachment_html, clear_file_btn]
     )
+    
+    # 打开/关闭项目弹窗
+    add_project_btn.click(fn=lambda: gr.update(visible=True), inputs=None, outputs=project_modal)
+    cancel_btn.click(fn=lambda: gr.update(visible=False), inputs=None, outputs=project_modal)
 
     # ================= 纯文本及混合输入事件（完美融合版） =================
     async def submit_text_with_file(message, history, user_state, pending_file_val):
@@ -804,6 +809,24 @@ if __name__ == "__main__":
             button[disabled] .loading {
                 display: none !important;
                 visibility: hidden !important;
+            }
+            /* 让整个UI贴合顶部，去除居中导致的下移 */
+            body, .gradio-container {
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            #main-layout-top {
+                display: flex !important;
+                justify-content: space-between !important;
+                align-items: center !important;
+                padding: 10px 15px !important;
+                background: #ffffff !important;
+                border-bottom: 1px solid #e5e7eb !important;
+            }
+            /* 项目弹出窗口样式 */
+            #project_modal .modal {
+                border-radius: 12px !important;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.2) !important;
             }
         """
     )
