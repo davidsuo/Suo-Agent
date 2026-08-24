@@ -218,7 +218,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                     with gr.Row(elem_id="core-work-area"):
                         
                         # 左侧 1/3：项目侧边栏
-                        with gr.Column(scale=1, min_width=280, elem_id="project-sidebar"):
+                        with gr.Column(scale=2, min_width=320, elem_id="project-sidebar"):
                             # 隐藏的租户下拉框（仅参与逻辑）
                             tenant_dropdown = gr.Dropdown(
                                 choices=get_available_tenants(),
@@ -874,17 +874,15 @@ if __name__ == "__main__":
                 border-radius: 12px !important;
                 box-shadow: 0 10px 30px rgba(0,0,0,0.2) !important;
             }
-            /* ========== 终极修复：剥掉外层的白色底框 ========== */
+            /* 强制当前用户下拉框不换行，宽度撑开 */
             #current-user-row .block,
             #current-user-row .wrap,
-            #current-user-row .gr-box,
-            #current-user-row label {
-                background: transparent !important;
-                border: none !important;
-                box-shadow: none !important;
-                padding: 0 !important;
-                margin: 0 !important;
-                min-width: 0 !important;
+            #current-user-row .block input,
+            #current-user-row .block select,
+            #current-user-row .block .wrap {
+                white-space: nowrap !important;  /* 强制长文字不换行 */
+                min-width: 220px !important;     /* 给个物理最小宽度，防止被挤压 */
+                width: auto !important;          /* 让宽度自适应内容长度 */
             }
 
             /* ========== 只保留内部真正的白色下拉按钮 ========== */
