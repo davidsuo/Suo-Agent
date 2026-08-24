@@ -167,20 +167,27 @@ def test_execute_python_block_import():
 
 # ================== 测试语音转文字（模拟） ==================
 # 因为 speech_to_text 依赖外部 API，我们只测试参数检查或使用 mock
+@patch('common.tools._request_with_retry')
 @patch('common.tools.get_baidu_access_token', return_value="fake_token")
-@patch('requests.post')
-def test_speech_to_text(mock_post, mock_token):
-    # 模拟 API 返回
-    mock_post.return_value.json.return_value = {"err_no": 0, "result": ["现在几点了"]}
-    # 创建一个临时 wav 文件
+def test_speech_to_text(mock_token, mock_request):
+    # 模拟百度语音识别 API 返回成功
+    class MockResponse:
+        def __init__(self, json_data, status_code=200):
+            self._json = json_data
+            self.status_code = status_code
+        def json(self):
+            return self._json
+    mock_request.return_value = MockResponse({"err_no": 0, "result": ["现在几点了"]})
+
+    # 创建一个极简的 WAV 文件（仅用于测试，实际音频无效）
     import wave, struct
     tmp_path = tempfile.mktemp(suffix='.wav')
-    # 写一个极简的 WAV 头（实际音频无效，但函数会处理）
     with wave.open(tmp_path, 'w') as wf:
         wf.setnchannels(1)
         wf.setsampwidth(2)
         wf.setframerate(16000)
         wf.writeframes(struct.pack('h' * 16000, *([0]*16000)))
+
     try:
         result = speech_to_text(tmp_path)
         assert "现在几点了" in result
