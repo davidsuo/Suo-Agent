@@ -260,12 +260,12 @@ with gr.Blocks(title="AI 智能体") as demo:
                             
                             # ========== 底部原生合并卡片 ==========
                             with gr.Group(elem_id="input-card"):
-                                # 第一行：反馈、上传等（原生横向排列，不加任何强制宽度压缩）
-                                with gr.Row():
+                                # 第一行：反馈 + 上传（统一放在同一起点）
+                                with gr.Row(elem_id="btn-row"):
                                     up_btn = gr.Button("👍 有帮助", scale=0)
                                     down_btn = gr.Button("👎 无帮助", scale=0)
                                     feedback_msg = gr.Markdown("")
-                                
+
                                     file_upload_btn = gr.UploadButton(
                                         "📎 上传文件",
                                         file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
@@ -273,9 +273,9 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     )
                                     attachment_html = gr.HTML("", elem_id="attachment-html", scale=0)
                                     clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
-                            
-                                # 第二行：输入框 + 圆形发送按钮
-                                with gr.Row():
+
+                                # 第二行：输入框 + 发送按钮（必须在同一行，且发送按钮就在输入框右边！）
+                                with gr.Row(elem_id="input-row-final"):
                                     text_input = gr.Textbox(
                                         show_label=False,
                                         placeholder="发消息或按住空格说话，松开发送...",
@@ -854,17 +854,59 @@ if __name__ == "__main__":
                 white-space: nowrap !important;
                 flex-shrink: 0 !important;
             
-            /* ========== 底部输入卡片（原生Group容器润色） ========== */
+            /* ========== 底部输入卡片（彻底消除缝隙） ========== */
             #input-card {
                 background: #ffffff !important;
                 border-radius: 12px !important;
                 border: 1px solid #e5e7eb !important;
                 box-shadow: 0 2px 6px rgba(0,0,0,0.04) !important;
                 padding: 12px !important;
-                margin-top: 8px !important;
+                margin-top: 0px !important;       /* ✅ 消除缝隙：上边距设为零 */
             }
 
-            /* 发送按钮：完美的蓝色圆形 */
+            /* 聊天框底部边距也强制设为零，消除大缝隙！ */
+            #chat-main-area .block {
+                margin-bottom: 0px !important;
+            }
+
+            /* 第一行按钮：强制横向排列，文字自适应内容！ */
+            #btn-row {
+                display: flex !important;
+                flex-direction: row !important;
+                flex-wrap: nowrap !important;
+                align-items: center !important;
+                gap: 8px !important;
+                margin-bottom: 5px !important;
+            }
+            #btn-row button {
+                white-space: nowrap !important;
+                min-width: auto !important;
+                width: auto !important;
+                background: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
+            }
+
+            /* 输入框和发送按钮行：强制锁定在同一行！ */
+            #input-row-final {
+                display: flex !important;
+                align-items: center !important;
+                gap: 8px !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            /* 输入框本身占据剩余宽度 */
+            #input-row-final .block {
+                flex-grow: 1 !important;
+                margin: 0 !important;
+            }
+            #input-row-final input {
+                border: none !important;
+                box-shadow: none !important;
+                background: transparent !important;
+            }
+            
+            /* 发送按钮：完美的蓝色圆球，稳稳坐在输入框最右侧，绝不跑出去！ */
             #send-btn {
                 width: 40px !important;
                 height: 40px !important;
