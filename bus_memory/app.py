@@ -235,8 +235,8 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     value="Alice Wang (产品部 - 产品经理)",
                                     interactive=True,
                                     show_label=False,
-                                    scale=4,
-                                    min_width=320
+                                    scale=1,
+                                    min_width=200
                                 )
                             
                             # 项目 + 按钮与内联创建区
@@ -876,6 +876,12 @@ if __name__ == "__main__":
             /* 确保箭头与文字有间距 */
             #current-user-row .block .icon-container {
                 margin-left: 8px !important;
+            }
+            /* 安全限制下拉框外层底框的宽度，使其自适应内容并变小 */
+            #current-user-row .block {
+                max-width: 240px !important;   /* 最大宽度，防止无限拉伸 */
+                flex-grow: 0 !important;       /* 不拉伸，保持自然大小 */
+                width: auto !important;        /* 宽度自适应内容 */
             }
         """
     )
