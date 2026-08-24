@@ -204,8 +204,10 @@ with gr.Blocks(title="AI 智能体") as demo:
                     <span style="font-size:14px; color:#888;">(AI智能体系统+记忆+知识库+工具)</span>
                 </div>
             """)
+            
             # ✅ 将退出登录放在这里，作为顶级锚点
             logout_btn = gr.Button("退出登录", elem_id="top-logout-btn", scale=0, min_width=0)
+            
         # ================= 顶部导航 + 退出登录（第二行） =================
         with gr.Row(elem_id="top-nav-container"):
             # 主导航
@@ -767,36 +769,25 @@ if __name__ == "__main__":
                 display: block !important;
             }
 
-            /* 顶部品牌栏 */
+            /* 顶部品牌栏：左右两端对齐，保证按钮在右侧 */
             #top-brand-bar {
-                padding: 10px 20px !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: space-between !important;
                 background: white !important;
+                padding: 10px 20px !important;
                 border-bottom: 1px solid #e5e7eb !important;
             }
-
-            /* 顶部导航（保持干净，不掺按钮） */
-            #top-nav-container {
-                background: #ffffff !important;
-                border-bottom: 1px solid #cbd5e1 !important;
-            }
             
-            /* 终极必杀：退出登录按钮固定悬浮在浏览器右上角！ */
+            /* 退出登录按钮：保持正常流，只做常规样式调整，不加任何绝对定位！ */
             #top-logout-btn {
-                position: fixed !important;
-                top: 15px !important;
-                right: 20px !important;
-                z-index: 99999 !important;
+                white-space: nowrap !important;
+                padding: 6px 16px !important;
                 background-color: #1E4D8C !important;
                 color: white !important;
-                padding: 8px 20px !important;
-                border-radius: 8px !important;
-                white-space: nowrap !important;
+                border-radius: 6px !important;
                 font-weight: bold !important;
-                box-shadow: 0 4px 10px rgba(30, 77, 140, 0.3) !important;
-            }
-            #top-logout-btn:hover {
-                background-color: #16386B !important;
-                transform: translateY(-1px) !important;
+                margin-left: auto !important; /* 关键：强制把它推到最右 */
             }
 
             /* ✅ 当前用户标签与下拉框同行 */
