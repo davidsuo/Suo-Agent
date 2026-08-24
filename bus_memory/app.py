@@ -230,13 +230,15 @@ with gr.Blocks(title="AI 智能体") as demo:
                             # 当前用户下拉菜单
                             with gr.Row(elem_id="current-user-row"):
                                 # ✅ 加上 white-space: nowrap，强制不换行
-                                gr.HTML("<span style='font-weight: bold; color: #333; margin-right: 2px; white-space: nowrap;'>当前用户：</span>", scale=0, min_width=0)
+                                gr.HTML("<span style='font-weight: bold; color: #333; margin-right: 8px; white-space: nowrap;'>当前用户：</span>", scale=0, min_width=0)
                             
                                 user_switch_dropdown = gr.Dropdown(
                                     choices=["Alice Wang (产品部 - 产品经理)", "Bob Zhang (研发部 - 高级工程师)"],
                                     value="Alice Wang (产品部 - 产品经理)",
                                     interactive=True,
-                                    show_label=False
+                                    show_label=False,
+                                    scale=1,        # 让它自动填满剩余宽度
+                                    min_width=0     # 解除最小宽度限制，达到自适应
                                 )
                             
                             # 项目 + 按钮与内联创建区
@@ -872,19 +874,25 @@ if __name__ == "__main__":
                 border-radius: 12px !important;
                 box-shadow: 0 10px 30px rgba(0,0,0,0.2) !important;
             }
-            /* 只去掉外层“大底框”，绝对不破坏内部下拉菜单 */
+            /* 彻底剥离当前用户行所有的外层框和背景，使其完全融入左侧边栏 */
+            #current-user-row,
             #current-user-row .block,
-            #current-user-row .wrap {
+            #current-user-row .wrap,
+            #current-user-row .gr-box,
+            #current-user-row div[data-testid="block"] {
                 background: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                min-width: 0 !important;
             }
-            /* 内部下拉框本身保留白底样式（让它看起来像个小按钮） */
-            #current-user-row .block > div,
-            #current-user-row .block input {
-                background: #ffffff !important;
-                border: 1px solid #e5e7eb !important;
-                border-radius: 6px !important;
+            /* 让当前用户的文字和下拉框完美对齐，去掉多余间隙 */
+            #current-user-row {
+                display: flex !important;
+                align-items: center !important;
+                gap: 0px !important;
+                margin-bottom: 15px !important;
             }
             /* 恢复下拉箭头 */
             #current-user-row .icon-container,
