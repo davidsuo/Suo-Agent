@@ -258,10 +258,10 @@ with gr.Blocks(title="AI 智能体") as demo:
                             # 聊天框
                             chatbot = gr.Chatbot(label="对话", height=500, value=[])
                             
-                            # ========== 底部卡片式输入区（使用原生 Group 容器） ==========
-                            with gr.Group() as input_card_group:
-                                # 第一行：工具按钮（反馈、上传、清除）
-                                with gr.Row():
+                            # ========== 底部合并卡片式输入区（完整包裹所有组件） ==========
+                            with gr.Group(elem_id="input-card"):
+                                # 第一行：工具按钮（使用安全的 Row 包裹，强制横向排列）
+                                with gr.Row(elem_id="action-buttons-row"):
                                     up_btn = gr.Button("👍 有帮助", scale=0, min_width=0)
                                     down_btn = gr.Button("👎 无帮助", scale=0, min_width=0)
                                     feedback_msg = gr.Markdown("")
@@ -275,7 +275,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
                             
                                 # 第二行：输入框 + 圆形发送按钮
-                                with gr.Row():
+                                with gr.Row(elem_id="input-card-bottom"):
                                     text_input = gr.Textbox(
                                         show_label=False,
                                         placeholder="发消息或按住空格说话，松开发送...",
@@ -854,15 +854,40 @@ if __name__ == "__main__":
                 white-space: nowrap !important;
                 flex-shrink: 0 !important;
             
-            /* ========== 底部输入区（利用 Group 原生容器，无需强拆） ========== */
+            /* ========== 底部输入卡片（原生Group容器美化） ========== */
+            #input-card {
+                background: #ffffff !important;
+                border-radius: 12px !important;
+                border: 1px solid #e5e7eb !important;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.04) !important;
+                padding: 8px 12px !important;
+                margin-top: 8px !important;
+            }
+
+            /* 核心修复：解决竖排问题，强制所有按钮横向排布 */
+            #action-buttons-row {
+                display: flex !important;
+                flex-direction: row !important;
+                flex-wrap: nowrap !important;     /* 禁止换行 */
+                align-items: center !important;
+                gap: 6px !important;              /* 按钮间距 */
+                margin-bottom: 5px !important;
+            }
+            /* 给按钮强制不换行的权限 */
+            #action-buttons-row button {
+                white-space: nowrap !important;
+                min-width: auto !important;
+            }
+
+            /* 发送按钮：完美的蓝色圆形 */
             #send-btn {
                 width: 40px !important;
                 height: 40px !important;
-                border-radius: 50% !important;       /* 变成圆形 */
+                border-radius: 50% !important;
                 background-color: #2563EB !important;
                 border: none !important;
                 color: white !important;
-                font-size: 20px !important;          /* 箭头大小 */
+                font-size: 20px !important;
                 padding: 0 !important;
                 min-width: 0 !important;
                 flex-shrink: 0 !important;
