@@ -196,146 +196,141 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     # ---------- 主聊天界面 ----------
     with gr.Column(visible=False) as chat_column:
-        # ================= 模块一：顶部品牌栏 + 顶部导航（贴合顶部） =================
-        # ✅ 补回隐藏的用户状态组件（用于满足后端 outputs 的绑定要求，不在界面上显示）
-        user_display = gr.Markdown("", visible=False)
-        with gr.Row(elem_id="main-layout-top"):
-            # 左侧品牌
+        # ================= 顶部品牌栏（第一行） =================
+        with gr.Row(elem_id="top-brand-bar"):
             gr.HTML("""
                 <div style="display:flex; align-items:center; gap:10px;">
                     <h2 style="margin:0; color:#1E4D8C;">🚀 某某企业AI原生系统平台</h2>
                     <span style="font-size:14px; color:#888;">(AI智能体系统+记忆+知识库+工具)</span>
                 </div>
             """)
-            # 右侧：退出登录直接放这里，和导航条保持在一个视觉区域
-            logout_btn = gr.Button("退出登录", elem_id="top-logout-btn", scale=0, min_width=0)
-        
-        # ================= 模块二：顶部导航条 =================
-        with gr.Tabs(elem_id="top-nav-bar") as main_tabs:
-            # ================= 聊天 Tab =================
-            with gr.Tab("聊天"):
-                # ================= 核心工作区：左 1/3 + 右 2/3 =================
-                with gr.Row(elem_id="core-work-area"):
-            
-                    # 左侧 1/3：项目侧边栏（只保留一个 Column）
-                    with gr.Column(scale=1, min_width=280, elem_id="project-sidebar"):
-                        # 必须保留的租户下拉框（隐藏状态）
-                        tenant_dropdown = gr.Dropdown(
-                            choices=get_available_tenants(),
-                            value="default",
-                            label="",
-                            interactive=False,
-                            visible=False
-                        )
-                        # 当前用户下拉菜单（无需再嵌套 Column）
-                        user_switch_dropdown = gr.Dropdown(
-                            label="当前用户：",
-                            choices=["Alice Wang (产品部 - 产品经理)", "Bob Zhang (研发部 - 高级工程师)"],
-                            value="Alice Wang (产品部 - 产品经理)",
-                            interactive=True,
-                            scale=4
-                        )   
+
+        # ================= 顶部导航 + 退出登录（第二行） =================
+        with gr.Row(elem_id="top-nav-container"):
+            with gr.Tabs(elem_id="top-nav-bar") as main_tabs:
                 
-                        # 项目 + 按钮（默认状态）
-                        add_project_btn = gr.Button("项目 +", elem_id="add-project-btn", scale=0, visible=True)
+                # ================= 聊天 Tab =================
+                with gr.Tab("聊天"):
+                    with gr.Row(elem_id="core-work-area"):
                         
-                        # 内联创建区域（默认隐藏，点击“+”后显示）
-                        with gr.Row(visible=False) as project_creation_row:
-                            project_input = gr.Textbox(placeholder="输入项目名称...", scale=4, show_label=False)
-                            create_project_btn = gr.Button("创建", scale=1)
-                            cancel_project_btn = gr.Button("✖", scale=0, min_width=0)
+                        # 左侧 1/3：项目侧边栏
+                        with gr.Column(scale=1, min_width=280, elem_id="project-sidebar"):
+                            # 隐藏的租户下拉框（仅参与逻辑）
+                            tenant_dropdown = gr.Dropdown(
+                                choices=get_available_tenants(),
+                                value="default",
+                                label="",
+                                interactive=False,
+                                visible=False
+                            )
+                            # 当前用户展示与切换（整合为一行）
+                            with gr.Row(elem_id="current-user-row"):
+                                gr.Markdown("**当前用户：**", scale=0, min_width=0)
+                                user_switch_dropdown = gr.Dropdown(
+                                    choices=["Alice Wang (产品部 - 产品经理)", "Bob Zhang (研发部 - 高级工程师)"],
+                                    value="Alice Wang (产品部 - 产品经理)",
+                                    interactive=True,
+                                    show_label=False,
+                                    scale=4
+                                )
                             
-                        # 项目列表
-                        project_list = gr.Dataframe(
-                            headers=["项目名称"],
-                            interactive=False,
-                            row_count=(5, "fixed")
-                        )
-                        
-                        # 事件绑定：点击“+”显示输入框，点击“✖”隐藏
-                        add_project_btn.click(
-                            fn=lambda: (gr.update(visible=False), gr.update(visible=True)),
-                            inputs=None,
-                            outputs=[add_project_btn, project_creation_row]
-                        )
-                        
-                        cancel_project_btn.click(
-                            fn=lambda: (gr.update(visible=True), gr.update(visible=False)),
-                            inputs=None,
-                            outputs=[add_project_btn, project_creation_row]
-                        )
-
-                    # 右侧 2/3：聊天主区
-                    with gr.Column(scale=2, elem_id="chat-main-area"):
-                        # 聊天框
-                        chatbot = gr.Chatbot(label="对话", height=500, value=[])
-                
-                        # 底部输入区
-                        with gr.Row(elem_id="input-card-row"):
-                            up_btn = gr.Button("👍 有帮助", scale=0, min_width=0)
-                            down_btn = gr.Button("👎 无帮助", scale=0, min_width=0)
-                            feedback_msg = gr.Markdown("")
-                    
-                            file_upload_btn = gr.UploadButton(
-                                "📎 上传文件",
-                                file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
-                                scale=0, min_width=0
+                            # 项目 + 按钮与内联创建区
+                            add_project_btn = gr.Button("项目 +", elem_id="add-project-btn", scale=0, visible=True)
+                            with gr.Row(visible=False) as project_creation_row:
+                                project_input = gr.Textbox(placeholder="输入项目名称...", scale=4, show_label=False)
+                                create_project_btn = gr.Button("创建", scale=1)
+                                cancel_project_btn = gr.Button("✖", scale=0, min_width=0)
+                            
+                            # 项目列表
+                            project_list = gr.Dataframe(
+                                headers=["项目名称"],
+                                interactive=False,
+                                row_count=(5, "fixed")
                             )
-                            attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
-                            clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
-                
-                        with gr.Row(elem_id="input-card-bottom"):
-                            text_input = gr.Textbox(
-                                show_label=False,
-                                placeholder="发消息或按住空格说话，松开发送...",
-                                scale=4
+
+                        # 右侧 2/3：聊天主区
+                        with gr.Column(scale=2, elem_id="chat-main-area"):
+                            # 聊天框
+                            chatbot = gr.Chatbot(label="对话", height=500, value=[])
+                            
+                            # 第一行：工具按钮（反馈/上传/清除）
+                            with gr.Row(elem_id="input-card-row"):
+                                up_btn = gr.Button("👍 有帮助", scale=0, min_width=0)
+                                down_btn = gr.Button("👎 无帮助", scale=0, min_width=0)
+                                feedback_msg = gr.Markdown("")
+                                
+                                file_upload_btn = gr.UploadButton(
+                                    "📎 上传文件",
+                                    file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
+                                    scale=0, min_width=0
+                                )
+                                attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
+                                clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
+                            
+                            # 第二行：输入框 + 发送按钮
+                            with gr.Row(elem_id="input-card-bottom"):
+                                text_input = gr.Textbox(
+                                    show_label=False,
+                                    placeholder="发消息或按住空格说话，松开发送...",
+                                    scale=4
+                                )
+                                send_btn = gr.Button("➡️ 发送", scale=0, min_width=0)
+
+                            # 隐藏的语音输入组件
+                            voice_file_input = gr.File(
+                                visible=True,
+                                type="filepath",
+                                elem_id="voice-file-input",
+                                label=""
                             )
-                            send_btn = gr.Button("➡️ 发送", scale=0, min_width=0)
 
-                        # 隐藏的语音输入组件
-                        voice_file_input = gr.File(
-                            visible=True,
-                            type="filepath",
-                            elem_id="voice-file-input",
-                            label=""
-                        )
+                # ================= 系统健康 Tab =================
+                with gr.Tab("系统健康"):
+                    gr.Markdown("## 🏥 系统健康仪表板")
+                    health_refresh_btn = gr.Button("刷新数据")
+                    health_summary_md = gr.Markdown("加载中...")
+                    health_tool_table = gr.Dataframe(
+                        headers=["工具名称", "调用次数"],
+                        interactive=False
+                    )
 
-                # ✅ 项目创建的“内联展开”区域（已彻底告别 gr.Modal）
-                with gr.Row(visible=False) as project_creation_row:
-                    project_input = gr.Textbox(placeholder="输入项目名称...", scale=4, show_label=False)
-                    create_project_btn = gr.Button("创建", scale=1)
-                    cancel_project_btn = gr.Button("✖", scale=0, min_width=0)
+                # ================= 状态监控 Tab =================
+                with gr.Tab("状态监控"):
+                    gr.Markdown("## 实时 Worker 状态")
+                    refresh_btn2 = gr.Button("刷新")
+                    status_table = gr.Dataframe(
+                        headers=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度", "平均耗时(s)", "错误率"],
+                        interactive=False
+                    )
 
-            # ================= 系统健康 Tab =================
-            with gr.Tab("系统健康"):
-                gr.Markdown("## 🏥 系统健康仪表板")
-                health_refresh_btn = gr.Button("刷新数据")
-                health_summary_md = gr.Markdown("加载中...")
-                health_tool_table = gr.Dataframe(headers=["工具名称", "调用次数"], interactive=False)
+                # ================= 工作流管理 Tab =================
+                with gr.Tab("工作流管理", visible=False) as workflow_tab:
+                    gr.Markdown("## 🧩 低代码工作流配置")
+                    workflow_name_input = gr.Textbox(label="工作流名称")
+                    workflow_desc_input = gr.Textbox(label="描述")
+                    workflow_steps_input = gr.Textbox(
+                        label="步骤 JSON",
+                        placeholder='[{"tool": "get_current_time", "arguments": {}}, {"tool": "web_search", "arguments": {"query": "今日新闻"}}]'
+                    )
+                    workflow_create_btn = gr.Button("创建工作流")
+                    workflow_create_msg = gr.Markdown("")
+                    refresh_workflow_btn = gr.Button("刷新列表")
+                    workflow_list = gr.Dataframe(
+                        headers=["名称", "描述", "创建者", "创建时间"],
+                        interactive=False
+                    )
 
-            # ================= 状态监控 Tab =================
-            with gr.Tab("状态监控"):
-                gr.Markdown("## 实时 Worker 状态")
-                refresh_btn2 = gr.Button("刷新")
-                status_table = gr.Dataframe(headers=["Worker名称", "运行中", "完成任务", "失败任务", "队列长度", "平均耗时(s)", "错误率"], interactive=False)
+                # ================= 日志 Tab =================
+                with gr.Tab("日志"):
+                    gr.Markdown("## 📜 系统运行日志")
+                    logs_output = gr.Textbox(label="日志内容", lines=20, interactive=False)
+                    refresh_logs_btn = gr.Button("刷新日志")
 
-            # ================= 工作流管理 Tab =================
-            with gr.Tab("工作流管理", visible=False) as workflow_tab:
-                # 原本工作流管理的代码移到这里...
-                gr.Markdown("## 🧩 低代码工作流配置")
-                workflow_name_input = gr.Textbox(label="工作流名称")
-                workflow_desc_input = gr.Textbox(label="描述")
-                workflow_steps_input = gr.Textbox(label="步骤 JSON", placeholder='[...]')
-                workflow_create_btn = gr.Button("创建工作流")
-                workflow_create_msg = gr.Markdown("")
-                refresh_workflow_btn = gr.Button("刷新列表")
-                workflow_list = gr.Dataframe(headers=["名称", "描述", "创建者", "创建时间"], interactive=False)
+            # 退出登录按钮（放在导航条的最右侧）
+            logout_btn = gr.Button("退出登录", elem_id="top-logout-btn", scale=0, min_width=0)
 
-            # ================= 日志 Tab =================
-            with gr.Tab("日志"):
-                gr.Markdown("## 📜 系统运行日志")
-                logs_output = gr.Textbox(label="日志内容", lines=20, interactive=False)
-                refresh_logs_btn = gr.Button("刷新日志")
+        # 隐藏的用户状态组件（供后端 outputs 使用，不显示在界面上）
+        user_display = gr.Markdown("", visible=False)
 
 
     # ================= 登录、退出、加载函数 =================
@@ -619,6 +614,46 @@ with gr.Blocks(title="AI 智能体") as demo:
         inputs=[text_input, chatbot, user_state, pending_file],
         outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn, last_user_message, last_assistant_message],
         show_progress="hidden"
+    ) 
+    # ================= 项目创建与侧边栏事件绑定 =================
+    # 1. 点击“项目 +”按钮：隐藏“+”按钮，显示创建输入行
+    add_project_btn.click(
+        fn=lambda: (gr.update(visible=False), gr.update(visible=True)),
+        inputs=None,
+        outputs=[add_project_btn, project_creation_row]
+    )
+
+    # 2. 点击“✖”取消按钮：隐藏创建输入行，恢复“+”按钮
+    cancel_project_btn.click(
+        fn=lambda: (gr.update(visible=True), gr.update(visible=False)),
+        inputs=None,
+        outputs=[add_project_btn, project_creation_row]
+    )
+
+    # 3. 创建项目逻辑函数
+    def create_project(project_name, current_projects):
+        # 去除空格，如果为空则不创建
+        if not project_name or not project_name.strip():
+            return current_projects, "", gr.update(visible=True), gr.update(visible=False)
+        
+        project_name = project_name.strip()
+        
+        # 处理 Dataframe 数据
+        if current_projects is None or len(current_projects) == 0:
+            # 如果当前列表为空，新建 DataFrame
+            new_df = pd.DataFrame([{"项目名称": project_name}])
+        else:
+            # 如果已有数据，追加新行
+            new_df = pd.concat([current_projects, pd.DataFrame([{"项目名称": project_name}])], ignore_index=True)
+        
+        # 返回：更新列表、清空输入框、恢复“+”按钮、隐藏输入行
+        return new_df, "", gr.update(visible=True), gr.update(visible=False)
+
+    # 3. 点击“创建”按钮：执行创建逻辑
+    create_project_btn.click(
+        fn=create_project,
+        inputs=[project_input, project_list],
+        outputs=[project_list, project_input, add_project_btn, project_creation_row]
     )    
 
     # ================= 语音文件事件 =================
@@ -721,69 +756,55 @@ if __name__ == "__main__":
             /* 隐藏语音输入组件 */
             #voice-file-input { display: none !important; }
             
-            /* ========== 登录页面最终完美形态 ========== */
+            /* ========== 全局布局调整（解决UI偏下问题） ========== */
             body, .gradio-container {
                 background: linear-gradient(135deg, #f3f4f6 0%, #e0e7ff 50%, #ffffff 100%) !important;
+                /* ✅ 强制贴顶 */
+                margin: 0 !important;
+                padding-top: 0 !important;
+                height: auto !important;
+                display: block !important;
             }
 
-            #login-wrapper {
-                min-height: 100vh;
+            /* 顶部品牌栏 */
+            #top-brand-bar {
+                padding: 10px 20px !important;
+                background: white !important;
+                border-bottom: 1px solid #e5e7eb !important;
+            }
+
+            /* 导航 + 退出按钮所在行 */
+            #top-nav-container {
                 display: flex !important;
-                justify-content: center !important;
-                align-items: flex-start !important;
-                padding-top: 22vh !important;
+                align-items: center !important;
+                padding: 0 20px !important;
+                background: white !important;
+                border-bottom: 1px solid #e5e7eb !important;
+            }
+            #top-nav-container > div {
+                flex: 1 !important;
+            }
+            
+            /* ✅ 解决退出登录竖排：强制横向，不换行 */
+            #top-logout-btn {
+                white-space: nowrap !important;
+                display: flex !important;
+                flex-direction: row !important;
+                align-items: center !important;
+                margin-left: 10px !important;
+                padding: 6px 15px !important;
+                background-color: #1E4D8C !important;
+                color: white !important;
+                border-radius: 8px !important;
+                min-width: auto !important;
             }
 
-            #login-box {
-                max-width: 600px !important;
-                width: 100% !important;
-                border: none !important;
-                border-radius: 20px !important;
-                background: rgba(255, 255, 255, 0.95) !important;
-                padding: 50px 50px !important;
-                box-shadow: 0 20px 50px rgba(30, 77, 140, 0.15) !important;
-                margin-top: 0 !important;
-            }
-
-            #login-box label span {
-                font-size: 20px !important;
-                font-weight: 700 !important;
-                color: #1E4D8C !important;
-                margin-bottom: 8px !important;
-            }
-
-            /* 基础输入框样式（同时覆盖 input 和 textarea） */
-            #login-box input,
-            #login-box textarea {
-                font-size: 18px !important;
-                padding: 12px 15px !important;
-                background: #ffffff !important;
-                border: 1px solid #e5e7eb !important;
-                border-radius: 10px !important;
-                box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important;
-                margin-bottom: 20px !important;
-                transition: all 0.3s ease !important;
-                width: 100% !important;
-                box-sizing: border-box !important;
-            }
-
-            /* ✅ 终极修复：同时包含 input 和 textarea 的聚焦态！
-               这样用户名（textarea）和密码（input）就完全一致了 */
-            #login-box input:focus,
-            #login-box textarea:focus {
-                border: 1px solid #1E4D8C !important;
-                box-shadow: 0 0 0 3px rgba(30, 77, 140, 0.1) !important;
-                outline: none !important;
-                background-color: #ffffff !important;
-            }
-
-            /* 阻止浏览器自动填充覆盖焦点样式 */
-            #login-box input:-webkit-autofill,
-            #login-box input:-webkit-autofill:hover,
-            #login-box input:-webkit-autofill:focus {
-                -webkit-box-shadow: 0 0 0 1000px white inset, 0 0 0 3px rgba(30, 77, 140, 0.1) !important;
-                -webkit-text-fill-color: #000 !important;
-                border: 1px solid #1E4D8C !important;
+            /* ✅ 当前用户标签与下拉框同行 */
+            #current-user-row {
+                display: flex !important;
+                align-items: center !important;
+                gap: 8px !important;
+                padding: 10px 0 !important;
             }
 
             /* 登录按钮固定为品牌深蓝 */
