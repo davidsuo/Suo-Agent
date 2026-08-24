@@ -899,33 +899,33 @@ if __name__ == "__main__":
                 box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
             }
 
-            /* 3. 将“当前用户”和下拉框的间距缩小到 4px（紧紧贴合） */
+            /* 当前用户行：标签和下拉框紧凑排列，自适应文字长度 */
             #current-user-row {
                 display: flex !important;
                 align-items: center !important;
-                gap: 4px !important;
-                margin-bottom: 15px !important;
+                justify-content: flex-start !important;
+                gap: 8px !important;
+                flex-wrap: nowrap !important;
             }
 
-            /* 4. 清除“当前用户”文字自带的边距，防止它把下拉框推远 */
-            #current-user-row p, 
-            #current-user-row span {
+            /* 强制“当前用户：”文字不换行、不被压缩 */
+            #current-user-row span,
+            #current-user-row p {
+                white-space: nowrap !important;
+                flex-shrink: 0 !important;
                 margin: 0 !important;
                 padding: 0 !important;
             }
-            
-            /* 强制下拉框自适应父容器宽度 */
+
+            /* 下拉框：取消所有拉伸，自适应文字长度 */
             #current-user-row .block,
             #current-user-row .block > div,
+            #current-user-row .block input,
             #current-user-row .wrap {
-                width: 100% !important;
+                width: auto !important;
                 min-width: 0 !important;
                 max-width: 100% !important;
-            }
-            
-            /* 保证下拉框实际输入区域占满 */
-            #current-user-row .block input {
-                width: 100% !important;
+                flex-grow: 0 !important;     /* 禁止它拉伸 */
             }
             
             /* 恢复下拉箭头 */
