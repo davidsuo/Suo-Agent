@@ -217,8 +217,8 @@ with gr.Blocks(title="AI 智能体") as demo:
                 with gr.Tab("聊天"):
                     with gr.Row(elem_id="core-work-area"):
                         
-                        # 左侧 1/3：项目侧边栏
-                        with gr.Column(scale=2, min_width=320, elem_id="project-sidebar"):
+                        # 左侧：项目侧边栏（恢复 1/4 比例）
+                        with gr.Column(scale=1, min_width=280, elem_id="project-sidebar"):
                             # 隐藏的租户下拉框（仅参与逻辑）
                             tenant_dropdown = gr.Dropdown(
                                 choices=get_available_tenants(),
@@ -255,7 +255,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                                 row_count=(5, "fixed")
                             )
 
-                        # 右侧 2/3：聊天主区 -> 改为 3/4
+                         # 右侧：聊天主区（保持 3/4 比例
                         with gr.Column(scale=3, elem_id="chat-main-area"):  # ✅ 修改：3/4
                             # 聊天框
                             chatbot = gr.Chatbot(label="对话", height=500, value=[])
