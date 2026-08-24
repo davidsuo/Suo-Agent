@@ -913,6 +913,21 @@ if __name__ == "__main__":
                 margin: 0 !important;
                 padding: 0 !important;
             }
+            
+            /* 强制下拉框自适应父容器宽度 */
+            #current-user-row .block,
+            #current-user-row .block > div,
+            #current-user-row .wrap {
+                width: 100% !important;
+                min-width: 0 !important;
+                max-width: 100% !important;
+            }
+            
+            /* 保证下拉框实际输入区域占满 */
+            #current-user-row .block input {
+                width: 100% !important;
+            }
+            
             /* 恢复下拉箭头 */
             #current-user-row .icon-container,
             #current-user-row svg {
