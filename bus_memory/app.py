@@ -258,28 +258,30 @@ with gr.Blocks(title="AI 智能体") as demo:
                             # 聊天框
                             chatbot = gr.Chatbot(label="对话", height=500, value=[])
                             
-                            # 第一行：工具按钮（反馈/上传/清除）
-                            with gr.Row(elem_id="input-card-row"):
-                                up_btn = gr.Button("👍 有帮助", scale=0, min_width=0)
-                                down_btn = gr.Button("👎 无帮助", scale=0, min_width=0)
-                                feedback_msg = gr.Markdown("")
+                            # ========== 底部合并卡片式输入区 ==========
+                            with gr.Row(elem_id="input-card"):
+                                # 第一行：工具按钮（反馈、上传、清除）
+                                with gr.Row(elem_id="input-card-row"):
+                                    up_btn = gr.Button("👍 有帮助", scale=0, min_width=0, size="sm")
+                                    down_btn = gr.Button("👎 无帮助", scale=0, min_width=0, size="sm")
+                                    feedback_msg = gr.Markdown("")
                                 
-                                file_upload_btn = gr.UploadButton(
-                                    "📎 上传文件",
-                                    file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
-                                    scale=0, min_width=0
-                                )
-                                attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
-                                clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
+                                    file_upload_btn = gr.UploadButton(
+                                        "📎 上传文件",
+                                        file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
+                                        scale=0, min_width=0, size="sm"
+                                    )
+                                    attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
+                                    clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False, size="sm")
                             
-                            # 第二行：输入框 + 发送按钮
-                            with gr.Row(elem_id="input-card-bottom"):
-                                text_input = gr.Textbox(
-                                    show_label=False,
-                                    placeholder="发消息或按住空格说话，松开发送...",
-                                    scale=4
-                                )
-                                send_btn = gr.Button("➡️ 发送", scale=0, min_width=0)
+                                # 第二行：输入框 + 发送按钮
+                                with gr.Row(elem_id="input-card-bottom"):
+                                    text_input = gr.Textbox(
+                                        show_label=False,
+                                        placeholder="发消息或按住空格说话，松开发送...",
+                                        scale=4
+                                    )
+                                    send_btn = gr.Button("➡️ 发送", scale=0, min_width=0, size="sm")
 
                             # 隐藏的语音输入组件
                             voice_file_input = gr.File(
@@ -851,5 +853,40 @@ if __name__ == "__main__":
             #current-user-row p {
                 white-space: nowrap !important;
                 flex-shrink: 0 !important;
+            
+            /* ========== 底部卡片式输入区 ========== */
+            #input-card {
+                background: #ffffff !important;             /* 纯白底 */
+                border-radius: 16px !important;             /* 大圆角 */
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important; /* 柔和投影 */
+                border: 1px solid #e5e7eb !important;       /* 极浅的边框 */
+                padding: 12px 15px !important;              /* 内边距，让内容透口气 */
+                margin-top: 10px !important;                /* 与聊天框保持一点距离 */
+            }
+            
+            /* 让第一行的按钮看起来很“轻”，没有厚重边框 */
+            #input-card-row button {
+                background: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
+                color: #6b7280 !important;
+                padding: 5px 10px !important;
+            }
+            #input-card-row button:hover {
+                color: #1E4D8C !important;
+                background: #f3f4f6 !important;
+            }
+            
+            /* 让输入框完全融入卡片，没有多余边框 */
+            #input-card-bottom input {
+                background: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
+                font-size: 16px !important;
+            }
+            #input-card-bottom input:focus {
+                box-shadow: none !important;
+                background: transparent !important;
+            }
         """
     )
