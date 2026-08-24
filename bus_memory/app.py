@@ -217,7 +217,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                 with gr.Tab("聊天"):
                     with gr.Row(elem_id="core-work-area"):
                         
-                        # 左侧：项目侧边栏（恢复 1/4 比例）
+                        # 左侧 1/3：项目侧边栏
                         with gr.Column(scale=1, min_width=280, elem_id="project-sidebar"):
                             # 隐藏的租户下拉框（仅参与逻辑）
                             tenant_dropdown = gr.Dropdown(
@@ -230,12 +230,15 @@ with gr.Blocks(title="AI 智能体") as demo:
                             # 当前用户下拉菜单
                             with gr.Row(elem_id="current-user-row"):
                                 # ✅ 加上 white-space: nowrap，强制不换行
-                                gr.HTML("<span style='font-weight: bold; color: #333; margin-right: 8px; white-space: nowrap;'>当前用户：</span>", scale=0, min_width=0)
+                                gr.HTML("<span style='font-weight: bold; color: #333; margin-right: 2px; white-space: nowrap;'>当前用户：</span>", scale=0, min_width=0)
                             
                                 user_switch_dropdown = gr.Dropdown(
                                     choices=["Alice Wang (产品部 - 产品经理)", "Bob Zhang (研发部 - 高级工程师)"],
                                     value="Alice Wang (产品部 - 产品经理)",
-                                    interactive=True
+                                    interactive=True,
+                                    show_label=False,
+                                    scale=4,
+                                    min_width=200
                                 )
                             
                             # 项目 + 按钮与内联创建区
@@ -252,7 +255,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                                 row_count=(5, "fixed")
                             )
 
-                         # 右侧：聊天主区（保持 3/4 比例
+                        # 右侧 2/3：聊天主区 -> 改为 3/4
                         with gr.Column(scale=3, elem_id="chat-main-area"):  # ✅ 修改：3/4
                             # 聊天框
                             chatbot = gr.Chatbot(label="对话", height=500, value=[])
@@ -870,67 +873,6 @@ if __name__ == "__main__":
             #project_modal .modal {
                 border-radius: 12px !important;
                 box-shadow: 0 10px 30px rgba(0,0,0,0.2) !important;
-            }
-
-            /* ========== 终极修复：当前用户行 ========== */
-            /* 1. 外层容器和所有包裹层全部透明，去除一切多余背景 */
-            #current-user-row,
-            #current-user-row .block,
-            #current-user-row .wrap,
-            #current-user-row .gr-box,
-            #current-user-row div[data-testid="block"] {
-                background: transparent !important;
-                border: none !important;
-                box-shadow: none !important;
-                padding: 0 !important;
-                margin: 0 !important;
-            }
-
-            /* 2. 只让内部真正的下拉框显示白色背景 */
-            #current-user-row .block > div,
-            #current-user-row .block input,
-            #current-user-row .block .wrap > div {
-                background-color: #ffffff !important;
-                border: 1px solid #e5e7eb !important;
-                border-radius: 6px !important;
-                box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
-            }
-
-            /* 当前用户行：标签和下拉框紧凑排列，自适应文字长度 */
-            #current-user-row {
-                display: flex !important;
-                align-items: center !important;
-                justify-content: flex-start !important;
-                gap: 8px !important;
-                flex-wrap: nowrap !important;
-            }
-
-            /* 强制“当前用户：”文字不换行、不被压缩 */
-            #current-user-row span,
-            #current-user-row p {
-                white-space: nowrap !important;
-                flex-shrink: 0 !important;
-                margin: 0 !important;
-                padding: 0 !important;
-            }
-
-            /* 下拉框：取消所有拉伸，自适应文字长度 */
-            #current-user-row .block,
-            #current-user-row .block > div,
-            #current-user-row .block input,
-            #current-user-row .wrap {
-                width: auto !important;
-                min-width: 0 !important;
-                max-width: 100% !important;
-                flex-grow: 0 !important;     /* 禁止它拉伸 */
-            }
-            
-            /* 恢复下拉箭头 */
-            #current-user-row .icon-container,
-            #current-user-row svg {
-                display: block !important;
-                opacity: 1 !important;
-                background: transparent !important;
             }
         """
     )
