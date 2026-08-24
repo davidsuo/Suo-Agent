@@ -874,26 +874,26 @@ if __name__ == "__main__":
                 border-radius: 12px !important;
                 box-shadow: 0 10px 30px rgba(0,0,0,0.2) !important;
             }
-            /* ========== 去掉当前用户下拉框的白色背景底框 ========== */
+            /* ========== 恢复当前用户下拉框的白色背景和下拉箭头 ========== */
             #current-user-row .block,
-            #current-user-row .wrap,
-            #current-user-row label,
-            #current-user-row input,
-            #current-user-row select {
+            #current-user-row .wrap {
+                background-color: #ffffff !important;
+                border: 1px solid #e5e7eb !important;
+                border-radius: 8px !important;
+                box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+            }
+            /* 保持输入框内部整洁无边框 */
+            #current-user-row .block input,
+            #current-user-row .block select {
                 background: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
             }
-            /* 去掉下拉框内部的默认阴影和内边距 */
-            #current-user-row div[data-testid="block"] {
-                border: none !important;
-                box-shadow: none !important;
-                background: transparent !important;
-            }
-            /* 隐藏默认的下拉箭头，让整个选择器更像一个纯文本按钮 */
+            /* 恢复显示下拉箭头 */
             #current-user-row .icon-container,
             #current-user-row svg {
-                display: none !important;
+                display: block !important;
+                opacity: 1 !important;
             }
         """
     )
