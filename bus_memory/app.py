@@ -258,10 +258,10 @@ with gr.Blocks(title="AI 智能体") as demo:
                             # 聊天框
                             chatbot = gr.Chatbot(label="对话", height=500, value=[])
                             
-                            # ========== 底部合并卡片式输入区 ==========
-                            with gr.Row(elem_id="input-card"):
-                                # 第一行：工具按钮（横向强制锁定）
-                                with gr.Row(elem_id="input-card-row"):
+                            # ========== 底部卡片式输入区（使用原生 Group 容器） ==========
+                            with gr.Group() as input_card_group:
+                                # 第一行：工具按钮（反馈、上传、清除）
+                                with gr.Row():
                                     up_btn = gr.Button("👍 有帮助", scale=0, min_width=0)
                                     down_btn = gr.Button("👎 无帮助", scale=0, min_width=0)
                                     feedback_msg = gr.Markdown("")
@@ -275,13 +275,12 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
                             
                                 # 第二行：输入框 + 圆形发送按钮
-                                with gr.Row(elem_id="input-card-bottom"):
+                                with gr.Row():
                                     text_input = gr.Textbox(
                                         show_label=False,
                                         placeholder="发消息或按住空格说话，松开发送...",
                                         scale=4
                                     )
-                                    # ✅ 将文本改为 "⬆" 图标，配合下面 CSS 做成圆形按钮
                                     send_btn = gr.Button("⬆", elem_id="send-btn", scale=0, min_width=0)
 
                             # 隐藏的语音输入组件
@@ -855,54 +854,7 @@ if __name__ == "__main__":
                 white-space: nowrap !important;
                 flex-shrink: 0 !important;
             
-            /* ========== 底部卡片式输入区 ========== */
-            #input-card {
-                background: #ffffff !important;
-                border-radius: 16px !important;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
-                border: 1px solid #e5e7eb !important;
-                padding: 12px 15px !important;
-                margin-top: 10px !important;
-            }
-
-            /* 第一行：强制按钮横向并排，绝不换行挤压！ */
-            #input-card-row {
-                display: flex !important;
-                flex-direction: row !important;
-                flex-wrap: nowrap !important; /* 核心：禁止折行 */
-                align-items: center !important;
-                gap: 8px !important;
-            }
-            #input-card-row button {
-                white-space: nowrap !important; /* 禁止按钮文字折行 */
-                min-width: auto !important;     /* 取消压缩 */
-                background: transparent !important;
-                border: none !important;
-                box-shadow: none !important;
-                color: #666 !important;
-                padding: 4px 8px !important;
-            }
-            #input-card-row button:hover {
-                color: #1E4D8C !important;
-                background: #f3f4f6 !important;
-                border-radius: 6px !important;
-            }
-
-            /* 第二行：输入框与发送按钮紧密结合 */
-            #input-card-bottom {
-                display: flex !important;
-                align-items: center !important;
-                gap: 10px !important;
-                margin-top: 10px !important;
-            }
-            #input-card-bottom input {
-                background: transparent !important;
-                border: none !important;
-                box-shadow: none !important;
-                font-size: 16px !important;
-            }
-
-            /* ✅ 完美实现图片中的“圆形蓝色上箭头”发送按钮 */
+            /* ========== 底部输入区（利用 Group 原生容器，无需强拆） ========== */
             #send-btn {
                 width: 40px !important;
                 height: 40px !important;
