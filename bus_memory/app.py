@@ -839,17 +839,19 @@ if __name__ == "__main__":
                 margin: 0 !important;
                 padding: 0 !important;
             }
-            /* 当前用户行：强制同一行，左右对齐 */
+            /* 当前用户行：强制同一行，间距为0，完美贴合 */
             #current-user-row {
                 display: flex !important;
                 align-items: center !important;
-                gap: 8px !important;
+                gap: 0px !important;          /* 紧贴“当前用户：”，没有空隙 */
                 margin-bottom: 15px !important;
             }
-            /* 清除“当前用户”文字自带的边距 */
-            #current-user-row p, #current-user-row span {
-                margin: 0 !important;
-                padding: 0 !important;
+            
+            /* 只调整外层容器的宽度和伸缩，绝不动背景和边框！ */
+            #current-user-row .block {
+                flex-grow: 1 !important;      /* 拉伸占满剩余空间 */
+                width: auto !important;
+                min-width: 0 !important;
             }
         """
     )
