@@ -235,8 +235,8 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     value="Alice Wang (产品部 - 产品经理)",
                                     interactive=True,
                                     show_label=False,
-                                    scale=1,
-                                    min_width=200
+                                    scale=4,
+                                    min_width=360
                                 )
                             
                             # 项目 + 按钮与内联创建区
@@ -840,48 +840,16 @@ if __name__ == "__main__":
                 margin: 0 !important;
                 padding: 0 !important;
             }
-            /* 强制当前用户行：同一水平线排列，间隙为0 */
+            /* 当前用户行：只负责横向排列，绝不干预组件的宽高！ */
             #current-user-row {
                 display: flex !important;
-                flex-direction: row !important;      /* 强制横向排布 */
-                flex-wrap: nowrap !important;        /* 禁止换行（核心！） */
                 align-items: center !important;
-                gap: 0px !important;                 /* 完全贴合，没有空隙 */
+                gap: 8px !important;
                 margin-bottom: 15px !important;
             }
-            
-            /* 缩短下拉框文字与右侧箭头的间距 */
-            #current-user-row .block input,
-            #current-user-row .block .wrap,
-            #current-user-row .block .wrap input {
-                padding-right: 20px !important;   /* 将45px改为20px，让文字贴近箭头 */
-                text-overflow: ellipsis !important;
-            }
-            
-            /* “当前用户”文字：强制不换行，且不缩小（核心修复） */
-            #user-label {
-                white-space: nowrap !important;   /* 强制不换行 */
-                flex-shrink: 0 !important;        /* 绝对不缩小 */
-                flex-grow: 0 !important;          /* 不需要拉伸 */
-                font-size: 14px !important;       /* 稍微调小一点，留出更多空间 */
-                color: #333 !important;
-                margin-right: 5px !important;     /* 和下拉框保持一点距离 */
-            }
-            /* 下拉框本体：填满剩余空间，**绝不修改其内部结构** */
-            #current-user-row .block {
-                flex-grow: 1 !important;
-                width: auto !important;
-                min-width: 0 !important;
-            }
-            /* 确保箭头与文字有间距 */
-            #current-user-row .block .icon-container {
-                margin-left: 8px !important;
-            }
-            /* 安全限制下拉框外层底框的宽度，使其自适应内容并变小 */
-            #current-user-row .block {
-                max-width: 240px !important;   /* 最大宽度，防止无限拉伸 */
-                flex-grow: 0 !important;       /* 不拉伸，保持自然大小 */
-                width: auto !important;        /* 宽度自适应内容 */
-            }
+            /* 强制“当前用户：”四个字不换行 */
+            #current-user-row p {
+                white-space: nowrap !important;
+                flex-shrink: 0 !important;
         """
     )
