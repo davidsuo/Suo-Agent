@@ -227,19 +227,14 @@ with gr.Blocks(title="AI 智能体") as demo:
                                 interactive=False,
                                 visible=False
                             )
-                            # 当前用户下拉菜单
-                            with gr.Row(elem_id="current-user-row"):
-                                # ✅ 加上 white-space: nowrap，强制不换行
-                                gr.HTML("<span style='font-weight: bold; color: #333; margin-right: 2px; white-space: nowrap;'>当前用户：</span>", scale=0, min_width=0)
-                            
-                                user_switch_dropdown = gr.Dropdown(
-                                    choices=["Alice Wang (产品部 - 产品经理)", "Bob Zhang (研发部 - 高级工程师)"],
-                                    value="Alice Wang (产品部 - 产品经理)",
-                                    interactive=True,
-                                    show_label=False,
-                                    scale=4,
-                                    min_width=200
-                                )
+                            # 当前用户下拉菜单（去掉标签文字，让下拉框直接占满侧边栏宽度）
+                            user_switch_dropdown = gr.Dropdown(
+                                choices=["Alice Wang (产品部 - 产品经理)", "Bob Zhang (研发部 - 高级工程师)"],
+                                value="Alice Wang (产品部 - 产品经理)",
+                                interactive=True,
+                                label="当前用户：",
+                                scale=1
+                            )
                             
                             # 项目 + 按钮与内联创建区
                             add_project_btn = gr.Button("项目 +", elem_id="add-project-btn", scale=0, visible=True)
@@ -782,25 +777,6 @@ if __name__ == "__main__":
                 border-bottom: 1px solid #e5e7eb !important;
             }
 
-            /* 当前用户行：强制零间隙，无任何多余边距 */
-            #current-user-row {
-                display: flex !important;
-                align-items: center !important;
-                gap: 0px !important;         /* ✅ 彻底消除间隙 */
-                margin-bottom: 15px !important;
-                padding: 0 !important;
-            }
-            /* 清除 HTML 和下拉框内部的所有默认边距 */
-            #current-user-row > * {
-                margin: 0 !important;
-                padding: 0 !important;
-            }
-            #current-user-row p, #current-user-row span {
-                margin: 0 !important;
-                padding: 0 !important;
-                white-space: nowrap !important;
-            }
-
             /* 退出登录按钮：强制不换行、宽度自适应文字长度 */
             #top-logout-btn {
                 display: flex !important;
@@ -860,19 +836,6 @@ if __name__ == "__main__":
             body, .gradio-container {
                 margin: 0 !important;
                 padding: 0 !important;
-            }
-            #main-layout-top {
-                display: flex !important;
-                justify-content: space-between !important;
-                align-items: center !important;
-                padding: 10px 15px !important;
-                background: #ffffff !important;
-                border-bottom: 1px solid #e5e7eb !important;
-            }
-            /* 项目弹出窗口样式 */
-            #project_modal .modal {
-                border-radius: 12px !important;
-                box-shadow: 0 10px 30px rgba(0,0,0,0.2) !important;
             }
         """
     )
