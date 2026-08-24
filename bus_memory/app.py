@@ -258,31 +258,30 @@ with gr.Blocks(title="AI 智能体") as demo:
                             # 聊天框
                             chatbot = gr.Chatbot(label="对话", height=500, value=[])
                             
-                            # ========== 底部输入卡片（用外层Row做白底） ==========
-                            with gr.Row(elem_id="input-card"):
-                                with gr.Column():
-                                    # 第一行：按钮横向排列
-                                    with gr.Row(elem_id="action-buttons-row"):
-                                        up_btn = gr.Button("👍 有帮助", scale=0, min_width=0)
-                                        down_btn = gr.Button("👎 无帮助", scale=0, min_width=0)
-                                        feedback_msg = gr.Markdown("")
-                                    
-                                        file_upload_btn = gr.UploadButton(
-                                            "📎 上传文件",
-                                            file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
-                                            scale=0, min_width=0
-                                        )
-                                        attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
-                                        clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
+                            # ========== 底部原生合并卡片 ==========
+                            with gr.Group(elem_id="input-card"):
+                                # 第一行：反馈、上传等（原生横向排列，不加任何强制宽度压缩）
+                                with gr.Row():
+                                    up_btn = gr.Button("👍 有帮助", scale=0)
+                                    down_btn = gr.Button("👎 无帮助", scale=0)
+                                    feedback_msg = gr.Markdown("")
                                 
-                                    # 第二行：输入框 + 发送按钮
-                                    with gr.Row(elem_id="input-card-bottom"):
-                                        text_input = gr.Textbox(
-                                            show_label=False,
-                                            placeholder="发消息或按住空格说话，松开发送...",
-                                            scale=4
-                                        )
-                                        send_btn = gr.Button("⬆", elem_id="send-btn", scale=0, min_width=0)
+                                    file_upload_btn = gr.UploadButton(
+                                        "📎 上传文件",
+                                        file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
+                                        scale=0
+                                    )
+                                    attachment_html = gr.HTML("", elem_id="attachment-html", scale=0)
+                                    clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
+                            
+                                # 第二行：输入框 + 圆形发送按钮
+                                with gr.Row():
+                                    text_input = gr.Textbox(
+                                        show_label=False,
+                                        placeholder="发消息或按住空格说话，松开发送...",
+                                        scale=4
+                                    )
+                                    send_btn = gr.Button("⬆", elem_id="send-btn", scale=0)
 
                             # 隐藏的语音输入组件
                             voice_file_input = gr.File(
@@ -855,29 +854,17 @@ if __name__ == "__main__":
                 white-space: nowrap !important;
                 flex-shrink: 0 !important;
             
-            /* 外层卡片背景与圆角 */
+            /* ========== 底部输入卡片（原生Group容器润色） ========== */
             #input-card {
                 background: #ffffff !important;
-                border-radius: 16px !important;
+                border-radius: 12px !important;
                 border: 1px solid #e5e7eb !important;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.05) !important;
-                padding: 10px !important;
-            }
-            
-            /* 第一行按钮：强制横向排列 */
-            #action-buttons-row {
-                display: flex !important;
-                flex-direction: row !important;
-                flex-wrap: nowrap !important;
-                align-items: center !important;
-                gap: 8px !important;
-            }
-            #action-buttons-row button {
-                white-space: nowrap !important;
-                min-width: auto !important;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.04) !important;
+                padding: 12px !important;
+                margin-top: 8px !important;
             }
 
-            /* 圆形发送按钮 */
+            /* 发送按钮：完美的蓝色圆形 */
             #send-btn {
                 width: 40px !important;
                 height: 40px !important;
