@@ -874,26 +874,36 @@ if __name__ == "__main__":
                 border-radius: 12px !important;
                 box-shadow: 0 10px 30px rgba(0,0,0,0.2) !important;
             }
-            /* ========== 恢复当前用户下拉框的白色背景和下拉箭头 ========== */
+            /* ========== 去除外层白色底框，只保留内部白色下拉按钮 ========== */
+            /* 1. 将外层 Gradio 容器（底框）完全透明化 */
             #current-user-row .block,
-            #current-user-row .wrap {
-                background-color: #ffffff !important;
-                border: 1px solid #e5e7eb !important;
-                border-radius: 8px !important;
-                box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
-            }
-            /* 保持输入框内部整洁无边框 */
-            #current-user-row .block input,
-            #current-user-row .block select {
+            #current-user-row .wrap,
+            #current-user-row div[data-testid="block"] {
                 background: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
             }
-            /* 恢复显示下拉箭头 */
+
+            /* 2. 保留内部真正的白色下拉按钮（加上边框和圆角） */
+            #current-user-row .block input,
+            #current-user-row .block select,
+            #current-user-row .block .wrap {
+                background-color: #ffffff !important;
+                border: 1px solid #e5e7eb !important;
+                border-radius: 6px !important;
+                padding: 8px 12px !important;
+                box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+            }
+
+            /* 3. 恢复下拉箭头 */
             #current-user-row .icon-container,
             #current-user-row svg {
                 display: block !important;
                 opacity: 1 !important;
+                color: #666 !important;
+                background: transparent !important;
             }
         """
     )
