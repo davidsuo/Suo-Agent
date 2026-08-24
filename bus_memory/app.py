@@ -235,7 +235,8 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     value="Alice Wang (产品部 - 产品经理)",
                                     interactive=True,
                                     show_label=False,
-                                    scale=4
+                                    scale=1,
+                                    min_width=0
                                 )
                             
                             # 项目 + 按钮与内联创建区
@@ -778,24 +779,41 @@ if __name__ == "__main__":
                 padding: 10px 20px !important;
                 border-bottom: 1px solid #e5e7eb !important;
             }
-            
-            /* 退出登录按钮：保持正常流，只做常规样式调整，不加任何绝对定位！ */
+
+            /* 解决当前用户行的间距过大 */
+            #current-user-row {
+                display: flex !important;
+                align-items: center !important;
+                gap: 4px !important;          /* ✅ 严格压缩间隙 */
+                margin-bottom: 15px !important;
+            }
+            /* 去掉 Markdown 自带的边距 */
+            #current-user-row p, #current-user-row span {
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            /* 下拉框自适应长度，不再拉伸占位 */
+            #current-user-row .block {
+                width: auto !important;
+                min-width: 0 !important;
+                flex: 0 0 auto !important;
+            }
+
+            /* 解决退出登录按钮的挤压换行问题 */
             #top-logout-btn {
-                white-space: nowrap !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                flex-direction: row !important;  /* ✅ 强制文字横向排列 */
+                white-space: nowrap !important;  /* ✅ 强制不换行 */
+                width: auto !important;          /* ✅ 宽度自适应字段长度 */
+                min-width: 0 !important;
                 padding: 6px 16px !important;
                 background-color: #1E4D8C !important;
                 color: white !important;
                 border-radius: 6px !important;
                 font-weight: bold !important;
-                margin-left: auto !important; /* 关键：强制把它推到最右 */
-            }
-
-            /* ✅ 当前用户标签与下拉框同行 */
-            #current-user-row {
-                display: flex !important;
-                align-items: center !important;
-                gap: 8px !important;
-                padding: 10px 0 !important;
+                margin-left: auto !important;    /* ✅ 靠右对齐 */
             }
 
             /* 登录按钮固定为品牌深蓝 */
