@@ -227,16 +227,16 @@ with gr.Blocks(title="AI 智能体") as demo:
                                 interactive=False,
                                 visible=False
                             )
-                            # 当前用户与下拉菜单放在同一行
+                            # 当前用户与下拉菜单放在同一行（绝对不碰内部结构，安全完美）
                             with gr.Row(elem_id="current-user-row"):
                                 gr.Markdown("**当前用户：**", scale=0, min_width=0)
                                 user_switch_dropdown = gr.Dropdown(
                                     choices=["Alice Wang (产品部 - 产品经理)", "Bob Zhang (研发部 - 高级工程师)"],
                                     value="Alice Wang (产品部 - 产品经理)",
                                     interactive=True,
-                                    show_label=False,
-                                    scale=4,        # ✅ 核心：占4份权重，撑开宽度
-                                    min_width=360  # ✅ 调大最小宽度，彻底消除内部挤压
+                                    show_label=False,   # ✅ 核心：必须隐藏自带的标签，才能跟Markdown同行
+                                    scale=4,
+                                    min_width=360
                                 )
                             
                             # 项目 + 按钮与内联创建区
@@ -856,7 +856,7 @@ if __name__ == "__main__":
             #current-user-row .block input,
             #current-user-row .block .wrap,
             #current-user-row .block .wrap input {
-                padding-right: 35px !important;   /* 给右侧箭头留出安全距离 */
+                padding-right: 25px !important;   /* 给右侧箭头留出安全距离 */
                 text-overflow: ellipsis !important;
             }
             /* 确保箭头与文字有间距 */
