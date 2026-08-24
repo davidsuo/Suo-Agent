@@ -207,7 +207,9 @@ with gr.Blocks(title="AI 智能体") as demo:
 
         # ================= 顶部导航 + 退出登录（第二行） =================
         with gr.Row(elem_id="top-nav-container"):
-            with gr.Tabs(elem_id="top-nav-bar") as main_tabs:
+            # 主导航（左侧占据绝大部分宽度）
+            with gr.Column(scale=4, elem_id="nav-tabs-col"):
+                with gr.Tabs(elem_id="top-nav-bar") as main_tabs:
                 
                 # ================= 聊天 Tab =================
                 with gr.Tab("聊天"):
@@ -326,8 +328,9 @@ with gr.Blocks(title="AI 智能体") as demo:
                     logs_output = gr.Textbox(label="日志内容", lines=20, interactive=False)
                     refresh_logs_btn = gr.Button("刷新日志")
 
-            # 退出登录按钮（放在导航条的最右侧）
-            logout_btn = gr.Button("退出登录", elem_id="top-logout-btn", scale=0, min_width=0)
+            # 退出登录（右侧固定宽度列）
+            with gr.Column(scale=1, min_width=150, elem_id="logout-col"):
+                logout_btn = gr.Button("退出登录", elem_id="top-logout-btn", scale=0, min_width=0)
 
         # 隐藏的用户状态组件（供后端 outputs 使用，不显示在界面上）
         user_display = gr.Markdown("", visible=False)
@@ -773,30 +776,41 @@ if __name__ == "__main__":
                 border-bottom: 1px solid #e5e7eb !important;
             }
 
-            /* 导航 + 退出按钮所在行 */
+            /* 顶部导航行 */
             #top-nav-container {
                 display: flex !important;
                 align-items: center !important;
-                padding: 0 20px !important;
                 background: white !important;
                 border-bottom: 1px solid #e5e7eb !important;
-            }
-            #top-nav-container > div {
-                flex: 1 !important;
+                padding: 0 20px !important;
             }
             
-            /* ✅ 解决退出登录竖排：强制横向，不换行 */
+            /* 导航 Tab 列占满剩余宽度 */
+            #nav-tabs-col {
+                flex: 1 !important;
+                min-width: 0 !important;
+            }
+            
+            /* 退出登录按钮容器，靠右对齐 */
+            #logout-col {
+                display: flex !important;
+                justify-content: flex-end !important;
+                align-items: center !important;
+                padding-left: 15px !important;
+            }
+            
+            /* 强制退出按钮横向显示不换行 */
             #top-logout-btn {
                 white-space: nowrap !important;
-                display: flex !important;
-                flex-direction: row !important;
-                align-items: center !important;
-                margin-left: 10px !important;
-                padding: 6px 15px !important;
+                min-width: auto !important;
+                padding: 8px 20px !important;
                 background-color: #1E4D8C !important;
                 color: white !important;
                 border-radius: 8px !important;
-                min-width: auto !important;
+                font-weight: bold !important;
+            }
+            #top-logout-btn:hover {
+                background-color: #16386B !important;
             }
 
             /* ✅ 当前用户标签与下拉框同行 */
