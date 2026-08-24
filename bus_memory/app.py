@@ -234,8 +234,9 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     choices=["Alice Wang (产品部 - 产品经理)", "Bob Zhang (研发部 - 高级工程师)"],
                                     value="Alice Wang (产品部 - 产品经理)",
                                     interactive=True,
-                                    show_label=False,  # ✅ 关键：隐藏默认 label，防止换行
-                                    scale=1
+                                    show_label=False,
+                                    scale=4,        # ✅ 核心：占4份权重，撑开宽度
+                                    min_width=280   # ✅ 核心：确保有足够物理宽度，防止被挤扁
                                 )
                             
                             # 项目 + 按钮与内联创建区
@@ -839,24 +840,17 @@ if __name__ == "__main__":
                 margin: 0 !important;
                 padding: 0 !important;
             }
-            /* 当前用户行：强制同一行，间距为0，完美贴合 */
+            /* 当前用户行：只负责横向排列，不干扰下拉框宽度 */
             #current-user-row {
                 display: flex !important;
                 align-items: center !important;
-                gap: 0px !important;          /* 紧贴“当前用户：”，没有空隙 */
+                gap: 8px !important;
                 margin-bottom: 15px !important;
             }
-            
-            /* 只修改下拉框的宽度和伸缩，让它的白色框拉到最大！绝不改背景和边框 */
-            #current-user-row .block {
-                flex-grow: 1 !important;      /* 拉伸占满剩余空间 */
-                width: 100% !important;       /* 确保撑满 */
-                min-width: 0 !important;
-            }
-            /* 确保下拉框内部的包裹层也撑满宽度 */
-            #current-user-row .block > div,
-            #current-user-row .wrap {
-                width: 100% !important;
+            /* 强制“当前用户：”四个字不换行 */
+            #current-user-row p {
+                white-space: nowrap !important;
+                flex-shrink: 0 !important;
             }
         """
     )
