@@ -847,11 +847,16 @@ if __name__ == "__main__":
                 margin-bottom: 15px !important;
             }
             
-            /* 只调整外层容器的宽度和伸缩，绝不动背景和边框！ */
+            /* 只修改下拉框的宽度和伸缩，让它的白色框拉到最大！绝不改背景和边框 */
             #current-user-row .block {
                 flex-grow: 1 !important;      /* 拉伸占满剩余空间 */
-                width: auto !important;
+                width: 100% !important;       /* 确保撑满 */
                 min-width: 0 !important;
+            }
+            /* 确保下拉框内部的包裹层也撑满宽度 */
+            #current-user-row .block > div,
+            #current-user-row .wrap {
+                width: 100% !important;
             }
         """
     )
