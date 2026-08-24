@@ -874,7 +874,9 @@ if __name__ == "__main__":
                 border-radius: 12px !important;
                 box-shadow: 0 10px 30px rgba(0,0,0,0.2) !important;
             }
-            /* 彻底剥离当前用户行所有的外层框和背景，使其完全融入左侧边栏 */
+
+            /* ========== 终极修复：当前用户行 ========== */
+            /* 1. 外层容器和所有包裹层全部透明，去除一切多余背景 */
             #current-user-row,
             #current-user-row .block,
             #current-user-row .wrap,
@@ -885,14 +887,31 @@ if __name__ == "__main__":
                 box-shadow: none !important;
                 padding: 0 !important;
                 margin: 0 !important;
-                min-width: 0 !important;
             }
-            /* 让当前用户的文字和下拉框完美对齐，去掉多余间隙 */
+
+            /* 2. 只让内部真正的下拉框显示白色背景 */
+            #current-user-row .block > div,
+            #current-user-row .block input,
+            #current-user-row .block .wrap > div {
+                background-color: #ffffff !important;
+                border: 1px solid #e5e7eb !important;
+                border-radius: 6px !important;
+                box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+            }
+
+            /* 3. 将“当前用户”和下拉框的间距缩小到 4px（紧紧贴合） */
             #current-user-row {
                 display: flex !important;
                 align-items: center !important;
-                gap: 0px !important;
+                gap: 4px !important;
                 margin-bottom: 15px !important;
+            }
+
+            /* 4. 清除“当前用户”文字自带的边距，防止它把下拉框推远 */
+            #current-user-row p, 
+            #current-user-row span {
+                margin: 0 !important;
+                padding: 0 !important;
             }
             /* 恢复下拉箭头 */
             #current-user-row .icon-container,
