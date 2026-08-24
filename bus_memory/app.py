@@ -227,16 +227,16 @@ with gr.Blocks(title="AI 智能体") as demo:
                                 interactive=False,
                                 visible=False
                             )
-                            # 当前用户与下拉菜单放在同一行（绝对不碰内部结构，安全完美）
+                            # 当前用户与下拉菜单放在同一行
                             with gr.Row(elem_id="current-user-row"):
-                                gr.Markdown("**当前用户：**", scale=0, min_width=0)
+                                gr.Markdown("**当前用户：**", scale=0, min_width=0, elem_id="user-label")
                                 user_switch_dropdown = gr.Dropdown(
                                     choices=["Alice Wang (产品部 - 产品经理)", "Bob Zhang (研发部 - 高级工程师)"],
                                     value="Alice Wang (产品部 - 产品经理)",
                                     interactive=True,
-                                    show_label=False,   # ✅ 核心：必须隐藏自带的标签，才能跟Markdown同行
+                                    show_label=False,
                                     scale=4,
-                                    min_width=360
+                                    min_width=320
                                 )
                             
                             # 项目 + 按钮与内联创建区
@@ -840,24 +840,26 @@ if __name__ == "__main__":
                 margin: 0 !important;
                 padding: 0 !important;
             }
-            /* 当前用户行：只负责横向排列，不干扰下拉框宽度 */
+            /* 强制当前用户行：同一水平线排列，间隙为0 */
             #current-user-row {
                 display: flex !important;
+                flex-direction: row !important;      /* 强制横向排布 */
+                flex-wrap: nowrap !important;        /* 禁止换行（核心！） */
                 align-items: center !important;
-                gap: 8px !important;
+                gap: 0px !important;                 /* 完全贴合，没有空隙 */
                 margin-bottom: 15px !important;
             }
-            /* 强制“当前用户：”四个字不换行 */
-            #current-user-row p {
+            /* “当前用户”文字强制不换行、不压缩 */
+            #user-label {
                 white-space: nowrap !important;
                 flex-shrink: 0 !important;
+                margin-right: 8px !important;       /* 给文字和下拉框之间留一点点呼吸感 */
             }
-            /* 解决下拉框文字与右侧箭头重叠的问题 */
-            #current-user-row .block input,
-            #current-user-row .block .wrap,
-            #current-user-row .block .wrap input {
-                padding-right: 45px !important;   /* 给右侧箭头留出安全距离 */
-                text-overflow: ellipsis !important;
+            /* 下拉框本体：填满剩余空间，**绝不修改其内部结构** */
+            #current-user-row .block {
+                flex-grow: 1 !important;
+                width: auto !important;
+                min-width: 0 !important;
             }
             /* 确保箭头与文字有间距 */
             #current-user-row .block .icon-container {
