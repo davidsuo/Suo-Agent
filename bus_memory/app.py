@@ -227,14 +227,16 @@ with gr.Blocks(title="AI 智能体") as demo:
                                 interactive=False,
                                 visible=False
                             )
-                            # 当前用户下拉菜单（去掉标签文字，让下拉框直接占满侧边栏宽度）
-                            user_switch_dropdown = gr.Dropdown(
-                                choices=["Alice Wang (产品部 - 产品经理)", "Bob Zhang (研发部 - 高级工程师)"],
-                                value="Alice Wang (产品部 - 产品经理)",
-                                interactive=True,
-                                label="当前用户：",
-                                scale=1
-                            )
+                            # 当前用户与下拉菜单放在同一行
+                            with gr.Row(elem_id="current-user-row"):
+                                gr.Markdown("**当前用户：**", scale=0, min_width=0)
+                                user_switch_dropdown = gr.Dropdown(
+                                    choices=["Alice Wang (产品部 - 产品经理)", "Bob Zhang (研发部 - 高级工程师)"],
+                                    value="Alice Wang (产品部 - 产品经理)",
+                                    interactive=True,
+                                    show_label=False,  # ✅ 关键：隐藏默认 label，防止换行
+                                    scale=1
+                                )
                             
                             # 项目 + 按钮与内联创建区
                             add_project_btn = gr.Button("项目 +", elem_id="add-project-btn", scale=0, visible=True)
@@ -834,6 +836,18 @@ if __name__ == "__main__":
             }
             /* 让整个UI贴合顶部，去除居中导致的下移 */
             body, .gradio-container {
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            /* 当前用户行：强制同一行，左右对齐 */
+            #current-user-row {
+                display: flex !important;
+                align-items: center !important;
+                gap: 8px !important;
+                margin-bottom: 15px !important;
+            }
+            /* 清除“当前用户”文字自带的边距 */
+            #current-user-row p, #current-user-row span {
                 margin: 0 !important;
                 padding: 0 !important;
             }
