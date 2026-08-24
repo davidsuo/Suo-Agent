@@ -236,9 +236,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     choices=["Alice Wang (产品部 - 产品经理)", "Bob Zhang (研发部 - 高级工程师)"],
                                     value="Alice Wang (产品部 - 产品经理)",
                                     interactive=True,
-                                    show_label=False,
-                                    scale=4,
-                                    min_width=200
+                                    show_label=False
                                 )
                             
                             # 项目 + 按钮与内联创建区
@@ -874,31 +872,19 @@ if __name__ == "__main__":
                 border-radius: 12px !important;
                 box-shadow: 0 10px 30px rgba(0,0,0,0.2) !important;
             }
-            /* 强制当前用户下拉框不换行，宽度撑开 */
+            /* 只去掉外层“大底框”，绝对不破坏内部下拉菜单 */
             #current-user-row .block,
-            #current-user-row .wrap,
-            #current-user-row .block input,
-            #current-user-row .block select,
-            #current-user-row .block .wrap {
-                white-space: nowrap !important;  /* 强制长文字不换行 */
-                min-width: 220px !important;     /* 给个物理最小宽度，防止被挤压 */
-                width: auto !important;          /* 让宽度自适应内容长度 */
+            #current-user-row .wrap {
+                background: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
             }
-
-            /* ========== 只保留内部真正的白色下拉按钮 ========== */
+            /* 内部下拉框本身保留白底样式（让它看起来像个小按钮） */
             #current-user-row .block > div,
-            #current-user-row .block span,
-            #current-user-row .block .wrap,
-            #current-user-row .block [data-testid="dropdown"] {
-                background-color: #ffffff !important;
+            #current-user-row .block input {
+                background: #ffffff !important;
                 border: 1px solid #e5e7eb !important;
                 border-radius: 6px !important;
-                box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
-                width: 100% !important;
-                min-width: 0 !important;
-                padding: 6px 10px !important;
-                margin: 0 !important;
-                display: block !important;
             }
             /* 恢复下拉箭头 */
             #current-user-row .icon-container,
