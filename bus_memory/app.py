@@ -235,10 +235,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                                 user_switch_dropdown = gr.Dropdown(
                                     choices=["Alice Wang (产品部 - 产品经理)", "Bob Zhang (研发部 - 高级工程师)"],
                                     value="Alice Wang (产品部 - 产品经理)",
-                                    interactive=True,
-                                    show_label=False,
-                                    scale=1,        # 让它自动填满剩余宽度
-                                    min_width=0     # 解除最小宽度限制，达到自适应
+                                    interactive=True
                                 )
                             
                             # 项目 + 按钮与内联创建区
