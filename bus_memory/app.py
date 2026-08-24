@@ -849,6 +849,15 @@ if __name__ == "__main__":
                 gap: 0px !important;                 /* 完全贴合，没有空隙 */
                 margin-bottom: 15px !important;
             }
+            
+            /* 缩短下拉框文字与右侧箭头的间距 */
+            #current-user-row .block input,
+            #current-user-row .block .wrap,
+            #current-user-row .block .wrap input {
+                padding-right: 20px !important;   /* 将45px改为20px，让文字贴近箭头 */
+                text-overflow: ellipsis !important;
+            }
+            
             /* “当前用户”文字：强制不换行，且不缩小（核心修复） */
             #user-label {
                 white-space: nowrap !important;   /* 强制不换行 */
