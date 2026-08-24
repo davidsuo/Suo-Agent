@@ -204,7 +204,8 @@ with gr.Blocks(title="AI 智能体") as demo:
                     <span style="font-size:14px; color:#888;">(AI智能体系统+记忆+知识库+工具)</span>
                 </div>
             """)
-
+            # ✅ 将退出登录放在这里，作为顶级锚点
+            logout_btn = gr.Button("退出登录", elem_id="top-logout-btn", scale=0, min_width=0)
         # ================= 顶部导航 + 退出登录（第二行） =================
         with gr.Row(elem_id="top-nav-container"):
             # 主导航
@@ -327,9 +328,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                     logs_output = gr.Textbox(label="日志内容", lines=20, interactive=False)
                     refresh_logs_btn = gr.Button("刷新日志")
 
-        # 退出登录（右侧固定宽度列）
-        with gr.Column(scale=1, min_width=150, elem_id="logout-col"):
-                logout_btn = gr.Button("退出登录", elem_id="top-logout-btn", scale=0, min_width=0)
+
 
         # 隐藏的用户状态组件（供后端 outputs 使用，不显示在界面上）
         user_display = gr.Markdown("", visible=False)
@@ -775,43 +774,29 @@ if __name__ == "__main__":
                 border-bottom: 1px solid #e5e7eb !important;
             }
 
-            /* 顶部导航：设定为相对定位（作为按钮的锚点） */
+            /* 顶部导航（保持干净，不掺按钮） */
             #top-nav-container {
-                position: relative !important;
                 background: #ffffff !important;
-                border-bottom: 1px solid #cbd5e1 !important; /* 边框加深一点 */
-                padding: 0 !important;
-                align-items: flex-start !important;
+                border-bottom: 1px solid #cbd5e1 !important;
             }
-
-            /* 解决退出登录位置：绝对定位，固定在右上角！ */
+            
+            /* 终极必杀：退出登录按钮固定悬浮在浏览器右上角！ */
             #top-logout-btn {
-                position: absolute !important;
-                top: 10px !important;
+                position: fixed !important;
+                top: 15px !important;
                 right: 20px !important;
-                z-index: 1000 !important;
+                z-index: 99999 !important;
                 background-color: #1E4D8C !important;
                 color: white !important;
-                padding: 6px 18px !important;
-                border-radius: 6px !important;
+                padding: 8px 20px !important;
+                border-radius: 8px !important;
                 white-space: nowrap !important;
-                box-shadow: 0 2px 6px rgba(30, 77, 140, 0.3) !important;
+                font-weight: bold !important;
+                box-shadow: 0 4px 10px rgba(30, 77, 140, 0.3) !important;
             }
             #top-logout-btn:hover {
                 background-color: #16386B !important;
-            }
-
-            /* 左右侧边栏：边框线颜色稍微加深，区分边界 */
-            #project-sidebar {
-                border: 1px solid #cbd5e1 !important;
-                border-radius: 12px !important;
-                background-color: #ffffff !important;
-            }
-            #chat-main-area {
-                border: 1px solid #cbd5e1 !important;
-                border-radius: 12px !important;
-                background-color: #ffffff !important;
-                margin-left: 10px !important;
+                transform: translateY(-1px) !important;
             }
 
             /* ✅ 当前用户标签与下拉框同行 */
