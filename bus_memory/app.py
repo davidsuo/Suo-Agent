@@ -236,7 +236,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     interactive=True,
                                     show_label=False,
                                     scale=4,        # ✅ 核心：占4份权重，撑开宽度
-                                    min_width=280   # ✅ 核心：确保有足够物理宽度，防止被挤扁
+                                    min_width=360  # ✅ 调大最小宽度，彻底消除内部挤压
                                 )
                             
                             # 项目 + 按钮与内联创建区
@@ -851,6 +851,17 @@ if __name__ == "__main__":
             #current-user-row p {
                 white-space: nowrap !important;
                 flex-shrink: 0 !important;
+            }
+            /* 解决下拉框文字与右侧箭头重叠的问题 */
+            #current-user-row .block input,
+            #current-user-row .block .wrap,
+            #current-user-row .block .wrap input {
+                padding-right: 35px !important;   /* 给右侧箭头留出安全距离 */
+                text-overflow: ellipsis !important;
+            }
+            /* 确保箭头与文字有间距 */
+            #current-user-row .block .icon-container {
+                margin-left: 8px !important;
             }
         """
     )
