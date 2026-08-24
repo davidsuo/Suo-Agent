@@ -854,26 +854,30 @@ if __name__ == "__main__":
                 white-space: nowrap !important;
                 flex-shrink: 0 !important;
             
-            /* ========== 底部输入卡片（彻底消除缝隙） ========== */
+            /* ========== 底部输入卡片（终极样式） ========== */
             #input-card {
-                background: #ffffff !important;
-                border-radius: 12px !important;
+                background: #ffffff !important;      /* 浅白色底 */
+                border-radius: 12px !important;      /* 圆角 */
                 border: 1px solid #e5e7eb !important;
                 box-shadow: 0 2px 6px rgba(0,0,0,0.04) !important;
                 padding: 12px !important;
-                margin-top: 0px !important;       /* ✅ 消除缝隙：上边距设为零 */
+                
+                /* 彻底消除与聊天框的缝隙 */
+                margin: 0 !important;
+                margin-top: 0px !important;
+                gap: 8px !important;                 /* 组件之间保留一点间隔 */
             }
-
-            /* 聊天框底部边距也强制设为零，消除大缝隙！ */
-            #chat-main-area .block {
+            
+            /* 聊天框组件：清除底部残余边距，缝隙彻底消失 */
+            #chat-main-area .block, 
+            #chat-main-area .gr-box {
                 margin-bottom: 0px !important;
+                padding-bottom: 0px !important;
             }
 
-            /* 第一行按钮：强制横向排列，文字自适应内容！ */
+            /* 第一行按钮区：横排，自适应长度，间隔自然 */
             #btn-row {
                 display: flex !important;
-                flex-direction: row !important;
-                flex-wrap: nowrap !important;
                 align-items: center !important;
                 gap: 8px !important;
                 margin-bottom: 5px !important;
@@ -881,32 +885,26 @@ if __name__ == "__main__":
             #btn-row button {
                 white-space: nowrap !important;
                 min-width: auto !important;
-                width: auto !important;
-                background: transparent !important;
-                border: none !important;
-                box-shadow: none !important;
             }
 
-            /* 输入框和发送按钮行：强制锁定在同一行！ */
+            /* 第二行：输入框与发送按钮强对齐（解决偏下） */
             #input-row-final {
                 display: flex !important;
-                align-items: center !important;
+                align-items: center !important;   /* 核心：完美垂直居中 */
                 gap: 8px !important;
                 margin: 0 !important;
                 padding: 0 !important;
             }
-            /* 输入框本身占据剩余宽度 */
+            /* 让输入框自身变成浅白色圆角容器 */
             #input-row-final .block {
                 flex-grow: 1 !important;
                 margin: 0 !important;
+                background-color: #f9fafb !important;
+                border-radius: 8px !important;
+                border: 1px solid #f3f4f6 !important;
             }
-            #input-row-final input {
-                border: none !important;
-                box-shadow: none !important;
-                background: transparent !important;
-            }
-            
-            /* 发送按钮：完美的蓝色圆球，稳稳坐在输入框最右侧，绝不跑出去！ */
+
+            /* 发送按钮：完美的40x40圆形，箭头朝上，稳稳居右 */
             #send-btn {
                 width: 40px !important;
                 height: 40px !important;
