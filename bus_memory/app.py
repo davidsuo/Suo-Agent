@@ -229,14 +229,16 @@ with gr.Blocks(title="AI 智能体") as demo:
                             )
                             # 当前用户下拉菜单
                             with gr.Row(elem_id="current-user-row"):
-                                gr.Markdown("**当前用户：**", scale=0, min_width=0)
+                                # ✅ 用 HTML 替换 Markdown，彻底去掉 Gradio 自带的空隙
+                                gr.HTML("<span style='font-weight: bold; color: #333; margin-right: 2px;'>当前用户：</span>", scale=0, min_width=0)
+                            
                                 user_switch_dropdown = gr.Dropdown(
                                     choices=["Alice Wang (产品部 - 产品经理)", "Bob Zhang (研发部 - 高级工程师)"],
                                     value="Alice Wang (产品部 - 产品经理)",
                                     interactive=True,
                                     show_label=False,
-                                    scale=4,          # ✅ 修改：重新让它占据足够宽度
-                                    min_width=200     # ✅ 修改：给一个物理最小宽度，防止被压缩
+                                    scale=4,
+                                    min_width=200
                                 )
                             
                             # 项目 + 按钮与内联创建区
@@ -780,23 +782,22 @@ if __name__ == "__main__":
                 border-bottom: 1px solid #e5e7eb !important;
             }
 
-            /* 当前用户行：允许下拉框自然生长，不换行 */
+            /* 当前用户行：强制零间隙，无任何多余边距 */
             #current-user-row {
                 display: flex !important;
                 align-items: center !important;
-                gap: 6px !important;
-                flex-wrap: nowrap !important;   /* 禁止换行 */
+                gap: 0px !important;         /* ✅ 彻底消除间隙 */
                 margin-bottom: 15px !important;
+                padding: 0 !important;
+            }
+            /* 清除 HTML 和下拉框内部的所有默认边距 */
+            #current-user-row > * {
+                margin: 0 !important;
+                padding: 0 !important;
             }
             #current-user-row p, #current-user-row span {
                 margin: 0 !important;
                 padding: 0 !important;
-            }
-            /* 下拉框：允许根据内容自适应宽度，不被压缩 */
-            #current-user-row .block {
-                width: auto !important;
-                min-width: 200px !important;    /* 配合最小物理宽度 */
-                flex-grow: 1 !important;        /* 允许它自动扩展 */
             }
 
             /* 退出登录按钮：强制不换行、宽度自适应文字长度 */
