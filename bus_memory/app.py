@@ -849,11 +849,14 @@ if __name__ == "__main__":
                 gap: 0px !important;                 /* 完全贴合，没有空隙 */
                 margin-bottom: 15px !important;
             }
-            /* “当前用户”文字强制不换行、不压缩 */
+            /* “当前用户”文字：强制不换行，且不缩小（核心修复） */
             #user-label {
-                white-space: nowrap !important;
-                flex-shrink: 0 !important;
-                margin-right: 8px !important;       /* 给文字和下拉框之间留一点点呼吸感 */
+                white-space: nowrap !important;   /* 强制不换行 */
+                flex-shrink: 0 !important;        /* 绝对不缩小 */
+                flex-grow: 0 !important;          /* 不需要拉伸 */
+                font-size: 14px !important;       /* 稍微调小一点，留出更多空间 */
+                color: #333 !important;
+                margin-right: 5px !important;     /* 和下拉框保持一点距离 */
             }
             /* 下拉框本体：填满剩余空间，**绝不修改其内部结构** */
             #current-user-row .block {
