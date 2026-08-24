@@ -229,8 +229,8 @@ with gr.Blocks(title="AI 智能体") as demo:
                             )
                             # 当前用户下拉菜单
                             with gr.Row(elem_id="current-user-row"):
-                                # ✅ 用 HTML 替换 Markdown，彻底去掉 Gradio 自带的空隙
-                                gr.HTML("<span style='font-weight: bold; color: #333; margin-right: 2px;'>当前用户：</span>", scale=0, min_width=0)
+                                # ✅ 加上 white-space: nowrap，强制不换行
+                                gr.HTML("<span style='font-weight: bold; color: #333; margin-right: 2px; white-space: nowrap;'>当前用户：</span>", scale=0, min_width=0)
                             
                                 user_switch_dropdown = gr.Dropdown(
                                     choices=["Alice Wang (产品部 - 产品经理)", "Bob Zhang (研发部 - 高级工程师)"],
@@ -798,6 +798,7 @@ if __name__ == "__main__":
             #current-user-row p, #current-user-row span {
                 margin: 0 !important;
                 padding: 0 !important;
+                white-space: nowrap !important;
             }
 
             /* 退出登录按钮：强制不换行、宽度自适应文字长度 */
