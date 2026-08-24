@@ -856,7 +856,7 @@ if __name__ == "__main__":
             #current-user-row .block input,
             #current-user-row .block .wrap,
             #current-user-row .block .wrap input {
-                padding-right: 25px !important;   /* 给右侧箭头留出安全距离 */
+                padding-right: 45px !important;   /* 给右侧箭头留出安全距离 */
                 text-overflow: ellipsis !important;
             }
             /* 确保箭头与文字有间距 */
