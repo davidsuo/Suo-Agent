@@ -874,5 +874,26 @@ if __name__ == "__main__":
                 border-radius: 12px !important;
                 box-shadow: 0 10px 30px rgba(0,0,0,0.2) !important;
             }
+            /* ========== 去掉当前用户下拉框的白色背景底框 ========== */
+            #current-user-row .block,
+            #current-user-row .wrap,
+            #current-user-row label,
+            #current-user-row input,
+            #current-user-row select {
+                background: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
+            }
+            /* 去掉下拉框内部的默认阴影和内边距 */
+            #current-user-row div[data-testid="block"] {
+                border: none !important;
+                box-shadow: none !important;
+                background: transparent !important;
+            }
+            /* 隐藏默认的下拉箭头，让整个选择器更像一个纯文本按钮 */
+            #current-user-row .icon-container,
+            #current-user-row svg {
+                display: none !important;
+            }
         """
     )
