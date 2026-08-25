@@ -695,7 +695,47 @@ with gr.Blocks(title="AI 智能体") as demo:
         outputs=[logs_table]
     )
     clear_logs_btn.click(fn=clear_logs, inputs=[], outputs=[logs_table])
+ 
     
+    # ================= 用户管理逻辑（对应 users.db） =================
+    def load_users():
+        import sqlite3, os
+        try:
+            # ✅ 使用绝对路径，确保不连错数据库！
+            db_path = os.path.join(os.getcwd(), "users.db")
+            print(f"[日志] 正在连接数据库: {db_path}")
+            
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT username, display_name, department, position, role, tenant FROM users ORDER BY id ASC")
+            data = cursor.fetchall()
+            conn.close()
+            print(f"[日志] 成功加载了 {len(data)} 个用户")
+            return data
+        except Exception as e:
+            print(f"[日志] 加载用户出错: {e}")
+            return [["读取失败", str(e), "", "", "", ""]]
+
+    def create_user(username, pin, display_name, department, position, role):
+        import sqlite3, os
+        try:
+            db_path = os.path.join(os.getcwd(), "users.db")
+            print(f"[日志] 正在写入数据库: {db_path}")
+            
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO users (username, display_name, pin, department, position, role, tenant) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (username.strip().lower(), display_name, pin, department, position, role, username.strip().lower())
+            )
+            conn.commit()
+            conn.close()
+            return f"✅ 用户 {username} 创建成功！", load_users()
+        except Exception as e:
+            print(f"[日志] 创建用户出错: {e}")
+            return f"❌ 创建失败：{e}", load_users()
+            
     # 用户管理事件
     refresh_users_btn.click(fn=load_users, inputs=[], outputs=[users_table])
     create_user_btn.click(
@@ -703,6 +743,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         inputs=[new_username, new_pin, new_display_name, new_department, new_position, new_role],
         outputs=[create_user_msg, users_table]
     )
+   
 
     # ================= 项目创建与侧边栏事件绑定 =================
     # 1. 点击“项目 +”按钮：隐藏“+”按钮，显示创建输入行
@@ -878,46 +919,6 @@ with gr.Blocks(title="AI 智能体") as demo:
         inputs=[],
         outputs=[health_summary_md, health_tool_table]
     )
-    
-
-    # ================= 用户管理逻辑（对应 users.db） =================
-    def load_users():
-        import sqlite3, os
-        try:
-            # ✅ 使用绝对路径，确保不连错数据库！
-            db_path = os.path.join(os.getcwd(), "users.db")
-            print(f"[日志] 正在连接数据库: {db_path}")
-            
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute("SELECT username, display_name, department, position, role, tenant FROM users ORDER BY id ASC")
-            data = cursor.fetchall()
-            conn.close()
-            print(f"[日志] 成功加载了 {len(data)} 个用户")
-            return data
-        except Exception as e:
-            print(f"[日志] 加载用户出错: {e}")
-            return [["读取失败", str(e), "", "", "", ""]]
-
-    def create_user(username, pin, display_name, department, position, role):
-        import sqlite3, os
-        try:
-            db_path = os.path.join(os.getcwd(), "users.db")
-            print(f"[日志] 正在写入数据库: {db_path}")
-            
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO users (username, display_name, pin, department, position, role, tenant) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (username.strip().lower(), display_name, pin, department, position, role, username.strip().lower())
-            )
-            conn.commit()
-            conn.close()
-            return f"✅ 用户 {username} 创建成功！", load_users()
-        except Exception as e:
-            print(f"[日志] 创建用户出错: {e}")
-            return f"❌ 创建失败：{e}", load_users()
 
 
 # ================= 启动入口 =================
