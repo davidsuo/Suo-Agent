@@ -175,6 +175,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     feedback_up = gr.State("up")
     feedback_down = gr.State("down")
     pending_file = gr.State(None)
+    current_project = gr.State("")
     project_names = gr.State([])
 
     # ---------- 登录界面 ----------
