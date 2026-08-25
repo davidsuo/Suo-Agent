@@ -647,7 +647,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             new_df = pd.concat([current_projects, pd.DataFrame([{"项目名称": project_name}])], ignore_index=True)
         
         # 返回：更新列表、清空输入框、恢复按钮、隐藏输入行、自动把新项目设为当前项目
-        return new_df, "", gr.update(visible=True), gr.update(visible=False), project_nam
+        return new_df, "", gr.update(visible=True), gr.update(visible=False), project_name
 
     # 3. 点击“创建”按钮：执行创建逻辑
     create_project_btn.click(
