@@ -346,13 +346,14 @@ with gr.Blocks(title="AI 智能体") as demo:
                     with gr.Row():
                         refresh_users_btn = gr.Button("🔄 刷新用户列表")
                     
-                    # 用户列表（对应 auth.py 的表结构）
                     users_table = gr.Dataframe(
                         headers=["用户名", "姓名", "部门", "职位", "角色", "租户"],
                         interactive=False
                     )
                     
-                    gr.Markdown("### ➕ 新增用户")
+                    # 将之前的 markdown 改为普通说明（不再需要点击）
+                    gr.Markdown("### 直接在下方填写信息，点击“创建用户”即可新增")
+                    
                     with gr.Row():
                         new_username = gr.Textbox(label="用户名 (小写)", scale=1)
                         new_pin = gr.Textbox(label="密码", type="password", scale=1)
@@ -695,6 +696,13 @@ with gr.Blocks(title="AI 智能体") as demo:
     )
     clear_logs_btn.click(fn=clear_logs, inputs=[], outputs=[logs_table])
     
+    # 用户管理事件
+    refresh_users_btn.click(fn=load_users, inputs=[], outputs=[users_table])
+    create_user_btn.click(
+        fn=create_user,
+        inputs=[new_username, new_pin, new_display_name, new_department, new_position, new_role],
+        outputs=[create_user_msg, users_table]
+    )
 
     # ================= 项目创建与侧边栏事件绑定 =================
     # 1. 点击“项目 +”按钮：隐藏“+”按钮，显示创建输入行
@@ -874,24 +882,31 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     # ================= 用户管理逻辑（对应 users.db） =================
     def load_users():
-        import sqlite3
+        import sqlite3, os
         try:
-            # 由于 auth.py 使用的是 users.db，这里必须保持一致
-            conn = sqlite3.connect("users.db")
+            # ✅ 使用绝对路径，确保不连错数据库！
+            db_path = os.path.join(os.getcwd(), "users.db")
+            print(f"[日志] 正在连接数据库: {db_path}")
+            
+            conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
             cursor.execute("SELECT username, display_name, department, position, role, tenant FROM users ORDER BY id ASC")
             data = cursor.fetchall()
             conn.close()
+            print(f"[日志] 成功加载了 {len(data)} 个用户")
             return data
         except Exception as e:
+            print(f"[日志] 加载用户出错: {e}")
             return [["读取失败", str(e), "", "", "", ""]]
 
     def create_user(username, pin, display_name, department, position, role):
-        import sqlite3
+        import sqlite3, os
         try:
-            conn = sqlite3.connect("users.db")
+            db_path = os.path.join(os.getcwd(), "users.db")
+            print(f"[日志] 正在写入数据库: {db_path}")
+            
+            conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
-            # 与 auth.py 的字段完全一致
             cursor.execute(
                 "INSERT INTO users (username, display_name, pin, department, position, role, tenant) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -901,6 +916,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             conn.close()
             return f"✅ 用户 {username} 创建成功！", load_users()
         except Exception as e:
+            print(f"[日志] 创建用户出错: {e}")
             return f"❌ 创建失败：{e}", load_users()
 
 
