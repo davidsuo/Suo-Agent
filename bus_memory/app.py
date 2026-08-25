@@ -175,7 +175,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     feedback_up = gr.State("up")
     feedback_down = gr.State("down")
     pending_file = gr.State(None)
-    current_project = gr.State("默认项目")
+    project_names = gr.State([])
 
     # ---------- 登录界面 ----------
     # 用 Row 和 CSS 包裹，实现水平居中、垂直居中、且宽度自适应的效果
@@ -636,40 +636,42 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     # 3. 创建项目逻辑函数
     # 创建项目逻辑（更新列表，并将新项目设为当前项目）
-    def create_project(project_name, current_choices, current_project):
+    def create_project(project_name, project_names, current_project):
         if not project_name or not project_name.strip():
-            return current_choices, "", gr.update(visible=True), gr.update(visible=False), current_project
-
+            return (gr.update(), gr.update(), gr.update(visible=True), gr.update(visible=False), current_project, project_names)
+        
         project_name = project_name.strip()
-        choices = list(current_choices) if current_choices else ["默认项目"]
-
-        if project_name not in choices:
-            choices.append(project_name)
-
-        # 返回：更新项目列表、清空输入框、恢复按钮、隐藏输入行、自动将新项目设为当前
-        return choices, "", gr.update(visible=True), gr.update(visible=False), project_name
+        
+        # 防止重复项目名
+        if project_name not in project_names:
+            project_names = project_names + [project_name]
+            
+        # 创建后，自动选中新项目
+        return (
+            gr.update(choices=project_names, value=project_name), # 更新 Radio 并强制选中
+            gr.update(),                                          # 清空输入框
+            gr.update(visible=True),                               # 显示“项目+”按钮
+            gr.update(visible=False),                              # 隐藏创建输入行
+            project_name,                                          # 自动设为当前项目
+            project_names                                          # 更新项目名列表
+        )
 
     # 3. 点击“创建”按钮：执行创建逻辑
+    # 绑定“创建”按钮
     create_project_btn.click(
         fn=create_project,
-        inputs=[project_input, project_list, current_project],
-        outputs=[project_list, project_input, add_project_btn, project_creation_row, current_project]
+        inputs=[project_input, project_names, current_project],
+        outputs=[project_list, project_input, add_project_btn, project_creation_row, current_project, project_names]
     )
-    
+
+    # 监听 Radio 切换项目
     def switch_project(new_project, user):
         if not user:
             return [], "", new_project
-
-        # 保持与 unified_handler 完全一致的 session_id 生成规则
-        session_id = user.get("username", "default") + "_" + (new_project or "默认项目")
-        
-        # 从记忆中获取该项目的真实历史记录
+        session_id = user.get("username", "default") + "_" + (new_project or "")
         new_history = memory.get_history(session_id)
-        
-        # 更新聊天窗口历史、清空输入框、更新当前项目状态
         return new_history, "", new_project
 
-    # 监听单选框的切换事件
     project_list.change(
         fn=switch_project,
         inputs=[project_list, user_state],
