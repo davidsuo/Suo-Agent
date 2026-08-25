@@ -339,6 +339,31 @@ with gr.Blocks(title="AI 智能体") as demo:
                         wrap=True
                     )
 
+                # ================= 用户管理 Tab（仅管理员可见） =================
+                with gr.Tab("用户管理", visible=False) as user_management_tab:
+                    gr.Markdown("## 👥 系统用户管理")
+                    
+                    with gr.Row():
+                        refresh_users_btn = gr.Button("🔄 刷新用户列表")
+                    
+                    # 用户列表（对应 auth.py 的表结构）
+                    users_table = gr.Dataframe(
+                        headers=["用户名", "姓名", "部门", "职位", "角色", "租户"],
+                        interactive=False
+                    )
+                    
+                    gr.Markdown("### ➕ 新增用户")
+                    with gr.Row():
+                        new_username = gr.Textbox(label="用户名 (小写)", scale=1)
+                        new_pin = gr.Textbox(label="密码", type="password", scale=1)
+                        new_display_name = gr.Textbox(label="姓名", scale=1)
+                        new_department = gr.Textbox(label="部门", scale=1)
+                        new_position = gr.Textbox(label="职位", scale=1)
+                        new_role = gr.Dropdown(choices=["developer", "manager", "admin", "viewer"], value="viewer", label="角色", scale=1)
+                    
+                    with gr.Row():
+                        create_user_btn = gr.Button("创建用户", variant="primary")
+                    create_user_msg = gr.Markdown("")
 
 
         # 隐藏的用户状态组件（供后端 outputs 使用，不显示在界面上）
@@ -464,14 +489,15 @@ with gr.Blocks(title="AI 智能体") as demo:
                 "❌ 用户名或 PIN 码错误",
                 "",
                 gr.update(visible=False),
-                "**当前用户：** 未登录"
+                "**当前用户：** 未登录",
+                gr.update(visible=(user.get("role") == "admin"))  # 控制用户管理Tab
             )
 
     # 1. 登录事件绑定（同步 URL 和 sessionStorage）
     login_btn.click(
         fn=login,
         inputs=[username_input, pin_input],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab, current_user_display],
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab, current_user_display, user_management_tab],
         # ✅ 核心：登录成功后，将用户名存入 sessionStorage，并动态修改 URL
         js="(username, pin) => { sessionStorage.setItem('suo_user', username); window.history.replaceState({}, '', '/?user=' + username); return [username, pin]; }",
         show_progress="hidden"
@@ -495,7 +521,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     logout_btn.click(
         fn=logout,
         inputs=[],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab, current_user_display],
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab, current_user_display, user_management_tab],
         # ✅ 核心：退出时清空 sessionStorage，并将地址栏恢复为根路径
         js="() => { sessionStorage.removeItem('suo_user'); window.history.replaceState({}, '', '/'); return true; }",
         show_progress="hidden"
@@ -520,7 +546,8 @@ with gr.Blocks(title="AI 智能体") as demo:
                     "",
                     f"**当前用户：{user_full}**",
                     gr.update(visible=(user.get("role") == "admin")),
-                    f"当前用户：{user_full}"
+                    f"当前用户：{user_full}",
+                    gr.update(visible=(user.get("role") == "admin"))  # 控制用户管理Tab
                 )
         return (
             None,
@@ -538,7 +565,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     demo.load(
         fn=load_history,
         inputs=[session_user_input],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab, current_user_display],
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab, current_user_display, user_management_tab],
         # ✅ 核心：优先读取 URL 参数，其次读取 sessionStorage
         js="() => { const urlParams = new URLSearchParams(window.location.search); const user = urlParams.get('user') || sessionStorage.getItem('suo_user') || ''; if (user) sessionStorage.setItem('suo_user', user); return user; }",
         show_progress="hidden"
@@ -840,6 +867,38 @@ with gr.Blocks(title="AI 智能体") as demo:
         inputs=[],
         outputs=[health_summary_md, health_tool_table]
     )
+    
+
+    # ================= 用户管理逻辑（对应 users.db） =================
+    def load_users():
+        import sqlite3
+        try:
+            # 由于 auth.py 使用的是 users.db，这里必须保持一致
+            conn = sqlite3.connect("users.db")
+            cursor = conn.cursor()
+            cursor.execute("SELECT username, display_name, department, position, role, tenant FROM users ORDER BY id ASC")
+            data = cursor.fetchall()
+            conn.close()
+            return data
+        except Exception as e:
+            return [["读取失败", str(e), "", "", "", ""]]
+
+    def create_user(username, pin, display_name, department, position, role):
+        import sqlite3
+        try:
+            conn = sqlite3.connect("users.db")
+            cursor = conn.cursor()
+            # 与 auth.py 的字段完全一致
+            cursor.execute(
+                "INSERT INTO users (username, display_name, pin, department, position, role, tenant) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (username.strip().lower(), display_name, pin, department, position, role, username.strip().lower())
+            )
+            conn.commit()
+            conn.close()
+            return f"✅ 用户 {username} 创建成功！", load_users()
+        except Exception as e:
+            return f"❌ 创建失败：{e}", load_users()
 
 
 # ================= 启动入口 =================
