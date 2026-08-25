@@ -346,8 +346,15 @@ with gr.Blocks(title="AI 智能体") as demo:
         
 
     # ================= 日志读取与清空逻辑 =================
-    def load_logs():
+    # 日志读取（支持用户隔离）
+    def load_logs(user):
         import os
+        if not user:
+            return []
+        
+        # 获取当前登录用户名
+        current_username = user.get("username", "")
+        
         if not os.path.exists("plan_log.json"):
             return []
         
@@ -357,8 +364,21 @@ with gr.Blocks(title="AI 智能体") as demo:
                 try:
                     entry = json.loads(line.strip())
                     
-                    # 时间转换逻辑保持不变
+                    # 提取原始数据
                     timestamp = entry.get('timestamp', '未知时间')
+                    session_id = entry.get('session_id', '')
+                    username = entry.get('username', 'unknown')
+                    
+                    # 从 session_id（如 alice_产品部）中提取真实用户名
+                    real_username = session_id.split('_')[0] if '_' in session_id else session_id
+                    if username == 'unknown' and real_username:
+                        username = real_username
+                        
+                    # ✅ 核心修复：如果这个日志不是当前用户的，直接跳过
+                    if username != current_username:
+                        continue
+                    
+                    # 时间转换逻辑
                     try:
                         from datetime import datetime, timedelta
                         dt = datetime.fromisoformat(timestamp)
@@ -366,24 +386,10 @@ with gr.Blocks(title="AI 智能体") as demo:
                     except ValueError:
                         pass
                     
-                    # 提取原始数据
-                    session_id = entry.get('session_id', '')
-                    username = entry.get('username', 'unknown')
-                    role = entry.get('role', 'unknown')
-                    
-                    # 修复用户名
-                    if username == 'unknown' and session_id:
-                        username = session_id.split('_')[0] if '_' in session_id else session_id
-                        role = '企业用户' if username != 'admin' else '系统管理员'
-                    
-                    # 获取关键信息
+                    role = '企业用户' if username != 'admin' else '系统管理员'
                     mode = entry.get('mode', 'regular')
                     tool = entry.get('tool', '')
                     user_query = entry.get('user_query', '')
-                    args = entry.get('args', {})  # 如果记录中有args，可以提取文件名等
-                    
-                    # 文件名提取兼容多种写法
-                    file_name = entry.get('file_name', '') or args.get('file_name', '')
                     
                     # 根据业务语义转换“动作”和“详情”
                     if mode == 'plan':
@@ -391,7 +397,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                         detail = user_query if user_query else "系统自动生成计划"
                     elif tool == 'file_upload':
                         action = "上传文件"
-                        detail = f"文件名：{file_name}" if file_name else (user_query if user_query else "上传文件")
+                        detail = entry.get('file_name', '') if entry.get('file_name') else (user_query if user_query else "上传文件")
                     elif tool == 'get_current_time':
                         action = "查询当前时间"
                         detail = user_query if user_query else "询问当前时间"
@@ -405,17 +411,11 @@ with gr.Blocks(title="AI 智能体") as demo:
                         action = "语音输入"
                         detail = user_query if user_query else "语音转文字"
                     else:
-                        # 其他工具或未知动作，作通用处理
                         action = tool if tool else "系统操作"
-                        detail = user_query if user_query else (entry.get('result', '')[:80] if entry.get('result') else "")
+                        detail = user_query if user_query else ""
                     
-                    # 状态转换（可保留或转中文）
                     status = entry.get('status', entry.get('final_status', 'success'))
-                    status_map = {
-                        'success': '成功',
-                        'failed': '失败',
-                        'error': '错误'
-                    }
+                    status_map = {'success': '成功', 'failed': '失败', 'error': '错误'}
                     status = status_map.get(status, status)
                     
                     logs_data.append([timestamp, username, role, action, detail, status])
@@ -467,10 +467,13 @@ with gr.Blocks(title="AI 智能体") as demo:
                 "**当前用户：** 未登录"
             )
 
+    # 1. 登录事件绑定（同步 URL 和 sessionStorage）
     login_btn.click(
         fn=login,
         inputs=[username_input, pin_input],
         outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab, current_user_display],
+        # ✅ 核心：登录成功后，将用户名存入 sessionStorage，并动态修改 URL
+        js="(username, pin) => { sessionStorage.setItem('suo_user', username); window.history.replaceState({}, '', '/?user=' + username); return [username, pin]; }",
         show_progress="hidden"
     )
 
@@ -488,10 +491,13 @@ with gr.Blocks(title="AI 智能体") as demo:
             "**当前用户：** 未登录"
         )
 
+    # 2. 退出登录事件绑定（清除状态）
     logout_btn.click(
         fn=logout,
         inputs=[],
         outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab, current_user_display],
+        # ✅ 核心：退出时清空 sessionStorage，并将地址栏恢复为根路径
+        js="() => { sessionStorage.removeItem('suo_user'); window.history.replaceState({}, '', '/'); return true; }",
         show_progress="hidden"
     )
 
@@ -528,11 +534,13 @@ with gr.Blocks(title="AI 智能体") as demo:
             "当前用户：未登录"
         )
 
+    # 3. 页面加载事件绑定（首次进入页面读取 URL 参数）
     demo.load(
         fn=load_history,
         inputs=[session_user_input],
         outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab, current_user_display],
-        js="() => sessionStorage.getItem('suo_user') || ''",
+        # ✅ 核心：优先读取 URL 参数，其次读取 sessionStorage
+        js="() => { const urlParams = new URLSearchParams(window.location.search); const user = urlParams.get('user') || sessionStorage.getItem('suo_user') || ''; if (user) sessionStorage.setItem('suo_user', user); return user; }",
         show_progress="hidden"
     )
 
@@ -650,7 +658,11 @@ with gr.Blocks(title="AI 智能体") as demo:
     ) 
     
     # 日志面板的刷新与清空
-    refresh_logs_btn.click(fn=load_logs, inputs=[], outputs=[logs_table])
+    refresh_logs_btn.click(
+        fn=load_logs,
+        inputs=[user_state],  # ✅ 核心：必须传入当前用户信息，才能实现隔离
+        outputs=[logs_table]
+    )
     clear_logs_btn.click(fn=clear_logs, inputs=[], outputs=[logs_table])
     
 
