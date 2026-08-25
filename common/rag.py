@@ -37,7 +37,7 @@ def index_document(file_path: str, session_id: str, tags: str = "") -> str:
     try:
         # 限制文件读取大小（最多读前50000字符，防止内存溢出）
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-            content = f.read(50000)
+            content = f.read()
         
         # 切片
         chunks = _chunk_text(content)

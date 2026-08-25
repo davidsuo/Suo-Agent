@@ -73,10 +73,10 @@ SYSTEM_PROMPT = """
 - 即使上一轮对话刚刚询问过时间，本轮也必须重新调用工具。
 - 在回答中必须逐字引用工具返回的结果，不得修改。
 
-【重要操作准则】
-1. 如果【上下文】或【企业知识库数据】提供了相关信息，请直接基于这些信息回答用户问题。
-2. 除非用户明确要求查询数据库，或者知识库中完全没有相关信息，否则绝对不要调用 query_database 工具。
-3. 严禁执行“查看有哪些表”这类探查性查询。
+【重要硬性规定】
+如果你已经在【企业知识库数据】中看到了相关的销售数据（比如CSV的日期、金额等），你必须直接基于这些数据回答用户的问题。
+严禁调用 query_database 工具去查询数据库，严禁去查看 SQLite 中有哪些表！
+只有当【企业知识库数据】中没有相关数据时，才允许调用 query_database。
 
 【参考文档】：
 {context}
@@ -256,7 +256,8 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
         # 获取知识库上下文（尝试当前项目，如果没搜到，会跨项目搜索）
         kb_context = search_knowledge(query, session_id)
         if kb_context:
-            context = f"【企业知识库数据】\n{kb_context}"
+            # 强制基于知识库回答，严禁查数据库
+            message = f"请严格基于以下【企业知识库数据】回答用户问题，不要查询数据库。\n\n【企业知识库数据】\n{kb_context}\n\n【用户问题】\n{message}"
             print(f"[RAG] 已注入知识库上下文: {kb_context[:50]}...")
     except Exception as e:
         print(f"[RAG] 知识库检索失败: {e}")
