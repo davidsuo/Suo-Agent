@@ -227,7 +227,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                             # 当前用户与下拉菜单放在同一行
                             with gr.Row(elem_id="current-user-row"):
                                 current_user_display = gr.Markdown(
-                                    value="当前用户：未登录",
+                                    value="**当前用户：** 未登录",
                                     elem_id="current-user-display"
                                 )
                             
@@ -344,7 +344,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             memory.set_current_user(user)
             hist = memory.get_history(session_id)
             tenants = get_available_tenants()
-            user_full = f"{user['display_name']} ({user['department']} - {user['position']})"
+            user_full = f"**当前用户：** {user['display_name']} ({user['department']} - {user['position']})"
             # ✅ 修正处：将 ... 替换为真实的 gr.Dropdown
             return (
                 user,
@@ -388,7 +388,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             "",
             "",
             gr.update(visible=False),
-            "当前用户：未登录"
+            "**当前用户：** 未登录"
         )
 
     logout_btn.click(
@@ -932,6 +932,24 @@ if __name__ == "__main__":
             }
 
             /* 发送按钮：完美的40x40圆形，箭头朝上 */
+            #send-btn {
+                width: 40px !important;
+                height: 40px !important;
+                border-radius: 50% !important;
+                background-color: #2563EB !important;
+                border: none !important;
+                color: white !important;
+                font-size: 20px !important;
+                padding: 0 !important;
+                min-width: 0 !important;
+                flex-shrink: 0 !important;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.2) !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                line-height: 1 !important;
+            }
+            /* 发送按钮：完美的蓝色圆形 + 白色箭头 */
             #send-btn {
                 width: 40px !important;
                 height: 40px !important;
