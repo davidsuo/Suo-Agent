@@ -357,19 +357,13 @@ with gr.Blocks(title="AI 智能体") as demo:
                 try:
                     entry = json.loads(line.strip())
                     
-                    # 提取原始时间戳
+                    # 时间转换逻辑保持不变
                     timestamp = entry.get('timestamp', '未知时间')
-                    
-                    # ✅ 核心修复：解析时间，加8小时转北京时间，并精确到秒
                     try:
-                        # 解析类似 2026-08-25T08:18:35.308398 的格式
+                        from datetime import datetime, timedelta
                         dt = datetime.fromisoformat(timestamp)
-                        # 加上8小时（UTC -> 北京时间）
-                        dt = dt + timedelta(hours=8)
-                        # 重新格式化为 YYYY-MM-DD HH:MM:SS
-                        timestamp = dt.strftime('%Y-%m-%d %H:%M:%S')
+                        timestamp = (dt + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S')
                     except ValueError:
-                        # 如果解析失败，保持原样，不崩溃
                         pass
                     
                     # 提取原始数据
@@ -377,22 +371,53 @@ with gr.Blocks(title="AI 智能体") as demo:
                     username = entry.get('username', 'unknown')
                     role = entry.get('role', 'unknown')
                     
-                    # 修复项目隔离的 session_id 提取真实用户名
+                    # 修复用户名
                     if username == 'unknown' and session_id:
                         username = session_id.split('_')[0] if '_' in session_id else session_id
                         role = '企业用户' if username != 'admin' else '系统管理员'
                     
-                    mode = entry.get('mode', '系统')
+                    # 获取关键信息
+                    mode = entry.get('mode', 'regular')
+                    tool = entry.get('tool', '')
                     user_query = entry.get('user_query', '')
+                    args = entry.get('args', {})  # 如果记录中有args，可以提取文件名等
                     
-                    if mode == "regular":
-                        action = entry.get('tool', '工具调用')
-                        detail = entry.get('result', user_query)[:80]
+                    # 文件名提取兼容多种写法
+                    file_name = entry.get('file_name', '') or args.get('file_name', '')
+                    
+                    # 根据业务语义转换“动作”和“详情”
+                    if mode == 'plan':
+                        action = "生成工作计划"
+                        detail = user_query if user_query else "系统自动生成计划"
+                    elif tool == 'file_upload':
+                        action = "上传文件"
+                        detail = f"文件名：{file_name}" if file_name else (user_query if user_query else "上传文件")
+                    elif tool == 'get_current_time':
+                        action = "查询当前时间"
+                        detail = user_query if user_query else "询问当前时间"
+                    elif tool == 'web_search':
+                        action = "联网搜索"
+                        detail = user_query if user_query else "搜索内容"
+                    elif tool == 'query_database':
+                        action = "查询数据库"
+                        detail = user_query if user_query else "查询数据"
+                    elif tool == 'speech_to_text':
+                        action = "语音输入"
+                        detail = user_query if user_query else "语音转文字"
                     else:
-                        action = "规划引擎"
-                        detail = f"生成 {len(entry.get('plan', []))} 个步骤"
+                        # 其他工具或未知动作，作通用处理
+                        action = tool if tool else "系统操作"
+                        detail = user_query if user_query else (entry.get('result', '')[:80] if entry.get('result') else "")
                     
-                    status = entry.get('status', entry.get('final_status', '成功'))
+                    # 状态转换（可保留或转中文）
+                    status = entry.get('status', entry.get('final_status', 'success'))
+                    status_map = {
+                        'success': '成功',
+                        'failed': '失败',
+                        'error': '错误'
+                    }
+                    status = status_map.get(status, status)
+                    
                     logs_data.append([timestamp, username, role, action, detail, status])
                 except json.JSONDecodeError:
                     continue
