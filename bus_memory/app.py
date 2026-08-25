@@ -6,6 +6,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 import gradio as gr
 import asyncio
 import json
+from datetime import datetime, timedelta
 import pandas as pd
 from common.main import chat_core, set_workers, simple_log_tool
 from common.memory import memory
@@ -22,6 +23,7 @@ from bus_memory.event_bus import EventBus
 from common.agents_memory import WorkerAgent, QueryWorker
 from common.auth import init_users_db, authenticate, get_user_info
 from common.workflows import add_workflow, list_workflows
+
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)) + "/..")
 
@@ -355,17 +357,29 @@ with gr.Blocks(title="AI 智能体") as demo:
                 try:
                     entry = json.loads(line.strip())
                     
-                    # 提取原始数据
+                    # 提取原始时间戳
                     timestamp = entry.get('timestamp', '未知时间')
+                    
+                    # ✅ 核心修复：解析时间，加8小时转北京时间，并精确到秒
+                    try:
+                        # 解析类似 2026-08-25T08:18:35.308398 的格式
+                        dt = datetime.fromisoformat(timestamp)
+                        # 加上8小时（UTC -> 北京时间）
+                        dt = dt + timedelta(hours=8)
+                        # 重新格式化为 YYYY-MM-DD HH:MM:SS
+                        timestamp = dt.strftime('%Y-%m-%d %H:%M:%S')
+                    except ValueError:
+                        # 如果解析失败，保持原样，不崩溃
+                        pass
+                    
+                    # 提取原始数据
                     session_id = entry.get('session_id', '')
                     username = entry.get('username', 'unknown')
                     role = entry.get('role', 'unknown')
                     
-                    # ✅ 核心修复：如果 username 是 unknown，说明是新版项目隔离的 session_id
-                    # 截取下划线之前的部分（例如 alice_产品部 提取出 alice）
+                    # 修复项目隔离的 session_id 提取真实用户名
                     if username == 'unknown' and session_id:
                         username = session_id.split('_')[0] if '_' in session_id else session_id
-                        # 为了界面干净，简单的显示角色；如果有动态需求可根据用户名查记忆
                         role = '企业用户' if username != 'admin' else '系统管理员'
                     
                     mode = entry.get('mode', '系统')
