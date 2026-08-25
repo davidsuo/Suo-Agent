@@ -346,21 +346,28 @@ with gr.Blocks(title="AI 智能体") as demo:
             hist = memory.get_history(session_id)
             tenants = get_available_tenants()
             user_full = f"{user['display_name']} ({user['department']} - {user['position']})"
-            return (user, gr.update(visible=False), gr.update(visible=True), hist if hist else [], 
-                gr.Dropdown(...), f"✅ 登录成功，欢迎 {user['display_name']}！", 
-                f"**当前用户：{user_full}**", 
+            # ✅ 修正处：将 ... 替换为真实的 gr.Dropdown
+            return (
+                user,
+                gr.update(visible=False),
+                gr.update(visible=True),
+                hist if hist else [],
+                gr.Dropdown(choices=tenants, value=user["tenant"]),  # ✅ 这是正确的逻辑
+                f"✅ 登录成功，欢迎 {user['display_name']}！",
+                f"**当前用户：{user_full}**",
                 gr.update(visible=(user.get("role") == "admin")),
-                f"当前用户：{user_full}")  # 第9项对应 current_user_display
+                f"当前用户：{user_full}"
+            )
         else:
             return (
-                None, 
-                gr.update(visible=True), 
-                gr.update(visible=False), 
-                [], 
-                gr.update(), 
-                "❌ 用户名或 PIN 码错误", 
-                "", 
-                gr.update(visible=False), 
+                None,
+                gr.update(visible=True),
+                gr.update(visible=False),
+                [],
+                gr.Dropdown(choices=get_available_tenants(), value="default"),
+                "❌ 用户名或 PIN 码错误",
+                "",
+                gr.update(visible=False),
                 "当前用户：未登录"
             )
 
