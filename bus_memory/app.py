@@ -252,7 +252,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                         # 右侧 3/4：聊天主区
                         with gr.Column(scale=3, elem_id="chat-main-area"):
                             # 聊天框
-                            chatbot = gr.Chatbot(label="对话", height=500, value=[])
+                            chatbot = gr.Chatbot(label="", height=500, value=[])
                             
                             # ========== 底部原生合并卡片 ==========
                             with gr.Group(elem_id="input-card"):
@@ -344,18 +344,20 @@ with gr.Blocks(title="AI 智能体") as demo:
             memory.set_current_user(user)
             hist = memory.get_history(session_id)
             tenants = get_available_tenants()
-            user_full = f"**当前用户：** {user['display_name']} ({user['department']} - {user['position']})"
-            # ✅ 修正处：将 ... 替换为真实的 gr.Dropdown
+            
+            # 1. user_full 只保留用户名字和部门，不包含前缀
+            user_full = f"{user['display_name']} ({user['department']} - {user['position']})"
+            
             return (
                 user,
                 gr.update(visible=False),
                 gr.update(visible=True),
                 hist if hist else [],
-                gr.Dropdown(choices=tenants, value=user["tenant"]),  # ✅ 这是正确的逻辑
+                gr.Dropdown(choices=tenants, value=user["tenant"]), 
                 f"✅ 登录成功，欢迎 {user['display_name']}！",
-                f"**当前用户：{user_full}**",
+                f"**当前用户：{user_full}**",  # 顶部 user_display 显示（带加粗标签，无重复）
                 gr.update(visible=(user.get("role") == "admin")),
-                f"当前用户：{user_full}"
+                f"**当前用户：** {user_full}"  # 左侧 current_user_display 显示（清晰、无重复）
             )
         else:
             return (
@@ -367,7 +369,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                 "❌ 用户名或 PIN 码错误",
                 "",
                 gr.update(visible=False),
-                "当前用户：未登录"
+                "**当前用户：** 未登录"
             )
 
     login_btn.click(
@@ -949,7 +951,7 @@ if __name__ == "__main__":
                 justify-content: center !important;
                 line-height: 1 !important;
             }
-            /* 发送按钮：完美的蓝色圆形 + 白色箭头 */
+            /* 发送按钮：必须使用 !important 覆盖默认灰色背景，强制变为蓝色圆球 */
             #send-btn {
                 width: 40px !important;
                 height: 40px !important;
