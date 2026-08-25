@@ -64,48 +64,49 @@ def index_document(file_path: str, session_id: str, tags: str = "") -> str:
         return f"❌ 文档处理失败: {e}"
 
 def search_knowledge(query: str, session_id: str, tags: str = "") -> str:
-    """检索知识（带简易分词和权重匹配，极大提高命中率）"""
+    """检索知识（跨项目搜索）"""
     store = _load_store()
     
-    if session_id not in store:
+    # 1. 提取当前用户名（如 alice）
+    username = session_id.split('_')[0] if '_' in session_id else session_id
+    # 2. 找出该用户下所有项目的知识库
+    candidate_sessions = [k for k in store.keys() if k.startswith(username + "_")]
+    if session_id in store:
+        candidate_sessions.insert(0, session_id)  # 优先检索当前项目
+
+    combined_docs = []
+    for s_id in candidate_sessions:
+        combined_docs.extend(store.get(s_id, []))
+    
+    if not combined_docs:
         return ""
     
-    docs = store[session_id]
-    
-    # 基础分词：按空格、常见符号切分，并保留完整句子的短片段
+    # 基础分词
     import re
-    # 提取核心中文词组（去掉标点后按长度分段）
     clean_query = query.replace("，", " ").replace("。", " ").replace("？", " ").replace("?", " ").replace(" ", "")
-    # 简单把长句子切成 4-8 个字符的词块
     grams = set()
     for i in range(len(clean_query)):
         for j in range(i + 2, min(i + 6, len(clean_query) + 1)):
             grams.add(clean_query[i:j])
     
-    # 匹配文档
     matched = []
-    for doc in docs:
+    for doc in combined_docs:
         text = doc.get("text", "")
-        # 只要有命中的词块，就加权
         score = 0
         for gram in grams:
             if gram in text:
                 score += 1
-        # 分数达到 3 则认为命中（太严格会漏）
         if score >= 3:
             matched.append(text)
     
-    # 去重并按相关度排序（取前3个）
     if matched:
-        # 简单去重
-        unique_matches = list(dict.fromkeys(matched))
-        return "\n\n".join(unique_matches[:3])
+        return "\n\n".join(list(dict.fromkeys(matched))[:3])
     
-    # 兜底方案：直接搜索问题中的几个关键词
-    keywords = ["销售收入", "销售", "收入", "价格", "coffee", "2024"]
+    # 兜底关键词
+    keywords = ["销售", "收入", "价格", "coffee", "2024", "数据"]
     for kw in keywords:
         if kw in query:
-            for doc in docs:
+            for doc in combined_docs:
                 if kw in doc.get("text", ""):
                     matched.append(doc.get("text", ""))
             if matched:

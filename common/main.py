@@ -246,17 +246,12 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
     
     # ================= 新增：企业垂直知识库（RAG）自动注入 =================
     try:
-        # 导入我们新建的 search_knowledge 函数
         from common.rag import search_knowledge
         
-        # 获取知识库上下文（仅按当前会话隔离检索，元数据过滤）
+        # 获取知识库上下文（尝试当前项目，如果没搜到，会跨项目搜索）
         kb_context = search_knowledge(query, session_id)
         if kb_context:
-            # 如果检索到了相关企业知识，拼接到 context 中，供大模型参考
-            if context and "暂无相关文档" not in context:
-                context = f"{context}\n\n【企业知识库数据】\n{kb_context}"
-            else:
-                context = f"【企业知识库数据】\n{kb_context}"
+            context = f"【企业知识库数据】\n{kb_context}"
             print(f"[RAG] 已注入知识库上下文: {kb_context[:50]}...")
     except Exception as e:
         print(f"[RAG] 知识库检索失败: {e}")
