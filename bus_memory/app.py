@@ -226,7 +226,6 @@ with gr.Blocks(title="AI 智能体") as demo:
                             )
                             # 当前用户与下拉菜单放在同一行
                             with gr.Row(elem_id="current-user-row"):
-                                gr.Markdown("**当前用户：**", scale=0, min_width=0, elem_id="user-label")
                                 current_user_display = gr.Markdown(
                                     value="当前用户：未登录",
                                     elem_id="current-user-display"
