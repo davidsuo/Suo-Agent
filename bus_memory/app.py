@@ -350,15 +350,24 @@ with gr.Blocks(title="AI 智能体") as demo:
             return []
         
         logs_data = []
-        # ✅ 修复：添加 errors="ignore"，遇到无效字节直接跳过，防止崩溃
         with open("plan_log.json", "r", encoding="utf-8", errors="ignore") as f:
             for line in f:
                 try:
                     entry = json.loads(line.strip())
-                    # 提取对用户友好的字段
+                    
+                    # 提取原始数据
                     timestamp = entry.get('timestamp', '未知时间')
-                    username = entry.get('username', '未知用户')
-                    role = entry.get('role', '未知角色')
+                    session_id = entry.get('session_id', '')
+                    username = entry.get('username', 'unknown')
+                    role = entry.get('role', 'unknown')
+                    
+                    # ✅ 核心修复：如果 username 是 unknown，说明是新版项目隔离的 session_id
+                    # 截取下划线之前的部分（例如 alice_产品部 提取出 alice）
+                    if username == 'unknown' and session_id:
+                        username = session_id.split('_')[0] if '_' in session_id else session_id
+                        # 为了界面干净，简单的显示角色；如果有动态需求可根据用户名查记忆
+                        role = '企业用户' if username != 'admin' else '系统管理员'
+                    
                     mode = entry.get('mode', '系统')
                     user_query = entry.get('user_query', '')
                     
