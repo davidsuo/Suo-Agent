@@ -4,13 +4,17 @@ import uuid
 import datetime  # ✅ 新增：用于记录上传时间
 import chromadb
 from typing import List
+import hashlib
 
 PERSIST_DIR = os.path.join(os.getcwd(), "rag_data")
 client = chromadb.PersistentClient(path=PERSIST_DIR)
 
 def _get_collection(session_id: str):
-    safe_name = f"kb_{session_id.replace('_', '')[:50]}"
-    return client.get_or_create_collection(name=safe_name)
+    # ✅ 终极修复：使用 MD5 哈希将中文/特殊字符转换成纯英文名，规避 ChromaDB 的名称限制
+    hash_object = hashlib.md5(session_id.encode())
+    safe_name = hash_object.hexdigest()[:20]  # 取前20位数字字母，绝对安全
+    collection_name = f"kb_{safe_name}"
+    return client.get_or_create_collection(name=collection_name)
 
 def _chunk_text(text: str, chunk_size=500, overlap=50) -> List[str]:
     if len(text) <= chunk_size:
@@ -44,7 +48,7 @@ def index_document(file_path: str, session_id: str, tags: str = "") -> str:
             })
         
         collection.add(ids=ids, documents=chunks, metadatas=metadatas)
-        return f"✅ 文档已存入知识库（含元数据），共 {len(chunks)} 个片段。"
+        return f"✅ 文档已存入知识库（含元数据），共 {len(chunks)} 个片段。上传时间：{metadatas[0]['upload_time']}"
     except Exception as e:
         return f"❌ 文档处理失败: {e}"
 
