@@ -326,13 +326,61 @@ with gr.Blocks(title="AI 智能体") as demo:
                 # ================= 日志 Tab =================
                 with gr.Tab("日志"):
                     gr.Markdown("## 📜 系统运行日志")
-                    logs_output = gr.Textbox(label="日志内容", lines=20, interactive=False)
-                    refresh_logs_btn = gr.Button("刷新日志")
+                    with gr.Row():
+                        refresh_logs_btn = gr.Button("🔄 刷新日志")
+                        clear_logs_btn = gr.Button("🗑️ 清空日志", variant="secondary")
+                    
+                    # 用 Dataframe 替代 Textbox，让日志结构清晰可见
+                    logs_table = gr.Dataframe(
+                        headers=["时间", "用户", "角色", "动作", "详情", "状态"],
+                        interactive=False,
+                        wrap=True
+                    )
 
 
 
         # 隐藏的用户状态组件（供后端 outputs 使用，不显示在界面上）
         user_display = gr.Markdown("", visible=False)
+        
+
+    # ================= 日志读取与清空逻辑 =================
+    def load_logs():
+        import os
+        if not os.path.exists("plan_log.json"):
+            return []
+        
+        logs_data = []
+        with open("plan_log.json", "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    entry = json.loads(line.strip())
+                    # 提取对用户友好的字段
+                    timestamp = entry.get('timestamp', '未知时间')
+                    username = entry.get('username', '未知用户')
+                    role = entry.get('role', '未知角色')
+                    mode = entry.get('mode', '系统')
+                    user_query = entry.get('user_query', '')
+                    
+                    # 提取动作和详情
+                    if mode == "regular":
+                        action = entry.get('tool', '工具调用')
+                        detail = entry.get('result', user_query)[:80]
+                    else:
+                        action = "规划引擎"
+                        detail = f"生成 {len(entry.get('plan', []))} 个步骤"
+                    
+                    status = entry.get('status', entry.get('final_status', '成功'))
+                    
+                    logs_data.append([timestamp, username, role, action, detail, status])
+                except json.JSONDecodeError:
+                    continue
+                    
+        return logs_data
+
+    def clear_logs():
+        if os.path.exists("plan_log.json"):
+            os.remove("plan_log.json")
+        return []
 
 
     # ================= 登录、退出、加载函数 =================
@@ -450,52 +498,6 @@ with gr.Blocks(title="AI 智能体") as demo:
         session_id = user.get("username", "default") + "_" + (current_project or "默认项目")
         memory.set_tenant(session_id, user.get("tenant", session_id))
 
-        # 处理 /logs
-        if message and message.strip().lower() == "/logs":
-            try:
-                if os.path.exists("plan_log.json"):
-                    with open("plan_log.json", "r", encoding="utf-8") as f:
-                        lines = f.readlines()
-                    valid_entries = []
-                    for line in lines:
-                        try:
-                            entry = json.loads(line.strip())
-                            if isinstance(entry, dict):
-                                valid_entries.append(entry)
-                        except json.JSONDecodeError:
-                            continue
-                    if not valid_entries:
-                        answer = "暂无规划日志。"
-                    else:
-                        recent = valid_entries[-5:] if len(valid_entries) > 5 else valid_entries
-                        logs_display = "**📋 最近操作日志（审计）**\n\n"
-                        for idx, entry in enumerate(recent, 1):
-                            timestamp = entry.get('timestamp', '未知')
-                            username = entry.get('username', '未知')
-                            role = entry.get('role', '未知')
-                            mode = entry.get('mode', '规划')
-                            status = entry.get('status', entry.get('final_status', '未知'))
-                            user_query = entry.get('user_query', '')
-                            logs_display += f"**记录{idx}** | 时间: {timestamp}\n"
-                            logs_display += f"用户: {username} | 角色: {role} | 模式: {mode} | 状态: {status}\n"
-                            logs_display += f"请求: {user_query[:80]}\n"
-                            if mode == "regular":
-                                tool = entry.get('tool', '')
-                                result = entry.get('result', '')
-                                logs_display += f"工具: {tool} | 结果: {result[:60]}\n"
-                            else:
-                                plan = entry.get('plan', [])
-                                logs_display += f"步骤数: {len(plan)}\n"
-                            logs_display += "\n"
-                        answer = logs_display
-                else:
-                    answer = "暂无规划日志文件。"
-            except Exception as e:
-                answer = f"读取日志失败: {e}"
-            history = history or []
-            history.append({"role": "user", "content": "/logs"})
-            history.append({"role": "assistant", "content": answer})
-            return history, "", None, "", ""
 
         # ================= 文件/音频处理 (完整替换块) =================
         if file is not None:
@@ -599,6 +601,11 @@ with gr.Blocks(title="AI 智能体") as demo:
         outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn, last_user_message, last_assistant_message],
         show_progress="hidden"
     ) 
+    
+    # 日志面板的刷新与清空
+    refresh_logs_btn.click(fn=load_logs, inputs=[], outputs=[logs_table])
+    clear_logs_btn.click(fn=clear_logs, inputs=[], outputs=[logs_table])
+    
 
     # ================= 项目创建与侧边栏事件绑定 =================
     # 1. 点击“项目 +”按钮：隐藏“+”按钮，显示创建输入行
