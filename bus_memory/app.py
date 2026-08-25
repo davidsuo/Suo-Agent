@@ -247,11 +247,12 @@ with gr.Blocks(title="AI 智能体") as demo:
                                 create_project_btn = gr.Button("创建", scale=1)
                                 cancel_project_btn = gr.Button("✖", scale=0, min_width=0)
                             
-                            # 项目列表
-                            project_list = gr.Dataframe(
-                                headers=["项目名称"],
-                                interactive=False,
-                                row_count=(5, "fixed")
+                            # 项目列表（改为单选按钮，方便切换）
+                            project_list = gr.Radio(
+                                choices=["默认项目"],
+                                value="默认项目",
+                                label="项目列表",
+                                interactive=True
                             )
 
                         # 右侧 2/3：聊天主区 -> 改为 3/4
@@ -635,24 +636,44 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     # 3. 创建项目逻辑函数
     # 创建项目逻辑（更新列表，并将新项目设为当前项目）
-    def create_project(project_name, current_projects, current_project):
+    def create_project(project_name, current_choices, current_project):
         if not project_name or not project_name.strip():
-            return current_projects, "", gr.update(visible=True), gr.update(visible=False), current_project
-        
+            return current_choices, "", gr.update(visible=True), gr.update(visible=False), current_project
+
         project_name = project_name.strip()
-        if current_projects is None or len(current_projects) == 0:
-            new_df = pd.DataFrame([{"项目名称": project_name}])
-        else:
-            new_df = pd.concat([current_projects, pd.DataFrame([{"项目名称": project_name}])], ignore_index=True)
-        
-        # 返回：更新列表、清空输入框、恢复按钮、隐藏输入行、自动把新项目设为当前项目
-        return new_df, "", gr.update(visible=True), gr.update(visible=False), project_name
+        choices = list(current_choices) if current_choices else ["默认项目"]
+
+        if project_name not in choices:
+            choices.append(project_name)
+
+        # 返回：更新项目列表、清空输入框、恢复按钮、隐藏输入行、自动将新项目设为当前
+        return choices, "", gr.update(visible=True), gr.update(visible=False), project_name
 
     # 3. 点击“创建”按钮：执行创建逻辑
     create_project_btn.click(
         fn=create_project,
         inputs=[project_input, project_list, current_project],
         outputs=[project_list, project_input, add_project_btn, project_creation_row, current_project]
+    )
+    
+    def switch_project(new_project, user):
+        if not user:
+            return [], "", new_project
+
+        # 保持与 unified_handler 完全一致的 session_id 生成规则
+        session_id = user.get("username", "default") + "_" + (new_project or "默认项目")
+        
+        # 从记忆中获取该项目的真实历史记录
+        new_history = memory.get_history(session_id)
+        
+        # 更新聊天窗口历史、清空输入框、更新当前项目状态
+        return new_history, "", new_project
+
+    # 监听单选框的切换事件
+    project_list.change(
+        fn=switch_project,
+        inputs=[project_list, user_state],
+        outputs=[chatbot, text_input, current_project]
     )
 
     # ================= 语音文件事件 =================
