@@ -107,4 +107,4 @@ def search_knowledge(query, session_id, tags="", top_k=5):
             if matched:
                 return "\n\n".join(list(dict.fromkeys(matched))[:top_k])  # ✅ 改为使用 top_k
                 
-    return "
+    return ""
