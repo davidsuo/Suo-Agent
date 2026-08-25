@@ -175,6 +175,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     feedback_up = gr.State("up")
     feedback_down = gr.State("down")
     pending_file = gr.State(None)
+    current_project = gr.State("默认项目")
 
     # ---------- 登录界面 ----------
     # 用 Row 和 CSS 包裹，实现水平居中、垂直居中、且宽度自适应的效果
@@ -441,7 +442,8 @@ with gr.Blocks(title="AI 智能体") as demo:
         if not user:
             return history or [], "", None, "", ""
 
-        session_id = user.get("username", "default")
+        # ✅ 核心修改：将项目名称拼接到 Session ID 中，实现项目下的上下文完全隔离！
+        session_id = user.get("username", "default") + "_" + (current_project or "默认项目")
         memory.set_tenant(session_id, user.get("tenant", session_id))
 
         # 处理 /logs
@@ -560,14 +562,10 @@ with gr.Blocks(title="AI 智能体") as demo:
         return history, "", None, message, answer
         
     # ✅ 全新逻辑：一次性把“文件”和“文字”传给 AI，秒回结果！
-    async def submit_text_with_file(message, history, user_state, pending_file_val):
+    async def submit_text_with_file(message, history, user_state, pending_file_val, current_project):
         if not message and not pending_file_val:
             return history, "", None, "", gr.update(visible=False), "", ""
-            
-        # 直接调用 unified_handler，让它在内部同时处理文件和文字
-        new_history, clear_text, _, user_msg, assistant_msg = await unified_handler(message, history, pending_file_val, user_state)
-        
-        # 发送成功后，清空底部的 pending_file 以及文件名和 ❌ 按钮
+        new_history, clear_text, _, user_msg, assistant_msg = await unified_handler(message, history, pending_file_val, user_state, current_project)
         return new_history, clear_text, None, "", gr.update(visible=False), user_msg, assistant_msg
 
 
@@ -610,7 +608,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     # 绑定回车发送
     text_input.submit(
         fn=submit_text_with_file,
-        inputs=[text_input, chatbot, user_state, pending_file],
+        inputs=[text_input, chatbot, user_state, pending_file, current_project],
         outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn, last_user_message, last_assistant_message],
         show_progress="hidden"  # ✅ 增加这一行，隐藏发送时的飞镖加载圈
     )
@@ -637,30 +635,26 @@ with gr.Blocks(title="AI 智能体") as demo:
     )
 
     # 3. 创建项目逻辑函数
-    def create_project(project_name, current_projects):
-        # 去除空格，如果为空则不创建
+    # 创建项目逻辑（更新列表，并将新项目设为当前项目）
+    def create_project(project_name, current_projects, current_project):
         if not project_name or not project_name.strip():
-            return current_projects, "", gr.update(visible=True), gr.update(visible=False)
+            return current_projects, "", gr.update(visible=True), gr.update(visible=False), current_project
         
         project_name = project_name.strip()
-        
-        # 处理 Dataframe 数据
         if current_projects is None or len(current_projects) == 0:
-            # 如果当前列表为空，新建 DataFrame
             new_df = pd.DataFrame([{"项目名称": project_name}])
         else:
-            # 如果已有数据，追加新行
             new_df = pd.concat([current_projects, pd.DataFrame([{"项目名称": project_name}])], ignore_index=True)
         
-        # 返回：更新列表、清空输入框、恢复“+”按钮、隐藏输入行
-        return new_df, "", gr.update(visible=True), gr.update(visible=False)
+        # 返回：更新列表、清空输入框、恢复按钮、隐藏输入行、自动把新项目设为当前项目
+        return new_df, "", gr.update(visible=True), gr.update(visible=False), project_nam
 
     # 3. 点击“创建”按钮：执行创建逻辑
     create_project_btn.click(
         fn=create_project,
-        inputs=[project_input, project_list],
-        outputs=[project_list, project_input, add_project_btn, project_creation_row]
-    )    
+        inputs=[project_input, project_list, current_project],
+        outputs=[project_list, project_input, add_project_btn, project_creation_row, current_project]
+    )
 
     # ================= 语音文件事件 =================
     async def voice_upload_handler(message, history, file, user):
