@@ -473,11 +473,12 @@ with gr.Blocks(title="AI 智能体") as demo:
                 gr.update(visible=False),
                 gr.update(visible=True),
                 hist if hist else [],
-                gr.Dropdown(choices=tenants, value=user["tenant"]), 
+                gr.Dropdown(choices=tenants, value=user["tenant"]),
                 f"✅ 登录成功，欢迎 {user['display_name']}！",
-                f"**当前用户：{user_full}**",  # 顶部 user_display 显示（带加粗标签，无重复）
+                f"**当前用户：{user_full}**",
                 gr.update(visible=(user.get("role") == "admin")),
-                f"**当前用户：** {user_full}"  # 左侧 current_user_display 显示（清晰、无重复）
+                f"**当前用户：** {user_full}",
+                gr.update(visible=(user.get("role") == "admin"))  # ✅ 新增：控制用户管理Tab
             )
         else:
             return (
@@ -490,7 +491,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                 "",
                 gr.update(visible=False),
                 "**当前用户：** 未登录",
-                gr.update(visible=(user.get("role") == "admin"))  # 控制用户管理Tab
+                gr.update(visible=False)  # ✅ 新增：控制用户管理Tab
             )
 
     # 1. 登录事件绑定（同步 URL 和 sessionStorage）
@@ -514,7 +515,8 @@ with gr.Blocks(title="AI 智能体") as demo:
             "",
             "",
             gr.update(visible=False),
-            "**当前用户：** 未登录"
+            "**当前用户：** 未登录",
+            gr.update(visible=False)  # ✅ 新增：控制用户管理Tab
         )
 
     # 2. 退出登录事件绑定（清除状态）
@@ -537,18 +539,18 @@ with gr.Blocks(title="AI 智能体") as demo:
                 hist = memory.get_history(session_id)
                 tenants = get_available_tenants()
                 user_full = f"{user['display_name']} ({user['department']} - {user['position']})"
-                return (
-                    user,
-                    gr.update(visible=False),
-                    gr.update(visible=True),
-                    hist if hist else [],
-                    gr.Dropdown(choices=tenants, value=user["tenant"]),
-                    "",
-                    f"**当前用户：{user_full}**",
-                    gr.update(visible=(user.get("role") == "admin")),
-                    f"当前用户：{user_full}",
-                    gr.update(visible=(user.get("role") == "admin"))  # 控制用户管理Tab
-                )
+            return (
+                user,
+                gr.update(visible=False),
+                gr.update(visible=True),
+                hist if hist else [],
+                gr.Dropdown(choices=tenants, value=user["tenant"]),
+                "",
+                f"**当前用户：{user_full}**",
+                gr.update(visible=(user.get("role") == "admin")),
+                f"**当前用户：** {user_full}",
+                gr.update(visible=(user.get("role") == "admin"))  # ✅ 新增
+            )
         return (
             None,
             gr.update(visible=True),
@@ -558,7 +560,8 @@ with gr.Blocks(title="AI 智能体") as demo:
             "",
             "",
             gr.update(visible=False),
-            "当前用户：未登录"
+            "**当前用户：** 未登录",
+            gr.update(visible=False)  # ✅ 新增
         )
 
     # 3. 页面加载事件绑定（首次进入页面读取 URL 参数）
