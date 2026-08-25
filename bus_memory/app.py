@@ -707,10 +707,10 @@ with gr.Blocks(title="AI 智能体") as demo:
             cursor.execute("SELECT username, display_name, department, position, role, tenant FROM users ORDER BY id ASC")
             data = cursor.fetchall()
             conn.close()
-            # ✅ 核心修复：强制转换为新的 list 对象，触发 Gradio 重新渲染
-            return list(data)
+            # 强制用 gr.update 包裹数据，并标记发生变化
+            return gr.update(value=list(data))
         except Exception as e:
-            return [["读取失败", str(e), "", "", "", ""]]
+            return gr.update(value=[["读取失败", str(e), "", "", "", ""]])
 
     def create_user(username, pin, display_name, department, position, role):
         import sqlite3, os
@@ -725,18 +725,17 @@ with gr.Blocks(title="AI 智能体") as demo:
             )
             conn.commit()
             conn.close()
-            # ✅ 核心修复：创建后立刻强制刷新列表
-            new_users = list(load_users())
-            return f"✅ 用户 {username} 创建成功！", new_users
+            # 创建成功后，也强制用 gr.update 包裹列表数据
+            return f"✅ 用户 {username} 创建成功！", gr.update(value=list(load_users().value))
         except Exception as e:
-            return f"❌ 创建失败：{e}", []
+            return f"❌ 创建失败：{e}", gr.update(value=[])
 
     # 强制刷新按钮的专用函数
     def force_refresh_users():
         return list(load_users())
             
     # 用户管理事件
-    refresh_users_btn.click(fn=force_refresh_users, inputs=[], outputs=[users_table])
+    refresh_users_btn.click(fn=load_users, inputs=[], outputs=[users_table])
     create_user_btn.click(
         fn=create_user,
         inputs=[new_username, new_pin, new_display_name, new_department, new_position, new_role],
