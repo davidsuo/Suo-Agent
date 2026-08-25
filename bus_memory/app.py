@@ -701,27 +701,21 @@ with gr.Blocks(title="AI 智能体") as demo:
     def load_users():
         import sqlite3, os
         try:
-            # ✅ 使用绝对路径，确保不连错数据库！
             db_path = os.path.join(os.getcwd(), "users.db")
-            print(f"[日志] 正在连接数据库: {db_path}")
-            
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
             cursor.execute("SELECT username, display_name, department, position, role, tenant FROM users ORDER BY id ASC")
             data = cursor.fetchall()
             conn.close()
-            print(f"[日志] 成功加载了 {len(data)} 个用户")
-            return data
+            # ✅ 核心修复：强制转换为新的 list 对象，触发 Gradio 重新渲染
+            return list(data)
         except Exception as e:
-            print(f"[日志] 加载用户出错: {e}")
             return [["读取失败", str(e), "", "", "", ""]]
 
     def create_user(username, pin, display_name, department, position, role):
         import sqlite3, os
         try:
             db_path = os.path.join(os.getcwd(), "users.db")
-            print(f"[日志] 正在写入数据库: {db_path}")
-            
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
             cursor.execute(
@@ -731,13 +725,18 @@ with gr.Blocks(title="AI 智能体") as demo:
             )
             conn.commit()
             conn.close()
-            return f"✅ 用户 {username} 创建成功！", load_users()
+            # ✅ 核心修复：创建后立刻强制刷新列表
+            new_users = list(load_users())
+            return f"✅ 用户 {username} 创建成功！", new_users
         except Exception as e:
-            print(f"[日志] 创建用户出错: {e}")
-            return f"❌ 创建失败：{e}", load_users()
+            return f"❌ 创建失败：{e}", []
+
+    # 强制刷新按钮的专用函数
+    def force_refresh_users():
+        return list(load_users())
             
     # 用户管理事件
-    refresh_users_btn.click(fn=load_users, inputs=[], outputs=[users_table])
+    refresh_users_btn.click(fn=force_refresh_users, inputs=[], outputs=[users_table])
     create_user_btn.click(
         fn=create_user,
         inputs=[new_username, new_pin, new_display_name, new_department, new_position, new_role],
