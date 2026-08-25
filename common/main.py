@@ -73,6 +73,11 @@ SYSTEM_PROMPT = """
 - 即使上一轮对话刚刚询问过时间，本轮也必须重新调用工具。
 - 在回答中必须逐字引用工具返回的结果，不得修改。
 
+【重要操作准则】
+1. 如果【上下文】或【企业知识库数据】提供了相关信息，请直接基于这些信息回答用户问题。
+2. 除非用户明确要求查询数据库，或者知识库中完全没有相关信息，否则绝对不要调用 query_database 工具。
+3. 严禁执行“查看有哪些表”这类探查性查询。
+
 【参考文档】：
 {context}
 """
@@ -258,7 +263,9 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
         
 
     # 获取用户角色（基于用户名查询，确保隔离）
-    user_info = get_user_info(session_id) if session_id else None
+    # 修复：从项目隔离的 session_id 中提取真实用户名
+    real_username = session_id.split('_')[0] if '_' in session_id else session_id
+    user_info = get_user_info(real_username) if real_username else None
     role = user_info.get("role", "viewer") if user_info else "viewer"
     print(f"[权限调试] session_id={session_id}, role={role}")
 
