@@ -232,7 +232,17 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
 
     # 获取历史与知识库上下文
     history = memory.get(session_id)
-    context = rag.search_similar(query, k=3) if rag is not None else "暂无相关文档（知识库未加载）"
+    try:
+        from common.rag import search_knowledge
+        # 传入 session_id 以匹配当前项目和用户
+        context = search_knowledge(query, session_id)
+        if not context:
+            context = "暂无相关文档（知识库未加载）"
+        else:
+            print(f"[RAG] 已检索到知识库内容: {context[:50]}...")
+    except Exception as e:
+        print(f"[RAG] 知识库检索失败: {e}")
+        context = "暂无相关文档（知识库未加载）"
     
     # ================= 新增：企业垂直知识库（RAG）自动注入 =================
     try:
