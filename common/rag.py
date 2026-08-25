@@ -31,8 +31,7 @@ def _chunk_text(text: str, chunk_size=500) -> List[str]:
     for i in range(0, len(text), chunk_size):
         chunks.append(text[i:i+chunk_size])
     return chunks
-    
-def search_knowledge(query, session_id, tags="", top_k=3):
+   
 
 def index_document(file_path: str, session_id: str, tags: str = "") -> str:
     try:
@@ -59,8 +58,8 @@ def index_document(file_path: str, session_id: str, tags: str = "") -> str:
     except Exception as e:
         return f"❌ 文档处理失败: {e}"
 
-def search_knowledge(query: str, session_id: str, tags: str = "") -> str:
-    """检索知识（跨项目搜索）"""
+def search_knowledge(query, session_id, tags="", top_k=5):
+    """检索知识（跨项目搜索，并严格遵守 top_k 参数）"""
     store = _load_store()
     
     # 1. 提取当前用户名（如 alice）
@@ -96,7 +95,7 @@ def search_knowledge(query: str, session_id: str, tags: str = "") -> str:
             matched.append(text)
     
     if matched:
-        return "\n\n".join(list(dict.fromkeys(matched))[:3])
+        return "\n\n".join(list(dict.fromkeys(matched))[:top_k])  # ✅ 改为使用 top_k
     
     # 兜底关键词
     keywords = ["销售", "收入", "价格", "coffee", "2024", "数据"]
@@ -106,6 +105,6 @@ def search_knowledge(query: str, session_id: str, tags: str = "") -> str:
                 if kw in doc.get("text", ""):
                     matched.append(doc.get("text", ""))
             if matched:
-                return "\n\n".join(list(dict.fromkeys(matched))[:3])
+                return "\n\n".join(list(dict.fromkeys(matched))[:top_k])  # ✅ 改为使用 top_k
                 
-    return ""
+    return "
