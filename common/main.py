@@ -32,6 +32,8 @@ from common.tools import (
 from common.guardrails import input_guard, tool_call_guard, output_guard
 from common.pending_tools import pending, save_pending
 from common.auth import get_user_info, is_tool_allowed
+from common.rag import search_knowledge
+
 
 # ==================== 全局应用与模型客户端 ====================
 app = FastAPI()
@@ -231,6 +233,24 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
     # 获取历史与知识库上下文
     history = memory.get(session_id)
     context = rag.search_similar(query, k=3) if rag is not None else "暂无相关文档（知识库未加载）"
+    
+    # ================= 新增：企业垂直知识库（RAG）自动注入 =================
+    try:
+        # 导入我们新建的 search_knowledge 函数
+        from common.rag import search_knowledge
+        
+        # 获取知识库上下文（仅按当前会话隔离检索，元数据过滤）
+        kb_context = search_knowledge(query, session_id)
+        if kb_context:
+            # 如果检索到了相关企业知识，拼接到 context 中，供大模型参考
+            if context and "暂无相关文档" not in context:
+                context = f"{context}\n\n【企业知识库数据】\n{kb_context}"
+            else:
+                context = f"【企业知识库数据】\n{kb_context}"
+            print(f"[RAG] 已注入知识库上下文: {kb_context[:50]}...")
+    except Exception as e:
+        print(f"[RAG] 知识库检索失败: {e}")
+        
 
     # 获取用户角色（基于用户名查询，确保隔离）
     user_info = get_user_info(session_id) if session_id else None

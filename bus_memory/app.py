@@ -23,6 +23,7 @@ from bus_memory.event_bus import EventBus
 from common.agents_memory import WorkerAgent, QueryWorker
 from common.auth import init_users_db, authenticate, get_user_info
 from common.workflows import add_workflow, list_workflows
+from common.rag import index_document
 
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)) + "/..")
@@ -365,6 +366,25 @@ with gr.Blocks(title="AI 智能体") as demo:
                     with gr.Row():
                         create_user_btn = gr.Button("创建用户", variant="primary")
                     create_user_msg = gr.Markdown("")
+                    
+                # ================= 知识库 Tab =================
+                with gr.Tab("知识库"):
+                    gr.Markdown("## 📚 企业垂直知识库（RAG）")
+                    gr.Markdown("上传文档（txt/md/csv），可添加标签以便检索时精准过滤。")
+                    with gr.Row():
+                        kb_upload = gr.File(
+                            label="上传知识文档",
+                            file_types=[".txt", ".md", ".csv"],
+                            type="filepath"
+                        )
+                        # ✅ 新增：标签输入框
+                        kb_tags_input = gr.Textbox(
+                            label="元数据标签（可选，用逗号分隔）",
+                            placeholder="例如：财务报表, 产品文档"
+                        )
+                        kb_index_btn = gr.Button("🚀 提交索引", variant="primary")
+                    
+                    kb_status = gr.Markdown("")
 
 
         # 隐藏的用户状态组件（供后端 outputs 使用，不显示在界面上）
@@ -574,6 +594,17 @@ with gr.Blocks(title="AI 智能体") as demo:
         js="() => { const urlParams = new URLSearchParams(window.location.search); const user = urlParams.get('user') || sessionStorage.getItem('suo_user') || ''; if (user) sessionStorage.setItem('suo_user', user); return user; }",
         show_progress="hidden"
     )
+    
+    
+    # ================= 知识库事件绑定 =================
+    def handle_kb_index(file, kb_tags):
+        if not file:
+            return "❌ 请先上传文件！"
+        # 传入 session 和 标签
+        msg = index_document(file, "alice_产品部", kb_tags)  # 这里先假设一个演示session，实际可根据传参动态生成
+        return msg
+
+    kb_index_btn.click(fn=handle_kb_index, inputs=[kb_upload, kb_tags_input], outputs=[kb_status])
 
 
     # ================= 主处理函数（文本、文件、音频） =================
