@@ -251,8 +251,8 @@ with gr.Blocks(title="AI 智能体") as demo:
 
                         # 右侧 3/4：聊天主区
                         with gr.Column(scale=3, elem_id="chat-main-area"):
-                            # 聊天框
-                            chatbot = gr.Chatbot(label="", height=500, value=[])
+                            # 聊天框（彻底移除自带标签）
+                            chatbot = gr.Chatbot(label="", show_label=False, height=500, value=[])
                             
                             # ========== 底部原生合并卡片 ==========
                             with gr.Group(elem_id="input-card"):
@@ -275,9 +275,9 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     text_input = gr.Textbox(
                                         show_label=False,
                                         placeholder="发消息或按住空格说话，松开发送...",
-                                        scale=4
+                                        scale=1  # ✅ 核心：改为1，不再抢占所有空间
                                     )
-                                    send_btn = gr.Button("⬆", elem_id="send-btn", scale=0)
+                                    send_btn = gr.Button("⬆", elem_id="send-btn", scale=0, min_width=40) # 确保最小宽度
 
                             # 隐藏的语音输入组件
                             voice_file_input = gr.File(
@@ -951,7 +951,7 @@ if __name__ == "__main__":
                 justify-content: center !important;
                 line-height: 1 !important;
             }
-            /* 发送按钮：必须使用 !important 覆盖默认灰色背景，强制变为蓝色圆球 */
+            /* 发送按钮：强制蓝色圆球，白色箭头 */
             #send-btn {
                 width: 40px !important;
                 height: 40px !important;
@@ -961,7 +961,7 @@ if __name__ == "__main__":
                 color: white !important;
                 font-size: 20px !important;
                 padding: 0 !important;
-                min-width: 0 !important;
+                min-width: 40px !important;  /* 强制物理宽度 */
                 flex-shrink: 0 !important;
                 box-shadow: 0 2px 6px rgba(0,0,0,0.2) !important;
                 display: flex !important;
