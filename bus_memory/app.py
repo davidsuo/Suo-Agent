@@ -725,8 +725,15 @@ with gr.Blocks(title="AI 智能体") as demo:
             )
             conn.commit()
             conn.close()
-            # 创建成功后，也强制用 gr.update 包裹列表数据
-            return f"✅ 用户 {username} 创建成功！", gr.update(value=list(load_users().value))
+
+            # ✅ 修复：在函数内部重新查询数据库，直接生成新的列表，不用调用 load_users
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT username, display_name, department, position, role, tenant FROM users ORDER BY id ASC")
+            data = cursor.fetchall()
+            conn.close()
+
+            return f"✅ 用户 {username} 创建成功！", gr.update(value=list(data))
         except Exception as e:
             return f"❌ 创建失败：{e}", gr.update(value=[])
 
