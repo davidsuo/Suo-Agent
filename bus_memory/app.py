@@ -597,14 +597,28 @@ with gr.Blocks(title="AI 智能体") as demo:
     
     
     # ================= 知识库事件绑定 =================
-    def handle_kb_index(file, kb_tags):
+    from common.rag import index_document
+
+    def handle_kb_index(file, kb_tags, user, current_project):
+        if not user:
+            return "❌ 请先登录！"
         if not file:
             return "❌ 请先上传文件！"
-        # 传入 session 和 标签
-        msg = index_document(file, "alice_产品部", kb_tags)  # 这里先假设一个演示session，实际可根据传参动态生成
+        
+        # 获取真实的会话ID（用户 + 项目），确保不同项目知识库隔离
+        session_id = f"{user['username']}_{current_project}"
+        
+        # 调用纯文本索引函数
+        msg = index_document(file, session_id, kb_tags)
         return msg
 
-    kb_index_btn.click(fn=handle_kb_index, inputs=[kb_upload, kb_tags_input], outputs=[kb_status])
+    # 注意：绑定的时候传入4个输入！
+    kb_index_btn.click(
+        fn=handle_kb_index,
+        inputs=[kb_upload, kb_tags_input, user_state, current_project],
+        outputs=[kb_status],
+        show_progress="hidden"  # 隐藏不必要的加载动画
+    )
 
 
     # ================= 主处理函数（文本、文件、音频） =================
