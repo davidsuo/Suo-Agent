@@ -350,7 +350,8 @@ with gr.Blocks(title="AI 智能体") as demo:
             return []
         
         logs_data = []
-        with open("plan_log.json", "r", encoding="utf-8") as f:
+        # ✅ 修复：添加 errors="ignore"，遇到无效字节直接跳过，防止崩溃
+        with open("plan_log.json", "r", encoding="utf-8", errors="ignore") as f:
             for line in f:
                 try:
                     entry = json.loads(line.strip())
@@ -361,7 +362,6 @@ with gr.Blocks(title="AI 智能体") as demo:
                     mode = entry.get('mode', '系统')
                     user_query = entry.get('user_query', '')
                     
-                    # 提取动作和详情
                     if mode == "regular":
                         action = entry.get('tool', '工具调用')
                         detail = entry.get('result', user_query)[:80]
@@ -370,7 +370,6 @@ with gr.Blocks(title="AI 智能体") as demo:
                         detail = f"生成 {len(entry.get('plan', []))} 个步骤"
                     
                     status = entry.get('status', entry.get('final_status', '成功'))
-                    
                     logs_data.append([timestamp, username, role, action, detail, status])
                 except json.JSONDecodeError:
                     continue
