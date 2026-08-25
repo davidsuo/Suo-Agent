@@ -438,7 +438,7 @@ with gr.Blocks(title="AI 智能体") as demo:
 
 
     # ================= 主处理函数（文本、文件、音频） =================
-    async def unified_handler(message, history, file, user):
+    async def unified_handler(message, history, file, user, current_project):
         if not user:
             return history or [], "", None, "", ""
 
@@ -594,24 +594,23 @@ with gr.Blocks(title="AI 智能体") as demo:
         outputs=[pending_file, attachment_html, clear_file_btn]
     )
 
-    # ================= 纯文本及混合输入事件（完美融合版） =================
-    async def submit_text_with_file(message, history, user_state, pending_file_val):
-        # 如果没有输入文字也没有上传文件，直接返回
+    # ================= 纯文本及混合输入事件（融合项目状态） =================
+    async def submit_text_with_file(message, history, user_state, pending_file_val, current_project):
         if not message and not pending_file_val:
             return history, "", None, "", gr.update(visible=False), "", ""
-            
-        # 核心优化：一次性将文件路径和文字传给后端，AI 生成完整对话
-        new_history, clear_text, _, user_msg, assistant_msg = await unified_handler(message, history, pending_file_val, user_state)
+
+        # 将 current_project 传给 unified_handler，实现项目隔离
+        new_history, clear_text, _, user_msg, assistant_msg = await unified_handler(message, history, pending_file_val, user_state, current_project)
         
-        # 发送成功后，清空底部的 pending_file 以及文件名和 ❌ 按钮
         return new_history, clear_text, None, "", gr.update(visible=False), user_msg, assistant_msg
-    # 绑定回车发送
+
     text_input.submit(
         fn=submit_text_with_file,
-        inputs=[text_input, chatbot, user_state, pending_file, current_project],
+        inputs=[text_input, chatbot, user_state, pending_file, current_project], # ✅ 必须包含 current_project
         outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn, last_user_message, last_assistant_message],
-        show_progress="hidden"  # ✅ 增加这一行，隐藏发送时的飞镖加载圈
+        show_progress="hidden"
     )
+    
     # 绑定发送按钮
     send_btn.click(
         fn=submit_text_with_file,
