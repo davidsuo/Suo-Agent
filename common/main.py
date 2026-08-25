@@ -254,7 +254,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
         from common.rag import search_knowledge
         
         # 获取知识库上下文（尝试当前项目，如果没搜到，会跨项目搜索）
-        kb_context = search_knowledge(query, session_id)
+        kb_context = search_knowledge(query, session_id, tags="", top_k=5)  # 改为取前5块（更全）
         if kb_context:
             # 强制基于知识库回答，严禁查数据库
             message = f"请严格基于以下【企业知识库数据】回答用户问题，不要查询数据库。\n\n【企业知识库数据】\n{kb_context}\n\n【用户问题】\n{message}"

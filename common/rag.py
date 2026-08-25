@@ -31,25 +31,22 @@ def _chunk_text(text: str, chunk_size=500) -> List[str]:
     for i in range(0, len(text), chunk_size):
         chunks.append(text[i:i+chunk_size])
     return chunks
+    
+def search_knowledge(query, session_id, tags="", top_k=3):
 
 def index_document(file_path: str, session_id: str, tags: str = "") -> str:
-    """索引文档（纯文本存储，不依赖模型，极速稳定）"""
     try:
-        # 限制文件读取大小（最多读前50000字符，防止内存溢出）
+        # ✅ 修改1：读取完整文件，绝不截断数据
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
         
-        # 切片
-        chunks = _chunk_text(content)
+        # ✅ 修改2：调整切分大小，从500改为2000，确保多天数据不被切碎
+        chunks = _chunk_text(content, chunk_size=2000)
         
-        # 获取全局存储
+        # 后续保存逻辑不变...
         store = _load_store()
-        
-        # 为该 session 创建列表
         if session_id not in store:
             store[session_id] = []
-        
-        # 保存分块数据
         for chunk in chunks:
             store[session_id].append({
                 "id": str(uuid.uuid4()),
@@ -57,9 +54,8 @@ def index_document(file_path: str, session_id: str, tags: str = "") -> str:
                 "tags": tags,
                 "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             })
-        
         _save_store(store)
-        return f"✅ 文档已成功索引（共 {len(chunks)} 个片段，纯文本模式，无需下载模型）。"
+        return f"✅ 文档已成功索引（共 {len(chunks)} 个片段，已完整读取）。"
     except Exception as e:
         return f"❌ 文档处理失败: {e}"
 
