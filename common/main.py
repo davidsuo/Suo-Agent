@@ -74,13 +74,14 @@ SYSTEM_PROMPT = """
 - 在回答中必须逐字引用工具返回的结果，不得修改。
 
 【重要硬性规定】
-如果你已经在【企业知识库数据】中看到了相关的销售数据（比如CSV的日期、金额等），你必须直接基于这些数据回答用户的问题。
-严禁调用 query_database 工具去查询数据库，严禁去查看 SQLite 中有哪些表！
-只有当【企业知识库数据】中没有相关数据时，才允许调用 query_database。
+- 如果你已经在【企业知识库数据】中看到了相关的销售数据（比如CSV的日期、金额等），你必须直接基于这些数据回答用户的问题。
+- 严禁调用 query_database 工具去查询数据库，严禁去查看 SQLite 中有哪些表！
+- 只有当【企业知识库数据】中没有相关数据时，才允许调用 query_database。
 
 【输出格式要求】
-当完成用户要求的数学计算（如销售总额、求和、平均值等）后，只输出最终的结论和关键的汇总数字。
-严禁展示任何分步计算过程、加总推导、或逐条列出的原始数据明细。直接给出最终结果即可。
+- 当完成数据汇总或计算后，只输出最终结果和必要的图表说明。
+- 严禁输出冗长的分步计算过程、逐条加总或大段的思考过程。
+- 直接给出数字和结论即可。
 
 【参考文档】：
 {context}
@@ -542,12 +543,20 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                 messages.append(msg)
                 for tool_call in msg.tool_calls:
                     func_name = tool_call.function.name
+                    if func_name in ("execute_python", "calculator"):
+                        # 如果知识库上下文过大，不再传给工具，而是让模型直接用普通逻辑回答
+                        arguments["_tenant"] = memory.get_tenant(session_id)
+                        # 防止参数过大导致崩溃
+                        args_str = json.dumps(arguments)
+                        if len(args_str) > 3000:
+                            # 太长了，直接让模型基于知识库回答
+                            messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": "数据量过大，请直接基于已有知识库数据进行计算，并给出精确结论。"})
+                            continue  
                     try:
                         arguments = json.loads(tool_call.function.arguments)
                     except json.JSONDecodeError:
-                        # 模型生成的JSON损坏，直接把错误喂回给模型，让它修正
-                        error_msg = f"函数 {func_name} 的参数JSON解析失败，请重新提供有效的参数。"
-                        messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": error_msg})
+                        # 如果还是解析失败，防止硬崩
+                        messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": "参数错误，请重新生成有效的 JSON。"})
                         continue
                     if func_name in TOOL_ROUTER:
                         target_worker = TOOL_ROUTER[func_name]

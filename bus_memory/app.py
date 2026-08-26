@@ -686,10 +686,27 @@ with gr.Blocks(title="AI 智能体") as demo:
         
     # 统一提交函数（唯一）
     async def submit_text_with_file(message, history, user_state, pending_file_val, current_project):
-        if not message and not pending_file_val:
-            return history, "", None, "", gr.update(visible=False), "", ""
+        # 1. 如果用户输入了内容，先在界面上立刻清空输入框，并显示“正在分析”
+        if message and message.strip():
+            # 先发一条“正在分析”的消息给前端
+            history = list(history)
+            if isinstance(history[-1], dict):
+                history.append({"role": "assistant", "content": "⏳ 正在分析..."})
+            else:
+                history.append(["", "..."]) #" ⏳ 正在分析"
+            yield history, "", None, "", gr.update(visible=False), "", ""
+
+        # 2. 后台真正开始计算
         new_history, clear_text, _, user_msg, assistant_msg = await unified_handler(message, history, pending_file_val, user_state, current_project)
-        return new_history, clear_text, None, "", gr.update(visible=False), user_msg, assistant_msg
+        
+        # 3. 用最终答案替换掉刚才的占位符
+        # 找到最后一条消息，并替换内容
+        if isinstance(new_history[-1], dict):
+            new_history[-1] = {"role": "assistant", "content": assistant_msg}
+        else:
+            new_history[-1] = [new_history[-1][0], assistant_msg]
+            
+        yield new_history, clear_text, None, "", gr.update(visible=False), user_msg, assistant_msg
 
 
     # ================= 事件绑定（文本、文件、语音） =================
