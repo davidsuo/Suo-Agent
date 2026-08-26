@@ -21,7 +21,7 @@ def _save_store(store: dict):
     with open(RAG_DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(store, f, ensure_ascii=False, indent=2)
 
-def _chunk_text(text: str, chunk_size=2000) -> List[str]:
+def _chunk_text(text: str, chunk_size=3000) -> List[str]:
     if len(text) <= chunk_size:
         return [text]
     chunks = []
