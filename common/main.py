@@ -246,6 +246,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
     # 1. 检索完整知识库上下文
     kb_context = search_knowledge(query, session_id)
     if kb_context:
+        context = "用户问题中已注入相关的【企业知识库数据】，请根据该数据回答。"
         print(f"[RAG] 已检索到知识库内容")
         # 2. 动态计算月度汇总（纯Python加速，不用大模型算）
         import re as _re
@@ -287,6 +288,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                 f"【用户问题】\n{query}"
             )
     else:
+        context = "暂无相关文档（知识库未加载）"
         # 如果没有知识库，走通用逻辑
         context = "暂无相关文档（知识库未加载）"
         
@@ -310,7 +312,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
 
     system_content = SYSTEM_PROMPT.format(
         available_tools=available_tools_str,
-        context=context if context else "暂无相关文档"
+        context="用户问题中已注入相关的【企业知识库数据】，请根据该数据回答。"
     )
 
     messages = [{"role": "system", "content": system_content}]
