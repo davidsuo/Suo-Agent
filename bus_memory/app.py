@@ -823,13 +823,13 @@ with gr.Blocks(title="AI 智能体") as demo:
     )
 
     # 3. 创建项目逻辑（简化，返回6个值）
-    def create_project(project_name, project_names, current_project):
+    def create_project(project_name, current_choices, project_names, current_project):
         if not project_name or not project_name.strip():
-            return project_names, "", gr.update(visible=True), gr.update(visible=False), current_project, project_names
+            return gr.update(), "", gr.update(visible=True), gr.update(visible=False), current_project, project_names
         
         new_name = project_name.strip()
         
-        # 重新构建 choices，确保“主对话”永远在第一位
+        # 构建新列表，确保“主对话”在第一位
         new_choices = ["主对话"]
         for p in project_names:
             if p != "主对话":
@@ -838,22 +838,32 @@ with gr.Blocks(title="AI 智能体") as demo:
             new_choices.append(new_name)
         
         # 更新 project_names 状态
-        new_project_names = [p for p in new_choices]
+        new_project_names = new_choices.copy()
         
-        # 返回：列表、清空输入、显示按钮、隐藏输入行、当前项目、项目名列表
-        return new_choices, "", gr.update(visible=True), gr.update(visible=False), new_name, new_project_names
+        # ✅ 关键修复：使用 gr.update 设置新的 choices 和 value
+        return (
+            gr.update(choices=new_choices, value=new_name),  # 更新 Radio
+            "",                                                # 清空输入框
+            gr.update(visible=True),                           # 恢复“+”按钮
+            gr.update(visible=False),                          # 隐藏创建行
+            new_name,                                          # 更新当前项目状态
+            new_project_names                                  # 更新项目名列表
+        )
 
     create_project_btn.click(
         fn=create_project,
-        inputs=[project_input, project_names, current_project],  # 只有3个输入！
-        outputs=[project_list, project_input, add_project_btn, project_creation_row, current_project, project_names] # 6个输出
+        inputs=[project_input, project_list, project_names, current_project],  # 增加 project_list
+        outputs=[project_list, project_input, add_project_btn, project_creation_row, current_project, project_names]
     )
 
     # 监听 Radio 切换项目
     def switch_project(new_project, user):
         if not user:
             return [], "", new_project
-        session_id = user.get("username", "default") + "_" + (new_project or "")
+        # ✅ 确保使用“主对话”作为默认项目名
+        if not new_project:
+            new_project = "主对话"
+        session_id = f"{user['username']}_{new_project}"
         new_history = memory.get_history(session_id)
         return new_history, "", new_project
 
