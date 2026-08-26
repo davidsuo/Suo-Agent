@@ -78,15 +78,10 @@ SYSTEM_PROMPT = """
 - 严禁调用 query_database 工具去查询数据库，严禁去查看 SQLite 中有哪些表！
 - 只有当【企业知识库数据】中没有相关数据时，才允许调用 query_database。
 
-【硬性规则】
-- 如果【企业知识库数据】中已经包含了【月度预计算统计结果】（总笔数和总收入），你必须直接采用这个数字作为最终答案。
-- 严禁再尝试调用 execute_python 或 calculator 工具去重复计算（因为这是多余的操作，会导致超时）。
-- 请直接输出：“根据知识库统计，X月份销售总收入为: xxx 元（共 xxx 笔交易）。”
-
-【输出格式要求】
-- 当完成数据汇总或计算后，只输出最终结果和必要的图表说明。
-- 严禁输出冗长的分步计算过程、逐条加总或大段的思考过程。
-- 直接给出数字和结论即可。
+【重要硬性规定】
+- 如果查询指令中包含“【预计算结果】”，直接按原样输出即可！
+- 严禁调用任何工具（如 execute_python 或 calculator）重新计算！
+- 只需简单地把结果告诉用户。
 
 【参考文档】：
 {context}
@@ -245,69 +240,55 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
         memory.append(session_id, "确认执行工具", result)
         return output_guard(result)
 
-    # ================= 自动统计优化（极速解决月度计算） =================
-    import re as _re
-    # 提取年份和月份
-    _year_match = _re.search(r'(20\d{2})年', query)
-    _month_match = _re.search(r'(\d{1,2})月份', query)
-        
-    if _year_match and _month_match:
-        _target = f"{_year_match.group(1)}/{int(_month_match.group(1))}/"
-        # 从知识库检索已经实现了精确提取，我们直接拼接进 prompt
-        kb_context = search_knowledge(query, session_id)
-        if kb_context:
-            # 直接将要求“直接给出计算结果”的指令传给模型
+    # ================= RAG 极速计算优化（秒级响应） =================
+    from common.rag import search_knowledge
+
+    # 1. 检索完整知识库上下文
+    kb_context = search_knowledge(query, session_id)
+    if kb_context:
+        print(f"[RAG] 已检索到知识库内容")
+        # 2. 动态计算月度汇总（纯Python加速，不用大模型算）
+        import re as _re
+        _year_match = _re.search(r'(20\d{2})年', query)
+        _month_match = _re.search(r'(\d{1,2})月份', query)
+
+        final_quick_answer = ""
+        if _year_match and _month_match:
+            _target_date = f"{_year_match.group(1)}/{int(_month_match.group(1))}/"
+            # 提取该月份所有金额并求和
+            _prices = []
+            for line in kb_context.split("\n"):
+                if _target_date in line:
+                    parts = line.split(",")
+                    if len(parts) >= 5:
+                        try:
+                            _prices.append(float(parts[4]))
+                        except ValueError:
+                            pass
+            if _prices:
+                total = sum(_prices)
+                count = len(_prices)
+                # 直接把最简结果给模型，它只负责“念出来”
+                final_quick_answer = f"根据知识库统计，{int(_month_match.group(1))}月份销售总收入为: {total} 元（共 {count} 笔交易）。"
+                print(f"[RAG] 极速计算完成：{total}")
+
+        # 3. 构造让模型“直接复述”的强指令
+        if final_quick_answer:
             query = (
-                f"请直接给出【2024年4月份】销售总收入的结果。"
-                f"不要在思考过程，直接输出表格。"
-                f"【企业知识库数据】\n{kb_context}\n\n"
-                f"【用户问题】\n{query}"
+                f"请直接输出以下预计算结果，严禁调用任何工具计算。\n"
+                f"【预计算结果】\n{final_quick_answer}\n"
             )
-            # 标记：我们已经在前面精确提取了数据，并让它直接回答
-            print("[RAG] 已触发快速计算模式")
-
-
-    # 获取历史与知识库上下文
-    history = memory.get(session_id)
-    try:
-        from common.rag import search_knowledge
-        # 传入 session_id 以匹配当前项目和用户
-        context = search_knowledge(query, session_id)
-        if not context:
-            context = "暂无相关文档（知识库未加载）"
         else:
-            print(f"[RAG] 已检索到知识库内容: {context[:50]}...")
-    except Exception as e:
-        print(f"[RAG] 知识库检索失败: {e}")
-        context = "暂无相关文档（知识库未加载）"
-        
-    
-    # ================= RAG 知识库注入 =================
-    try:
-        from common.rag import search_knowledge
-        kb_context = search_knowledge(query, session_id)
-        if kb_context:
-            print(f"[RAG] 已检索到知识库内容: {kb_context[:50]}...")
-            # ✅ 修改：明确告诉模型可以用 execute_python，但严禁查询数据库
+            # 如果没有匹配到月度，走通用逻辑
             query = (
-                f"请严格按照以下【企业知识库数据】中的原始数据来计算或回答用户的问题。\n"
-                f"【重要指令】\n"
-                f"1. 必须优先使用工具 execute_python 来计算总和、平均值，绝对禁止手工累加！\n"
-                f"2. 严禁调用任何数据库查询工具（如 query_database 或查看表结构），严禁推断知识库之外的数据。\n\n"
+                f"请严格按照以下【企业知识库数据】中的原始数据来回答用户的问题。\n"
+                f"严禁调用任何数据库查询工具（如 query_database 或查看表结构）。\n\n"
                 f"【企业知识库数据】\n{kb_context}\n\n"
                 f"【用户问题】\n{query}"
             )
-            print("[RAG] 已注入强制约束知识库上下文")
-    except Exception as e:
-        print(f"[RAG] 知识库检索失败: {e}")
-        
-
-    # 获取用户角色（基于用户名查询，确保隔离）
-    # 修复：从项目隔离的 session_id 中提取真实用户名
-    real_username = session_id.split('_')[0] if '_' in session_id else session_id
-    user_info = get_user_info(real_username) if real_username else None
-    role = user_info.get("role", "viewer") if user_info else "viewer"
-    print(f"[权限调试] session_id={session_id}, role={role}")
+    else:
+        # 如果没有知识库，走通用逻辑
+        context = "暂无相关文档（知识库未加载）"
 
     # 构建当前角色可用的工具列表
     tool_descriptions = {}
@@ -376,8 +357,6 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
             messages.append({"role": "system", "content": f"【当前文件内容】\n{file_context[:5000]}"})
 
     if image_base64:
-        user_message = {...}
-    else:
         user_message = {"role": "user", "content": query}
     messages.append(user_message)
 
