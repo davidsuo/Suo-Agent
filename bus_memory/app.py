@@ -688,9 +688,8 @@ with gr.Blocks(title="AI 智能体") as demo:
     async def submit_text_with_file(message, history, user_state, pending_file_val, current_project):
         # 1. 如果用户输入了内容，先在界面上立刻清空输入框，并显示“正在分析”
         if message and message.strip():
-            # 确保 history 是一个列表
             history = list(history) if history else []
-            # 先发一条“正在分析”的消息给前端
+            # 在 history 末尾添加占位符
             history.append({"role": "assistant", "content": "⏳ 正在分析..."})
             yield history, "", None, "", gr.update(visible=False), "", ""
 
@@ -698,13 +697,10 @@ with gr.Blocks(title="AI 智能体") as demo:
         new_history, clear_text, _, user_msg, assistant_msg = await unified_handler(message, history, pending_file_val, user_state, current_project)
         
         # 3. 用最终答案替换掉刚才的占位符
-        # 确保最终历史不是空的
-        if new_history:
-            # 不管最后一条是字典还是列表格式，都替换它的内容为真正的回答
+        if new_history and len(new_history) > 0:
             if isinstance(new_history[-1], dict):
                 new_history[-1] = {"role": "assistant", "content": assistant_msg}
             else:
-                # 如果是列表形式 [user_msg, assistant_msg]，替换最后一个位置
                 new_history[-1] = [new_history[-1][0], assistant_msg]
             
         yield new_history, clear_text, None, "", gr.update(visible=False), user_msg, assistant_msg

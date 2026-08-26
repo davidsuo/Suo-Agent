@@ -543,25 +543,27 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                 messages.append(msg)
                 for tool_call in msg.tool_calls:
                     func_name = tool_call.function.name
-                    if func_name in ("execute_python", "calculator"):
-                        # 如果知识库上下文过大，不再传给工具，而是让模型直接用普通逻辑回答
-                        arguments["_tenant"] = memory.get_tenant(session_id)
-                        # 防止参数过大导致崩溃
-                        args_str = json.dumps(arguments)
-                        if len(args_str) > 3000:
-                            # 太长了，直接让模型基于知识库回答
-                            messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": "数据量过大，请直接基于已有知识库数据进行计算，并给出精确结论。"})
-                            continue  
+                    # ✅ 确保 arguments 总是被安全定义
+                    arguments = {}
                     try:
                         arguments = json.loads(tool_call.function.arguments)
                     except json.JSONDecodeError:
-                        # 如果还是解析失败，防止硬崩
-                        messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": "参数错误，请重新生成有效的 JSON。"})
+                        # 模型生成的JSON损坏，直接把错误喂回给模型，让它修正
+                        messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": "函数参数格式错误，请重新提供有效的参数。"})
                         continue
+
+                    # ✅ 如果工具需要执行计算且参数过大，直接告诉模型基于当前上下文回答
+                    if func_name in ("execute_python", "calculator"):
+                        args_str = json.dumps(arguments)
+                        if len(args_str) > 3000:
+                            messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": "数据量过大，请直接基于已有知识库数据进行计算，并给出精确结论。"})
+                            continue
+                        
+                    arguments["_tenant"] = memory.get_tenant(session_id)
                     if func_name in TOOL_ROUTER:
                         target_worker = TOOL_ROUTER[func_name]
                         task = {"tool": func_name, "arguments": arguments}
-                    arguments["_tenant"] = memory.get_tenant(session_id)
+
 
                     # RBAC 权限检查（常规模式）
                     if not is_tool_allowed(role, func_name):
