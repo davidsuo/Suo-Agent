@@ -721,19 +721,17 @@ with gr.Blocks(title="AI 智能体") as demo:
     text_input.submit(
         fn=submit_text_with_file,
         inputs=[text_input, chatbot, user_state, pending_file, current_project],
-        outputs=[...],
+        outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn, last_user_message, last_assistant_message],
         show_progress="hidden",
-        # ✅ 新增JS：按下回车瞬间清空输入框
         js="(text, history, state, file, project) => { const ta = document.querySelector('#input-card-bottom textarea, #input-row-final textarea'); if(ta) ta.value = ''; return [text, history, state, file, project]; }"
     )
     
     # 绑定发送按钮（注意加入 current_project）
     send_btn.click(
         fn=submit_text_with_file,
-        inputs=[...],
-        outputs=[...],
+        inputs=[text_input, chatbot, user_state, pending_file, current_project],
+        outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn, last_user_message, last_assistant_message],
         show_progress="hidden",
-        # ✅ 同样加上
         js="(text, history, state, file, project) => { const ta = document.querySelector('#input-card-bottom textarea, #input-row-final textarea'); if(ta) ta.value = ''; return [text, history, state, file, project]; }"
     )
     
