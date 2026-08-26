@@ -78,6 +78,10 @@ SYSTEM_PROMPT = """
 严禁调用 query_database 工具去查询数据库，严禁去查看 SQLite 中有哪些表！
 只有当【企业知识库数据】中没有相关数据时，才允许调用 query_database。
 
+【输出格式要求】
+当完成用户要求的数学计算（如销售总额、求和、平均值等）后，只输出最终的结论和关键的汇总数字。
+严禁展示任何分步计算过程、加总推导、或逐条列出的原始数据明细。直接给出最终结果即可。
+
 【参考文档】：
 {context}
 """
@@ -538,7 +542,16 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                 messages.append(msg)
                 for tool_call in msg.tool_calls:
                     func_name = tool_call.function.name
-                    arguments = json.loads(tool_call.function.arguments)
+                    try:
+                        arguments = json.loads(tool_call.function.arguments)
+                    except json.JSONDecodeError:
+                        # 模型生成的JSON损坏，直接把错误喂回给模型，让它修正
+                        error_msg = f"函数 {func_name} 的参数JSON解析失败，请重新提供有效的参数。"
+                        messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": error_msg})
+                        continue
+                    if func_name in TOOL_ROUTER:
+                        target_worker = TOOL_ROUTER[func_name]
+                        task = {"tool": func_name, "arguments": arguments}
                     arguments["_tenant"] = memory.get_tenant(session_id)
 
                     # RBAC 权限检查（常规模式）
