@@ -684,42 +684,34 @@ with gr.Blocks(title="AI 智能体") as demo:
         history.append({"role": "assistant", "content": answer})
         return history, "", None, message, answer
         
-    # 统一提交函数（唯一）
+    # ================= 纯文本及混合输入事件（瞬间清空输入框 + 优化占位符） =================
     async def submit_text_with_file(message, history, user_state, pending_file_val, current_project):
-        # 1. 如果用户有输入内容或上传了文件，先构建一个包含“正在分析”的占位历史
-        if message and message.strip() or pending_file_val:
-            # 克隆历史以防修改原对象
-            history = list(history)
+        # 1. 复制历史记录，避免修改原状态
+        new_history = list(history) if history else []
 
-            # 如果已经存在最后一个是"正在分析"的（比如上一次还没结束），先把它去掉
-            if history and (("content" in history[-1] and "正在分析" in str(history[-1].get("content", ""))) or (isinstance(history[-1], list) and "正在分析" in str(history[-1][1]))):
-                history = history[:-1]
+        # 2. 发送前，立即在界面上显示“正在分析...”占位符
+        if message and message.strip():
+            placeholder = "⏳ 正在分析..."
+            if isinstance(new_history, list) and new_history and isinstance(new_history[-1], dict):
+                new_history.append({"role": "assistant", "content": placeholder})
+            else:
+                new_history.append({"role": "assistant", "content": placeholder})
+            yield new_history, "", None, "", gr.update(visible=False), "", ""
 
-            # 2. 在历史末尾追加一个“正在分析”的独立助手气泡
-            history.append({"role": "assistant", "content": "⏳ 正在分析..."})
-            
-            # 3. 【关键】先只渲染这个带占位符的历史（此时输入框立即清空，右侧显示问题，左侧显示占位符）
-            yield history, "", None, "", gr.update(visible=False), "", ""
+        # 3. 调用核心处理逻辑（unified_handler 会追加用户消息和最终的AI回答）
+        new_history, clear_text, _, user_msg, assistant_msg = await unified_handler(
+            message, new_history, pending_file_val, user_state, current_project
+        )
 
-            # 4. 【关键】强制等待 0.5 秒，告诉 Gradio：“先显示上面这个状态，别急着合并！”
-            await asyncio.sleep(0.5)
+        # 4. 核心修复：清理掉之前手动添加的“⏳ 正在分析...”占位符，
+        #    确保它不会作为独立气泡残留或与结果合并！
+        cleaned_history = [
+            item for item in new_history
+            if not (isinstance(item, dict) and item.get("content") == "⏳ 正在分析...")
+        ]
 
-        # 5. 真正调用后台 AI 处理（这个过程可能会耗1-2分钟）
-        new_history, clear_text, _, user_msg, assistant_msg = await unified_handler(message, history, pending_file_val, user_state, current_project)
-
-        # 6. 找到刚才的“正在分析”气泡，并用最终答案替换它
-        if new_history:
-            # 搜索最后一条 Assistant 消息
-            for i in range(len(new_history) - 1, -1, -1):
-                if isinstance(new_history[i], dict) and new_history[i].get("role") == "assistant":
-                    new_history[i]["content"] = assistant_msg
-                    break
-                elif isinstance(new_history[i], list) and new_history[i][1] == "⏳ 正在分析...":
-                    new_history[i][1] = assistant_msg
-                    break
-
-        # 7. 最终更新聊天框
-        yield new_history, clear_text, None, "", gr.update(visible=False), user_msg, assistant_msg
+        # 5. 返回最终结果（只包含用户提问和AI最终回答）
+        yield cleaned_history, clear_text, None, "", gr.update(visible=False), user_msg, assistant_msg
 
 
     # ================= 事件绑定（文本、文件、语音） =================
