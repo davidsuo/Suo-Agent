@@ -686,23 +686,39 @@ with gr.Blocks(title="AI 智能体") as demo:
         
     # 统一提交函数（唯一）
     async def submit_text_with_file(message, history, user_state, pending_file_val, current_project):
-        # 1. 如果用户输入了内容，先在界面上立刻清空输入框，并显示“正在分析”
-        if message and message.strip():
-            history = list(history) if history else []
-            # 在 history 末尾添加占位符
+        # 1. 如果用户有输入内容或上传了文件，先构建一个包含“正在分析”的占位历史
+        if message and message.strip() or pending_file_val:
+            # 克隆历史以防修改原对象
+            history = list(history)
+
+            # 如果已经存在最后一个是"正在分析"的（比如上一次还没结束），先把它去掉
+            if history and (("content" in history[-1] and "正在分析" in str(history[-1].get("content", ""))) or (isinstance(history[-1], list) and "正在分析" in str(history[-1][1]))):
+                history = history[:-1]
+
+            # 2. 在历史末尾追加一个“正在分析”的独立助手气泡
             history.append({"role": "assistant", "content": "⏳ 正在分析..."})
+            
+            # 3. 【关键】先只渲染这个带占位符的历史（此时输入框立即清空，右侧显示问题，左侧显示占位符）
             yield history, "", None, "", gr.update(visible=False), "", ""
 
-        # 2. 后台真正开始计算
+            # 4. 【关键】强制等待 0.5 秒，告诉 Gradio：“先显示上面这个状态，别急着合并！”
+            await asyncio.sleep(0.5)
+
+        # 5. 真正调用后台 AI 处理（这个过程可能会耗1-2分钟）
         new_history, clear_text, _, user_msg, assistant_msg = await unified_handler(message, history, pending_file_val, user_state, current_project)
-        
-        # 3. 用最终答案替换掉刚才的占位符
-        if new_history and len(new_history) > 0:
-            if isinstance(new_history[-1], dict):
-                new_history[-1] = {"role": "assistant", "content": assistant_msg}
-            else:
-                new_history[-1] = [new_history[-1][0], assistant_msg]
-            
+
+        # 6. 找到刚才的“正在分析”气泡，并用最终答案替换它
+        if new_history:
+            # 搜索最后一条 Assistant 消息
+            for i in range(len(new_history) - 1, -1, -1):
+                if isinstance(new_history[i], dict) and new_history[i].get("role") == "assistant":
+                    new_history[i]["content"] = assistant_msg
+                    break
+                elif isinstance(new_history[i], list) and new_history[i][1] == "⏳ 正在分析...":
+                    new_history[i][1] = assistant_msg
+                    break
+
+        # 7. 最终更新聊天框
         yield new_history, clear_text, None, "", gr.update(visible=False), user_msg, assistant_msg
 
 
