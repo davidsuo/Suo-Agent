@@ -626,24 +626,30 @@ with gr.Blocks(title="AI 智能体") as demo:
         if not user:
             return history or [], "", None, "", ""
 
-        session_id = user.get("username", "default") + "_" + (current_project or "默认项目")
+        # 确保历史记录是列表类型
+        history = list(history) if history else []
+
+        # 生成包含项目信息的会话 ID
+        session_id = f"{user.get('username', 'default')}_{current_project or '默认项目'}"
         memory.set_tenant(session_id, user.get("tenant", session_id))
 
-
-        # ================= 文件/音频处理 (完整替换块) =================
+        # ================= 文件处理 =================
         if file is not None:
             file_path = file if isinstance(file, str) else (file.name if hasattr(file, 'name') else str(file))
             ext = os.path.splitext(file_path)[1].lower()
             file_name = os.path.basename(file_path)
             file_result = ""
 
+            # 1. 图片处理
             if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif'):
                 if message and "表格" in message:
                     file_result = await asyncio.to_thread(recognize_table, file_path)
                 else:
                     file_result = await asyncio.to_thread(ocr_image, file_path)
+            # 2. 表格处理
             elif ext in ('.csv', '.xlsx', '.xls'):
                 file_result = await asyncio.to_thread(analyze_file, file_path)
+            # 3. 音频处理
             elif ext in ('.wav', '.mp3', '.m4a', '.ogg', '.webm'):
                 file_result = await asyncio.to_thread(speech_to_text, file_path)
             else:
@@ -654,60 +660,46 @@ with gr.Blocks(title="AI 智能体") as demo:
             memory.add_uploaded_file(session_id, file_name, file_result)
             simple_log_tool(session_id, file_name, "file_upload", {"file_name": file_name}, "文件上传成功")
 
-            history = history or []
-
+            # 处理音频文件（直接走语音识别）
             if ext in ('.wav', '.mp3', '.m4a', '.ogg', '.webm'):
                 history.append({"role": "user", "content": f"🎤 语音输入：{file_result}"})
                 answer = await chat_core(session_id, file_result, query_worker, command_worker, TOOL_ROUTER)
                 history.append({"role": "assistant", "content": answer})
                 return history, "", None, file_result, answer
             else:
+                # 处理普通文件（CSV/Excel/图片）
                 history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
+                
+                # 如果同时输入了文字，就把文字加进去
                 if message and message.strip():
                     history.append({"role": "user", "content": message})
-                    answer = await chat_core(session_id, message, query_worker, command_worker, TOOL_ROUTER)
-                    history.append({"role": "assistant", "content": answer})
-                    return history, "", None, message, answer
-                else:
-                    history.append({"role": "assistant", "content": "文件已就绪，您可以基于该内容提问。"})
-                    return history, "", None, file_name, "文件已就绪，您可以基于该内容提问。"
+                
+                # 明确告诉系统处理文件并回答
+                answer = await chat_core(session_id, message if message else f"请帮我分析文件 {file_name} 的内容", query_worker, command_worker, TOOL_ROUTER)
+                history.append({"role": "assistant", "content": answer})
+                return history, "", None, message, answer
 
-        # 纯文本处理
+        # ================= 纯文本处理（含 RAG 极速计算） =================
         if not message or not message.strip():
-            return history or [], "", None, "", ""
+            return history, "", None, "", ""
 
-        display_msg = message
-        history = history or []
-        history.append({"role": "user", "content": display_msg})
-
+        history.append({"role": "user", "content": message})
         answer = await chat_core(session_id, message, query_worker, command_worker, TOOL_ROUTER)
         history.append({"role": "assistant", "content": answer})
         return history, "", None, message, answer
         
-    # ================= 纯文本及混合输入事件（瞬间清空输入框 + 优化占位符） =================
+    # ================= 纯文本及混合输入事件（极简无占位符版） =================
     async def submit_text_with_file(message, history, user_state, pending_file_val, current_project):
-        # 1. 复制历史记录，避免修改原状态
-        new_history = list(history) if history else []
+        if not message and not pending_file_val:
+            return history, "", None, "", gr.update(visible=False), "", ""
 
-        # 2. 发送前，立即在界面上显示“正在分析...”占位符
-        if message and message.strip():
-            placeholder = "⏳ 正在分析..."
-            if isinstance(new_history, list) and new_history and isinstance(new_history[-1], dict):
-                new_history.append({"role": "assistant", "content": placeholder})
-            else:
-                new_history.append({"role": "assistant", "content": placeholder})
-            yield new_history, "", None, "", gr.update(visible=False), "", ""
-
-        # 3. 调用核心处理逻辑（unified_handler 会追加用户消息和最终的AI回答）
+        # 直接调用核心处理逻辑，不添加任何额外气泡
         new_history, clear_text, _, user_msg, assistant_msg = await unified_handler(
-            message, new_history, pending_file_val, user_state, current_project
+            message, history, pending_file_val, user_state, current_project
         )
 
-        # 4. 核心修复：清理掉之前手动添加的“⏳ 正在分析...”占位符，
-        #    确保它不会作为独立气泡残留或与结果合并！
-        cleaned_history = [
-            item for item in new_history
-            if not (isinstance(item, dict) and item.get("content") == "⏳ 正在分析...")
+        # 返回最终结果，输入框瞬间清空
+        return new_history, clear_text, None, "", gr.update(visible=False), user_msg, assistant_msg
         ]
 
         # 5. 返回最终结果（只包含用户提问和AI最终回答）
