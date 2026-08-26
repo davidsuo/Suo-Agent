@@ -250,19 +250,17 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
         context = "暂无相关文档（知识库未加载）"
     
     # ================= RAG 知识库注入 =================
-    # ================= RAG 知识库注入 =================
     try:
         from common.rag import search_knowledge
-            
-        # 获取知识库上下文
         kb_context = search_knowledge(query, session_id)
         if kb_context:
             print(f"[RAG] 已检索到知识库内容: {kb_context[:50]}...")
-            # ✅ 强制将原有 query 替换，明确指令
+            # ✅ 修改：明确告诉模型可以用 execute_python，但严禁查询数据库
             query = (
-                f"请严格按照以下【企业知识库数据】中的原始数据来计算或回答用户的问题。"
-                f"严禁调用任何数据库查询工具（如 query_database 或查看表结构），"
-                f"严禁推断知识库之外的数据。\n\n"
+                f"请严格按照以下【企业知识库数据】中的原始数据来计算或回答用户的问题。\n"
+                f"【重要指令】\n"
+                f"1. 必须优先使用工具 execute_python 来计算总和、平均值，绝对禁止手工累加！\n"
+                f"2. 严禁调用任何数据库查询工具（如 query_database 或查看表结构），严禁推断知识库之外的数据。\n\n"
                 f"【企业知识库数据】\n{kb_context}\n\n"
                 f"【用户问题】\n{query}"
             )
