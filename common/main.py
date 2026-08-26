@@ -364,6 +364,8 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
 
     if image_base64:
         user_message = {"role": "user", "content": query}
+    else:
+        user_message = {"role": "user", "content": query}
     messages.append(user_message)
 
     # 尝试生成任务计划
