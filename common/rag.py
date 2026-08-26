@@ -35,24 +35,25 @@ def _chunk_text(text: str, chunk_size=500) -> List[str]:
 
 def index_document(file_path: str, session_id: str, tags: str = "") -> str:
     try:
-        # ✅ 修改1：读取完整文件，绝不截断数据
+        # ✅ 彻底解除截断限制：读取完整文件
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
         
-        # ✅ 修改2：调整切分大小，从500改为2000，确保多天数据不被切碎
+        # ✅ 将分块大小从500调整到2000，确保多天数据不被打碎
         chunks = _chunk_text(content, chunk_size=2000)
         
-        # 后续保存逻辑不变...
         store = _load_store()
         if session_id not in store:
             store[session_id] = []
+            
         for chunk in chunks:
             store[session_id].append({
                 "id": str(uuid.uuid4()),
-                "text": chunk,
+                "text": chunk,  # 完整数据块
                 "tags": tags,
                 "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             })
+        
         _save_store(store)
         return f"✅ 文档已成功索引（共 {len(chunks)} 个片段，已完整读取）。"
     except Exception as e:
@@ -95,7 +96,7 @@ def search_knowledge(query, session_id, tags="", top_k=5):
             matched.append(text)
     
     if matched:
-        return "\n\n".join(list(dict.fromkeys(matched))[:top_k])  # ✅ 改为使用 top_k
+        return "\n\n".join(list(dict.fromkeys(matched))[:5])  # 返回前5个完整块
     
     # 兜底关键词
     keywords = ["销售", "收入", "价格", "coffee", "2024", "数据"]
@@ -105,6 +106,6 @@ def search_knowledge(query, session_id, tags="", top_k=5):
                 if kw in doc.get("text", ""):
                     matched.append(doc.get("text", ""))
             if matched:
-                return "\n\n".join(list(dict.fromkeys(matched))[:top_k])  # ✅ 改为使用 top_k
+                return "\n\n".join(list(dict.fromkeys(matched))[:5])  # 返回前5个完整块
                 
     return ""
