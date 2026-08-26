@@ -289,6 +289,12 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
     else:
         # 如果没有知识库，走通用逻辑
         context = "暂无相关文档（知识库未加载）"
+        
+    # ================= 获取用户角色（必须保留！修复 UnboundLocalError） =================
+    real_username = session_id.split('_')[0] if '_' in session_id else session_id
+    user_info = get_user_info(real_username) if real_username else None
+    role = user_info.get("role", "viewer") if user_info else "viewer"
+    print(f"[权限调试] session_id={session_id}, role={role}")
 
     # 构建当前角色可用的工具列表
     tool_descriptions = {}
