@@ -50,7 +50,8 @@ def index_document(file_path: str, session_id: str, tags: str = "") -> str:
         return f"❌ 文档处理失败: {e}"
 
 def search_knowledge(query: str, session_id: str, tags: str = "") -> str:
-    """增强版检索：精确提取用户提到的月份数据，极大地提高计算准确率"""
+    """增强版检索：精确提取月份数据，并直接在Python中完成总和计算"""
+    import re
     store = _load_store()
     if session_id not in store:
         return ""
@@ -65,15 +66,40 @@ def search_knowledge(query: str, session_id: str, tags: str = "") -> str:
     if year_match and month_match:
         target_prefix = f"{year_match.group(1)}/{int(month_match.group(1))}/"
     
-    # 2. 如果明确指定了年月，直接精确提取该年月所有数据
+    # 2. 如果明确指定了年月，直接精确提取该年月所有数据并计算总和
     if target_prefix:
         matched_texts = []
+        total_sum = 0.0
+        record_count = 0
+        
         for doc in docs:
-            if target_prefix in doc.get("text", ""):
-                matched_texts.append(doc.get("text", ""))
+            text = doc.get("text", "")
+            # 只要当前文本块中包含了该月份的前缀，就逐行提取
+            if target_prefix in text:
+                matched_texts.append(text)
+                # 提取所有符合的行的价格
+                for line in text.splitlines():
+                    if target_prefix in line:
+                        parts = line.split(',')
+                        if len(parts) >= 5:
+                            try:
+                                price = float(parts[4])
+                                total_sum += price
+                                record_count += 1
+                            except ValueError:
+                                pass
+        
         if matched_texts:
-            print(f"[RAG] 已精确提取 {target_prefix} 的数据")
-            return "\n\n".join(matched_texts)
+            # 将精确的计算结果直接返回给模型，模型只需要引用即可！
+            result_text = (
+                f"\n【月度预计算统计结果】\n"
+                f"月份：{target_prefix}\n"
+                f"交易笔数：{record_count}\n"
+                f"销售总收入：{total_sum:.3f}\n"
+                f"（以上结果为Python程序直接从源数据中自动求和的精确结果，无任何估算。）"
+            )
+            print(f"[RAG] 已精确提取并计算 {target_prefix} 的数据，共 {record_count} 笔，合计 {total_sum:.3f}")
+            return "\n\n".join(matched_texts) + result_text
     
     # 3. 如果没指定月份，回退到原有的关键词匹配逻辑
     clean_query = query.replace("，", " ").replace("。", " ").replace("？", " ").replace("?", " ").replace(" ", "")
