@@ -700,10 +700,6 @@ with gr.Blocks(title="AI 智能体") as demo:
 
         # 返回最终结果，输入框瞬间清空
         return new_history, clear_text, None, "", gr.update(visible=False), user_msg, assistant_msg
-        ]
-
-        # 5. 返回最终结果（只包含用户提问和AI最终回答）
-        yield cleaned_history, clear_text, None, "", gr.update(visible=False), user_msg, assistant_msg
 
 
     # ================= 事件绑定（文本、文件、语音） =================
