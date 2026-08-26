@@ -179,7 +179,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     feedback_down = gr.State("down")
     pending_file = gr.State(None)
     current_project = gr.State("主对话")
-    project_names = gr.State([])
+    project_names = gr.State(["主对话"])
 
     # ---------- 登录界面 ----------
     with gr.Row(elem_id="login-wrapper"):
@@ -247,7 +247,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                                 value="主对话",
                                 label="项目列表",
                                 interactive=True,
-                                visible=True   # 始终显示，作为默认的“主对话”
+                                visible=True
                             )
                             # 提前定义删除按钮，避免变量未定义错误
                             delete_project_btn = gr.Button("🗑️ 删除当前项目", visible=False, scale=0)
@@ -823,33 +823,30 @@ with gr.Blocks(title="AI 智能体") as demo:
     )
 
     # 3. 创建项目逻辑（简化，返回6个值）
-    def create_project(project_name, current_choices, current_project, project_names):
+    def create_project(project_name, project_names, current_project):
         if not project_name or not project_name.strip():
-            return current_choices, "", gr.update(visible=True), gr.update(visible=False), current_project, project_names
+            return project_names, "", gr.update(visible=True), gr.update(visible=False), current_project, project_names
         
-        project_name = project_name.strip()
+        new_name = project_name.strip()
         
-        # 确保列表开头永远是“主对话”，新项目往后追加
-        choices = ["主对话"]
-        if current_choices:
-            for item in current_choices:
-                if item != "主对话":
-                    choices.append(item)
-                    
-        if project_name not in choices:
-            choices.append(project_name)
-            
-        # 同步更新全局项目名列表
-        if project_name not in project_names:
-            project_names.append(project_name)
-
-        # 返回完整的6个值：列表、清空输入、显示按钮、隐藏输入行、当前项目、项目名列表
-        return choices, "", gr.update(visible=True), gr.update(visible=False), project_name, project_names
+        # 重新构建 choices，确保“主对话”永远在第一位
+        new_choices = ["主对话"]
+        for p in project_names:
+            if p != "主对话":
+                new_choices.append(p)
+        if new_name not in new_choices:
+            new_choices.append(new_name)
+        
+        # 更新 project_names 状态
+        new_project_names = [p for p in new_choices]
+        
+        # 返回：列表、清空输入、显示按钮、隐藏输入行、当前项目、项目名列表
+        return new_choices, "", gr.update(visible=True), gr.update(visible=False), new_name, new_project_names
 
     create_project_btn.click(
         fn=create_project,
-        inputs=[project_input, project_list, current_project, project_names],
-        outputs=[project_list, project_input, add_project_btn, project_creation_row, current_project, project_names]
+        inputs=[project_input, project_names, current_project],  # 只有3个输入！
+        outputs=[project_list, project_input, add_project_btn, project_creation_row, current_project, project_names] # 6个输出
     )
 
     # 监听 Radio 切换项目
