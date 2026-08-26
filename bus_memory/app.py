@@ -178,7 +178,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     feedback_up = gr.State("up")
     feedback_down = gr.State("down")
     pending_file = gr.State(None)
-    current_project = gr.State("")
+    current_project = gr.State("主对话")
     project_names = gr.State([])
 
     # ---------- 登录界面 ----------
@@ -241,13 +241,13 @@ with gr.Blocks(title="AI 智能体") as demo:
                                 create_project_btn = gr.Button("创建", scale=1)
                                 cancel_project_btn = gr.Button("✖", scale=0, min_width=0)
                             
-                            # 项目列表（改为单选按钮，方便切换）
+                            # 项目列表（主对话 + 用户自定义项目）
                             project_list = gr.Radio(
-                                choices=[],
-                                value=None,
+                                choices=["主对话"],
+                                value="主对话",
                                 label="项目列表",
                                 interactive=True,
-                                visible=False   # 初始隐藏
+                                visible=True   # 始终显示，作为默认的“主对话”
                             )
                             # 提前定义删除按钮，避免变量未定义错误
                             delete_project_btn = gr.Button("🗑️ 删除当前项目", visible=False, scale=0)
@@ -630,7 +630,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         history = list(history) if history else []
 
         # 生成包含项目信息的会话 ID
-        session_id = f"{user.get('username', 'default')}_{current_project or '默认项目'}"
+         session_id = f"{user.get('username', 'default')}_{current_project or '主对话'}"
         memory.set_tenant(session_id, user.get("tenant", session_id))
 
         # ================= 文件处理 =================
@@ -823,22 +823,25 @@ with gr.Blocks(title="AI 智能体") as demo:
     )
 
     # 3. 创建项目逻辑（简化，返回6个值）
-    def create_project(project_name, project_names, current_project):
+    def create_project(project_name, current_choices, current_project):
         if not project_name or not project_name.strip():
-            return (gr.update(), gr.update(), gr.update(visible=True), gr.update(visible=False), current_project, project_names)
+            return current_choices, "", gr.update(visible=True), gr.update(visible=False), current_project
         
         project_name = project_name.strip()
-        if project_name not in project_names:
-            project_names = project_names + [project_name]
-            
-        return (
-            gr.update(choices=project_names, value=project_name, visible=True),
-            gr.update(),
-            gr.update(visible=True),
-            gr.update(visible=False),
-            project_name,
-            project_names
-        )
+        
+        # 确保列表开头永远是“主对话”，新项目往后追加
+        choices = ["主对话"]
+        if current_choices:
+            # 过滤掉可能存在的旧“主对话”重复项，保持列表干净
+            for item in current_choices:
+                if item != "主对话":
+                    choices.append(item)
+                    
+        if project_name not in choices:
+            choices.append(project_name)
+
+        # 返回：更新项目列表、清空输入框、恢复按钮、隐藏输入行、自动将新项目设为当前
+        return choices, "", gr.update(visible=True), gr.update(visible=False), project_name
 
     create_project_btn.click(
         fn=create_project,
