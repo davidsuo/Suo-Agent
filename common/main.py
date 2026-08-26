@@ -240,14 +240,16 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
         memory.append(session_id, "确认执行工具", result)
         return output_guard(result)
 
+    # ================= 变量初始化（必须放在最前面，防止报错！） =================
+    context = "暂无相关文档（知识库未加载）"
+    history = memory.get(session_id)
+
     # ================= RAG 极速计算优化（秒级响应） =================
     from common.rag import search_knowledge
-
-    # 1. 检索完整知识库上下文
     kb_context = search_knowledge(query, session_id)
     if kb_context:
-        context = "用户问题中已注入相关的【企业知识库数据】，请根据该数据回答。"
         print(f"[RAG] 已检索到知识库内容")
+
         # 2. 动态计算月度汇总（纯Python加速，不用大模型算）
         import re as _re
         _year_match = _re.search(r'(20\d{2})年', query)
@@ -269,7 +271,6 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
             if _prices:
                 total = sum(_prices)
                 count = len(_prices)
-                # 直接把最简结果给模型，它只负责“念出来”
                 final_quick_answer = f"根据知识库统计，{int(_month_match.group(1))}月份销售总收入为: {total} 元（共 {count} 笔交易）。"
                 print(f"[RAG] 极速计算完成：{total}")
 
@@ -287,11 +288,9 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                 f"【企业知识库数据】\n{kb_context}\n\n"
                 f"【用户问题】\n{query}"
             )
-    else:
-        context = "暂无相关文档（知识库未加载）"
-        # 如果没有知识库，走通用逻辑
-        context = "暂无相关文档（知识库未加载）"
-        
+        # 如果有知识库，context 就设为知识库内容
+        context = kb_context
+
     # ================= 获取用户角色（必须保留！修复 UnboundLocalError） =================
     real_username = session_id.split('_')[0] if '_' in session_id else session_id
     user_info = get_user_info(real_username) if real_username else None
@@ -312,11 +311,11 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
 
     system_content = SYSTEM_PROMPT.format(
         available_tools=available_tools_str,
-        context="用户问题中已注入相关的【企业知识库数据】，请根据该数据回答。"
+        context=context if context else "暂无相关文档"  # ✅ 这里 context 一定被定义了！
     )
 
     messages = [{"role": "system", "content": system_content}]
-    messages.extend(history)
+    messages.extend(history)  # ✅ 这里 history 一定被定义了！
 
     # 获取该会话已上传的所有文件名
     uploaded_names = memory.get_uploaded_file_names(session_id)
