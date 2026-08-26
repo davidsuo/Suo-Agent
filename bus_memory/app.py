@@ -630,7 +630,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         history = list(history) if history else []
 
         # 生成包含项目信息的会话 ID
-         session_id = f"{user.get('username', 'default')}_{current_project or '主对话'}"
+        session_id = f"{user.get('username', 'default')}_{current_project or '主对话'}"
         memory.set_tenant(session_id, user.get("tenant", session_id))
 
         # ================= 文件处理 =================
