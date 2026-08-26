@@ -1017,7 +1017,6 @@ if __name__ == "__main__":
         server_port=port,
         theme=gr.themes.Soft(),
         head=voice_script,
-        timeout=300,  # ✅ 关键：将默认的60秒限制提升到300秒（5分钟），防止因耗时过长报“处理超时”
         css="""
             /* 隐藏语音输入组件 */
             #voice-file-input { display: none !important; }
