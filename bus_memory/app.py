@@ -199,7 +199,7 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     # ---------- 主聊天界面 ----------
     with gr.Column(visible=False) as chat_column:
-        # ================= 顶部品牌栏（第一行） =================
+        # ================= 顶部品牌栏 =================
         with gr.Row(elem_id="top-brand-bar"):
             gr.HTML("""
                 <div style="display:flex; align-items:center; gap:10px;">
@@ -208,18 +208,18 @@ with gr.Blocks(title="AI 智能体") as demo:
                 </div>
             """)
             logout_btn = gr.Button("退出登录", elem_id="top-logout-btn", scale=0, min_width=0)
-            
-        # ================= 顶部导航 + 退出登录（第二行） =================
+
+        # ================= 顶部导航 + 退出登录 =================
         with gr.Row(elem_id="top-nav-container"):
             with gr.Tabs(elem_id="top-nav-bar") as main_tabs:
-                
+
                 # ================= 聊天 Tab =================
                 with gr.Tab("聊天"):
                     with gr.Row(elem_id="core-work-area"):
-                        
+
                         # 左侧 1/3：项目侧边栏
                         with gr.Column(scale=1, min_width=280, elem_id="project-sidebar"):
-                            # 隐藏的租户下拉框（仅参与逻辑）
+                            # 隐藏的租户下拉框
                             tenant_dropdown = gr.Dropdown(
                                 choices=get_available_tenants(),
                                 value="default",
@@ -235,58 +235,58 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     elem_id="current-user-display"
                                 )
 
-                            # 项目 + 按钮与内联创建区（同一行：输入框 + 创建 + 取消）
-                            add_project_btn = gr.Button("项目 +", elem_id="add-project-btn", scale=0, visible=True)
+                            # 项目 + 按钮与内联创建区
+                            add_project_btn = gr.Button("项目 +", elem_id="add-project-btn", scale=0, visible=True, elem_classes="side-btn")
                             with gr.Row(elem_id="project-creation-row", visible=False) as project_creation_row:
                                 project_input = gr.Textbox(
-                                    placeholder="输入项目名称...", 
-                                    scale=3,  # ✅ 缩小输入框比例，给右边留空间
-                                    show_label=False, 
+                                    placeholder="输入项目名称...",
+                                    scale=3,
+                                    show_label=False,
                                     elem_id="project-input-box"
                                 )
-                                create_project_btn = gr.Button("创建", scale=1, min_width=60, elem_id="create-project-btn") # ✅ 稍微缩小创建框，固定宽度
-                                cancel_project_btn = gr.Button("✖", scale=1, min_width=40, elem_id="cancel-project-btn") # ✅ 放大“✖”框，固定宽度，不再被挤出边界
+                                create_project_btn = gr.Button("创建", scale=1, min_width=60, elem_id="create-project-btn", elem_classes="side-btn")
+                                cancel_project_btn = gr.Button("x", scale=1, min_width=40, elem_id="cancel-project-btn", elem_classes="side-btn")  # 修改：改成"x"
 
-                            # 项目列表（主对话 + 用户自定义项目）
+                            # 项目列表
                             project_list = gr.Radio(
                                 choices=["主对话"],
                                 value="主对话",
                                 label="项目列表",
                                 interactive=True,
-                                visible=True
+                                visible=True,
+                                elem_id="project-list-radio",
+                                elem_classes="side-radio"
                             )
-                            
+
                             # 删除当前项目按钮
-                            delete_project_btn = gr.Button("🗑️ 删除当前项目", visible=False, scale=0, elem_id="delete-project-btn")
+                            delete_project_btn = gr.Button("🗑️ 删除当前项目", visible=False, scale=0, elem_id="delete-project-btn", elem_classes="side-btn")
 
                         # 右侧 3/4：聊天主区
                         with gr.Column(scale=3, elem_id="chat-main-area"):
-                            # 聊天框（彻底移除自带标签）
-                            chatbot = gr.Chatbot(label="", show_label=False, height=500, value=[])
-                            
+                            # 聊天框
+                            chatbot = gr.Chatbot(label="对话", height=500, value=[], show_label=False)
+
                             # ========== 底部合并卡片式输入区 ==========
                             with gr.Group(elem_id="input-card"):
-                                # 第一行：反馈按钮(靠左) + 占位符(撑满) + 文件名/X(靠右)
+                                # 第一行：反馈按钮 + 文件名/清除按钮（靠右）
                                 with gr.Row(elem_id="file-row"):
-                                    up_btn = gr.Button("👍 有帮助", scale=0, min_width=80, size="sm")
-                                    down_btn = gr.Button("👎 无帮助", scale=0, min_width=80, size="sm")
+                                    up_btn = gr.Button("👍 有帮助", scale=0, min_width=80, size="sm", elem_classes="side-btn")
+                                    down_btn = gr.Button("👎 无帮助", scale=0, min_width=80, size="sm", elem_classes="side-btn")
                                     feedback_msg = gr.Markdown("")
 
-                                    # 占位符：自动吃掉中间所有空隙，把文件名推到最右
-                                    spacer = gr.Markdown("", scale=1, elem_id="file-row-spacer")
+                                    # 文件名（靠右，加固定最小宽度和防压缩）
+                                    attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=120)
 
-                                    # 文件名（靠右）
-                                    attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=100)
-
-                                    # ❌ 清除按钮（紧跟文件名，默认隐藏）
-                                    clear_file_btn = gr.Button("❌", scale=0, min_width=40, elem_id="clear-btn", visible=False)
+                                    # ❌ 清除按钮（修改：改成"x"）
+                                    clear_file_btn = gr.Button("x", scale=0, min_width=40, elem_id="clear-btn", visible=False)
 
                                 # 第二行：输入框 + 📎 + 发送按钮
                                 with gr.Row(elem_id="input-row-final"):
                                     text_input = gr.Textbox(
                                         show_label=False,
                                         placeholder="发消息或按住空格说话，松开发送...",
-                                        scale=4
+                                        scale=4,
+                                        elem_id="chat-input-box"
                                     )
                                     file_upload_btn = gr.UploadButton(
                                         "📎",
@@ -1049,6 +1049,7 @@ if __name__ == "__main__":
                 display: block !important;
             }
 
+            /* 顶部品牌栏 */
             #top-brand-bar {
                 display: flex !important;
                 align-items: center !important;
@@ -1056,6 +1057,9 @@ if __name__ == "__main__":
                 background: white !important;
                 padding: 10px 20px !important;
                 border-bottom: 1px solid #e5e7eb !important;
+            }
+            #top-brand-bar h2 {
+                font-family: "Segoe UI", Roboto, sans-serif !important;
             }
 
             #top-logout-btn {
@@ -1071,6 +1075,7 @@ if __name__ == "__main__":
                 border-radius: 6px !important;
                 font-weight: bold !important;
                 margin-left: auto !important;
+                font-family: "Segoe UI", Roboto, sans-serif !important;
             }
 
             .gradio-container .loading,
@@ -1083,15 +1088,73 @@ if __name__ == "__main__":
                 visibility: hidden !important;
             }
 
+            /* 当前用户行 */
             #current-user-row {
                 display: flex !important;
                 align-items: center !important;
                 gap: 8px !important;
                 margin-bottom: 15px !important;
             }
-            #current-user-row p {
+            #current-user-row p, #current-user-row span {
                 white-space: nowrap !important;
                 flex-shrink: 0 !important;
+                font-family: "Segoe UI", Roboto, sans-serif !important;
+            }
+
+            /* 侧边栏字体统一 */
+            #project-sidebar, .side-btn, .side-radio {
+                font-family: "Segoe UI", Roboto, sans-serif !important;
+            }
+
+            /* 顶部导航字体 */
+            #top-nav-bar {
+                font-family: "Segoe UI", Roboto, sans-serif !important;
+            }
+
+            /* 统一按钮基本样式 */
+            .side-btn {
+                background: #ffffff !important;
+                border: 1px solid #d1d5db !important;
+                border-radius: 6px !important;
+                color: #374151 !important;
+                font-weight: 500 !important;
+                font-size: 14px !important;
+                transition: all 0.2s ease !important;
+            }
+            .side-btn:hover {
+                background: #f9fafb !important;
+            }
+            #cancel-project-btn, #clear-btn {
+                background: transparent !important;
+                border: none !important;
+                color: #e53e3e !important;
+                font-weight: bold !important;
+            }
+
+            /* 项目创建区样式 */
+            #project-creation-row {
+                display: flex !important;
+                flex-direction: row !important;
+                flex-wrap: nowrap !important;
+                align-items: center !important;
+                gap: 4px !important;
+                margin-bottom: 8px !important;
+            }
+            /* 去掉创建项目输入框的白底和边框 */
+            #project-creation-row .block,
+            #project-creation-row .wrap,
+            #project-creation-row .form,
+            #project-input-box {
+                background: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
+            }
+            #project-input-box input {
+                background: transparent !important;
+                border: 1px solid #d1d5db !important;
+                border-radius: 6px !important;
+                padding: 8px 10px !important;
+                width: 100% !important;
             }
 
             #input-card {
@@ -1105,7 +1168,6 @@ if __name__ == "__main__":
                 gap: 8px !important;
             }
 
-            /* 第一行：强制横排，占位符撑开 */
             #file-row {
                 display: flex !important;
                 flex-direction: row !important;
@@ -1114,36 +1176,32 @@ if __name__ == "__main__":
                 gap: 8px !important;
                 margin-bottom: 5px !important;
                 width: 100% !important;
-                /* 禁止溢出裁剪 */
-                overflow: visible !important;
             }
-            /* 左侧的反馈按钮固定大小，绝不压缩 */
+            #file-row > * {
+                flex: 0 0 auto !important;
+                white-space: nowrap !important;
+            }
             #file-row > button {
                 flex-shrink: 0 !important;
             }
-            /* 占位符：撑满中间全部区域 */
-            #file-row-spacer {
-                flex-grow: 1 !important;
-                min-width: 0 !important;
-            }
-            /* 文件名容器固定宽度，防止被挤压出界 */
             #attachment-html {
-                flex: 0 0 auto !important;
-                width: max-content !important;
-                min-width: 100px !important;
+                margin-left: auto !important;
                 padding: 0 !important;
                 font-size: 14px !important;
                 color: #333 !important;
                 font-weight: 500 !important;
+                flex-shrink: 0 !important;
             }
             #clear-btn {
-                flex: 0 0 auto !important;
                 margin: 0 !important;
                 padding: 0 4px !important;
                 color: #e53e3e !important;
+                background: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
             }
 
-            /* 第二行 */
+            /* 去掉聊天输入框的白底和边框 */
             #input-row-final {
                 display: flex !important;
                 flex-direction: row !important;
@@ -1151,12 +1209,20 @@ if __name__ == "__main__":
                 align-items: center !important;
                 gap: 8px !important;
             }
-            #input-row-final .block {
-                flex-grow: 1 !important;
-                margin: 0 !important;
-                background-color: #f9fafb !important;
-                border-radius: 8px !important;
-                border: 1px solid #f3f4f6 !important;
+            #input-row-final .block,
+            #input-row-final .wrap,
+            #chat-input-box,
+            #chat-input-box .wrap {
+                background: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
+            }
+            #chat-input-box input {
+                background: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
+                font-family: "Segoe UI", Roboto, sans-serif !important;
+                font-size: 15px !important;
             }
 
             #upload-icon-btn {
@@ -1178,6 +1244,7 @@ if __name__ == "__main__":
                 border-radius: 8px !important;
             }
 
+            /* 发送按钮：完美的蓝色圆球（往里移一点） */
             #send-btn {
                 width: 40px !important;
                 height: 40px !important;
@@ -1194,44 +1261,31 @@ if __name__ == "__main__":
                 align-items: center !important;
                 justify-content: center !important;
                 line-height: 1 !important;
+                
+                /* ✅ 修改：往左移 8px，与右边框拉开距离 */
+                margin-right: 8px !important;
             }
             #send-btn:hover {
                 background-color: #1E4D8C !important;
             }
 
-            /* 项目创建区样式 */
-            #project-creation-row {
-                display: flex !important;
-                flex-direction: row !important;
-                flex-wrap: nowrap !important;
-                align-items: center !important;
-                gap: 4px !important;
-                margin-bottom: 8px !important;
-            }
-            #project-creation-row input {
-                background: #ffffff !important;
-                border: 1px solid #e5e7eb !important;
+            /* 项目列表 Radio 按钮加深边框 */
+            #project-list-radio .wrap {
+                border: 1px solid #6b7280 !important;
                 border-radius: 6px !important;
-                padding: 8px 10px !important;
-                width: 100% !important;
+                background: transparent !important;
             }
+            #project-list-radio .wrap:hover {
+                border-color: #1E4D8C !important;
+            }
+            #project-list-radio .wrap input + span {
+                border-color: #6b7280 !important;
+            }
+
+            /* 全局隐藏任何残留的飞镖 */
             .loading-container, .spinner {
                 display: none !important;
                 opacity: 0 !important;
-            }
-            #cancel-project-btn {
-                width: 40px !important;
-                height: 40px !important;
-                min-width: 40px !important;
-                flex-shrink: 0 !important;
-                display: flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-                border-radius: 6px !important;
-            }
-            #create-project-btn {
-                min-width: 60px !important;
-                flex-shrink: 0 !important;
             }
         """
     )
