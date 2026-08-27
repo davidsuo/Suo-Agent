@@ -266,32 +266,30 @@ with gr.Blocks(title="AI 智能体") as demo:
                             
                             # ========== 底部合并卡片式输入区 ==========
                             with gr.Group(elem_id="input-card"):
-                                # 第一行：反馈按钮 + 文件名/清除按钮（靠右吸附）
+                                # 第一行：反馈按钮 + 文件名/❌（靠右）
                                 with gr.Row(elem_id="file-row"):
                                     up_btn = gr.Button("👍 有帮助", scale=0, min_width=60, size="sm")
                                     down_btn = gr.Button("👎 无帮助", scale=0, min_width=60, size="sm")
                                     feedback_msg = gr.Markdown("")
-
-                                    # 文件名（物理设置最小宽度，防止被压缩消失）
+                                    
+                                    # 文件名（靠右，使用HTML）
                                     attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=80)
-
-                                    # ❌ 清除按钮（紧跟文件名，靠右）
+                                    
+                                    # ❌ 清除按钮（紧跟在文件名后面，默认隐藏）
                                     clear_file_btn = gr.Button("❌", scale=0, min_width=40, elem_id="clear-btn", visible=False)
 
-                                # 第二行：输入框 + 图标 + 发送按钮
+                                # 第二行：输入框 + 📎 + 发送按钮
                                 with gr.Row(elem_id="input-row-final"):
                                     text_input = gr.Textbox(
                                         show_label=False,
                                         placeholder="发消息或按住空格说话，松开发送...",
                                         scale=4
                                     )
-
                                     file_upload_btn = gr.UploadButton(
                                         "📎",
                                         file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
                                         scale=0, min_width=60, elem_id="upload-icon-btn"
                                     )
-
                                     send_btn = gr.Button("⬆", scale=0, min_width=60, elem_id="send-btn")
 
                             # 隐藏的语音输入组件
@@ -715,14 +713,13 @@ with gr.Blocks(title="AI 智能体") as demo:
 
 
     # ================= 事件绑定（文本、文件、语音） =================
-    # ================= 文件暂存与清除事件（确保上传后显示文件名） =================
+    # ================= 文件暂存与清除事件 =================
     def handle_file_upload(file):
         if file is None:
             return None, "", gr.update(visible=False)
         file_path = file.name if hasattr(file, 'name') else str(file)
         file_name = os.path.basename(file_path)
-        # 显示在右侧的文件名（贴个📎图标标记）
-        html = f"<span style='font-size: 14px; color: #333;'>📎 {file_name}</span>"
+        html = f"<span style='font-size: 14px; color: #333; margin-left: auto;'>📎 {file_name}</span>"
         return file_path, html, gr.update(visible=True)
 
     file_upload_btn.upload(
@@ -1102,7 +1099,7 @@ if __name__ == "__main__":
                 gap: 8px !important;
             }
 
-            /* 第一行：极其可靠的右侧吸附 */
+            /* 第一行：强制横向排列，靠右吸附 */
             #file-row {
                 display: flex !important;
                 flex-direction: row !important;
@@ -1112,25 +1109,29 @@ if __name__ == "__main__":
                 margin-bottom: 5px !important;
                 width: 100% !important;
             }
-            
-            /* 核心：把文件名和X按钮踢到最右侧 */
-            #attachment-html {
+            #file-row > * {
                 flex: 0 0 auto !important;
-                margin-left: auto !important;  /* 靠右吸附！ */
+                white-space: nowrap !important;
+            }
+            
+            /* 核心：强制把文件名和❌按钮推到最右侧 */
+            #attachment-html {
+                margin-left: auto !important;
                 padding: 0 !important;
                 font-size: 14px !important;
                 color: #333 !important;
                 font-weight: 500 !important;
             }
             #clear-btn {
-                flex: 0 0 auto !important;
                 margin: 0 !important;
-                margin-left: 0px !important;
                 padding: 0 4px !important;
                 color: #e53e3e !important;
+                background: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
             }
 
-            /* 第二行 */
+            /* 第二行：强制一行排列 */
             #input-row-final {
                 display: flex !important;
                 flex-direction: row !important;
