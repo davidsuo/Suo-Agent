@@ -266,7 +266,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                             
                             # ========== 底部合并卡片式输入区 ==========
                             with gr.Group(elem_id="input-card"):
-                                # 第一行：反馈按钮 + 文件名/清除按钮
+                                # 第一行：反馈按钮 + 文件名/清除按钮（文件暂存显示在最上方）
                                 with gr.Row(elem_id="file-row"):
                                     up_btn = gr.Button("👍 有帮助", scale=0, min_width=0)
                                     down_btn = gr.Button("👎 无帮助", scale=0, min_width=0)
@@ -275,7 +275,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
                                     clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
 
-                                # 第二行：输入框 + 图标 + 发送按钮
+                                # 第二行：输入框 + 图标 + 发送按钮（固定物理宽度）
                                 with gr.Row(elem_id="input-row-final"):
                                     text_input = gr.Textbox(
                                         show_label=False,
@@ -283,15 +283,15 @@ with gr.Blocks(title="AI 智能体") as demo:
                                         scale=4
                                     )
                                     
-                                    # 回形针上传按钮
+                                    # 回形针上传按钮（设置 min_width 防止被挤压消失）
                                     file_upload_btn = gr.UploadButton(
                                         "📎",
                                         file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
-                                        scale=0, min_width=0, elem_id="upload-icon-btn"
+                                        scale=0, min_width=60, elem_id="upload-icon-btn"
                                     )
                                     
-                                    # 蓝色圆形发送按钮
-                                    send_btn = gr.Button("⬆", elem_id="send-btn", scale=0, min_width=0)
+                                    # 蓝色圆形发送按钮（设置 min_width 防止被挤压消失）
+                                    send_btn = gr.Button("⬆", scale=0, min_width=60, elem_id="send-btn")
 
                             # 隐藏的语音输入组件
                             voice_file_input = gr.File(
@@ -720,7 +720,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             return None, "", gr.update(visible=False)
         file_path = file.name if hasattr(file, 'name') else str(file)
         file_name = os.path.basename(file_path)
-        html = f"<span style='font-size: 14px; margin-left: 8px;'>{file_name}</span>"
+        html = f"<span style='font-size: 14px; color: #333; margin-left: 8px;'>📎 {file_name}</span>"
         return file_path, html, gr.update(visible=True)
 
     file_upload_btn.upload(
@@ -740,7 +740,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         show_progress="hidden"
     )
 
-    # ================= 纯文本及混合输入事件（必须同时绑定回车和发送按钮） =================
+    # ================= 纯文本及混合输入事件（补全按钮绑定） =================
     async def submit_text_with_file(message, history, user_state, pending_file_val, current_project):
         if not message and not pending_file_val:
             return history, "", None, "", gr.update(visible=False), "", ""
@@ -749,6 +749,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         )
         return new_history, clear_text, None, "", gr.update(visible=False), user_msg, assistant_msg
 
+    # 回车事件
     text_input.submit(
         fn=submit_text_with_file,
         inputs=[text_input, chatbot, user_state, pending_file, current_project],
@@ -756,7 +757,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         show_progress="hidden"
     )
 
-    # ✅ 关键：必须给 send_btn 绑定完全相同的事件！
+    # 点击蓝色圆球发送事件
     send_btn.click(
         fn=submit_text_with_file,
         inputs=[text_input, chatbot, user_state, pending_file, current_project],
@@ -1035,7 +1036,6 @@ if __name__ == "__main__":
             /* 隐藏语音输入组件 */
             #voice-file-input { display: none !important; }
             
-            /* ========== 全局布局调整 ========== */
             body, .gradio-container {
                 background: linear-gradient(135deg, #f3f4f6 0%, #e0e7ff 50%, #ffffff 100%) !important;
                 margin: 0 !important;
@@ -1044,7 +1044,6 @@ if __name__ == "__main__":
                 display: block !important;
             }
 
-            /* 顶部品牌栏 */
             #top-brand-bar {
                 display: flex !important;
                 align-items: center !important;
@@ -1069,22 +1068,6 @@ if __name__ == "__main__":
                 margin-left: auto !important;
             }
 
-            #login-box button,
-            #login-box button.primary {
-                background-color: #1E4D8C !important;
-                background-image: none !important;
-                color: white !important;
-                font-size: 20px !important;
-                font-weight: bold !important;
-                border: none !important;
-                border-radius: 12px !important;
-                padding: 16px !important;
-                margin-top: 30px !important;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
-                transition: transform 0.1s ease !important;
-                opacity: 1 !important;
-            }
-
             .gradio-container .loading,
             .gradio-container .progress-text,
             .gradio-container .status-tracker {
@@ -1095,7 +1078,6 @@ if __name__ == "__main__":
                 visibility: hidden !important;
             }
 
-            /* 当前用户行 */
             #current-user-row {
                 display: flex !important;
                 align-items: center !important;
@@ -1107,7 +1089,6 @@ if __name__ == "__main__":
                 flex-shrink: 0 !important;
             }
 
-            /* ========== 底部输入卡片 ========== */
             #input-card {
                 background: #ffffff !important;
                 border-radius: 12px !important;
@@ -1118,13 +1099,7 @@ if __name__ == "__main__":
                 margin-top: 0px !important;
                 gap: 8px !important;
             }
-            #chat-main-area .block, 
-            #chat-main-area .gr-box {
-                margin-bottom: 0px !important;
-                padding-bottom: 0px !important;
-            }
 
-            /* ========== 底部输入区（彻底解决竖排和消失问题！） ========== */
             #file-row {
                 display: flex !important;
                 flex-direction: row !important;
@@ -1138,12 +1113,8 @@ if __name__ == "__main__":
                 flex: 0 0 auto !important;
                 white-space: nowrap !important;
             }
-            #file-row button {
-                white-space: nowrap !important;
-                min-width: auto !important;
-            }
 
-            /* 第二行：输入框 + 图标 + 发送 */
+            /* 输入行：强制一行排列 */
             #input-row-final {
                 display: flex !important;
                 flex-direction: row !important;
@@ -1159,15 +1130,15 @@ if __name__ == "__main__":
                 border: 1px solid #f3f4f6 !important;
             }
 
-            /* 📎 上传文件图标（永不消失！） */
+            /* 回形针图标：绝对安全，固定大小 */
             #upload-icon-btn {
                 background: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
                 font-size: 24px !important;
                 padding: 0 !important;
-                min-width: 45px !important;
-                width: 45px !important;
+                min-width: 60px !important;
+                width: 60px !important;
                 height: 40px !important;
                 display: flex !important;
                 align-items: center !important;
@@ -1179,17 +1150,17 @@ if __name__ == "__main__":
                 border-radius: 8px !important;
             }
 
-            /* 发送按钮：完美的蓝色圆球（永不消失！） */
+            /* 发送按钮：绝对安全，固定为蓝色圆球 */
             #send-btn {
                 width: 40px !important;
                 height: 40px !important;
+                min-width: 40px !important;
                 border-radius: 50% !important;
                 background-color: #2563EB !important;
                 border: none !important;
                 color: white !important;
                 font-size: 20px !important;
                 padding: 0 !important;
-                min-width: 0 !important;
                 flex-shrink: 0 !important;
                 box-shadow: 0 2px 6px rgba(0,0,0,0.2) !important;
                 display: flex !important;
@@ -1201,7 +1172,7 @@ if __name__ == "__main__":
                 background-color: #1E4D8C !important;
             }
 
-            /* ========== 项目创建区样式优化 ========== */
+            /* 项目创建区样式 */
             #project-creation-row {
                 display: flex !important;
                 flex-direction: row !important;
