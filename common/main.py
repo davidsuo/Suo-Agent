@@ -31,7 +31,8 @@ from common.tools import (
 )
 from common.guardrails import input_guard, tool_call_guard, output_guard
 from common.pending_tools import pending, save_pending
-from common.auth import get_user_info, is_tool_allowed
+# ✅ 核心修复：补全导入 ROLE_PERMISSIONS，用于角色校验和容错
+from common.auth import get_user_info, is_tool_allowed, ROLE_PERMISSIONS
 from common.rag import search_knowledge
 
 
@@ -72,6 +73,9 @@ SYSTEM_PROMPT = """
 - 严禁编造任何数据！如果【企业知识库数据】或【上传文件】中没有包含用户所询问的具体月份数据，**严禁**去搜索互联网，**严禁**编造常识性答案！
 - 必须如实告诉用户：“当前系统知识库中未包含 [X月份] 的销售数据，请提供相关文件上传后再查询。”
 - 必须优先使用知识库数据，严禁调用 query_database、web_search 等外部工具去查询不相关的信息。
+
+【预计算结果规则】
+- 如果系统给出了【预计算结果】，请直接采用该数据作为最终答案，严禁再次调用任何工具重复计算。
 
 【参考文档】：
 {context}
