@@ -235,17 +235,17 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     elem_id="current-user-display"
                                 )
 
-                            # 项目 + 按钮 与 删除当前项目（放入同一行）
+                            # 项目操作：默认显示“项目+”和“删除当前项目”
                             with gr.Row(elem_id="project-actions-row"):
                                 add_project_btn = gr.Button("项目 +", elem_id="add-project-btn", scale=0, visible=True)
-                                delete_project_btn = gr.Button("🗑️ 删除当前项目", visible=False, scale=0, elem_id="delete-project-btn")
+                                delete_project_btn = gr.Button("🗑️ 删除当前项目", visible=True, scale=0, elem_id="delete-project-btn")
                             
                             with gr.Row(elem_id="project-creation-row", visible=False) as project_creation_row:
                                 project_input = gr.Textbox(placeholder="输入项目名称...", scale=3, show_label=False, elem_id="project-input-box")
                                 create_project_btn = gr.Button("创建", scale=1, min_width=60, elem_id="create-project-btn")
                                 cancel_project_btn = gr.Button("×", scale=1, min_width=40, elem_id="cancel-project-btn")
 
-                            # ✅ 补全：项目列表组件（必须在这里定义！）
+                            # 项目列表（白色小卡片样式）
                             project_list = gr.Radio(
                                 choices=["主对话"],
                                 value="主对话",
@@ -271,15 +271,8 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     # 占位符：把后续元素推到最右
                                     spacer = gr.Markdown("", scale=4, elem_id="file-row-spacer")
 
-                                    # 文件名（使用 Textbox，但会在 CSS 中强行让它隐形）
-                                    attachment_html = gr.Textbox(
-                                        show_label=False,
-                                        interactive=False,
-                                        value="",
-                                        scale=0,
-                                        min_width=180,
-                                        elem_id="attachment-html"
-                                    )
+                                    # 文件名（使用 HTML 纯文本展示，不生成白框）
+                                    attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
 
                                     # ❌ 清除按钮
                                     clear_file_btn = gr.Button("×", scale=0, min_width=40, elem_id="clear-btn", visible=False)
@@ -725,8 +718,9 @@ with gr.Blocks(title="AI 智能体") as demo:
             return None, "", gr.update(visible=False)
         file_path = file.name if hasattr(file, 'name') else str(file)
         file_name = os.path.basename(file_path)
-        # 给 Markdown 传入纯文本标记
-        return file_path, f"📎 {file_name}", gr.update(visible=True)
+        # 直接返回简单的 HTML 文本
+        html = f"<span style='font-size: 14px; color: #333;'>📎 {file_name}</span>"
+        return file_path, html, gr.update(visible=True)
 
     file_upload_btn.upload(
         fn=handle_file_upload,
@@ -745,98 +739,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         show_progress="hidden"
     )
 
-    # ================= 纯文本及混合输入事件（保护暂存状态） =================
-    async def submit_text_with_file(message, history, user_state, pending_file_val, current_project):
-        if not message and not pending_file_val:
-            return history, "", None, "", gr.update(visible=False), "", ""
-
-        new_history, clear_text, _, user_msg, assistant_msg = await unified_handler(
-            message, history, pending_file_val, user_state, current_project
-        )
-        # ✅ 修改点：如果本次发送有文件，发送后自动清空 UI 暂存；如果没有文件，保持原样！
-        if pending_file_val:
-            return new_history, clear_text, None, "", gr.update(visible=False), user_msg, assistant_msg
-        else:
-            return new_history, clear_text, None, None, gr.update(), user_msg, assistant_msg
-
-    text_input.submit(
-        fn=submit_text_with_file,
-        inputs=[text_input, chatbot, user_state, pending_file, current_project],
-        outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn, last_user_message, last_assistant_message],
-        show_progress="hidden"
-    )
-
-    send_btn.click(
-        fn=submit_text_with_file,
-        inputs=[text_input, chatbot, user_state, pending_file, current_project],
-        outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn, last_user_message, last_assistant_message],
-        show_progress="hidden"
-    )
-    
-    # 日志面板的刷新与清空
-    refresh_logs_btn.click(
-        fn=load_logs,
-        inputs=[user_state],  # ✅ 核心：必须传入当前用户信息，才能实现隔离
-        outputs=[logs_table]
-    )
-    clear_logs_btn.click(fn=clear_logs, inputs=[], outputs=[logs_table])
- 
-    
-    # ================= 用户管理逻辑（对应 users.db） =================
-    def load_users():
-        import sqlite3, os
-        try:
-            db_path = os.path.join(os.getcwd(), "users.db")
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute("SELECT username, display_name, department, position, role, tenant FROM users ORDER BY id ASC")
-            data = cursor.fetchall()
-            conn.close()
-            # 强制用 gr.update 包裹数据，并标记发生变化
-            return gr.update(value=list(data))
-        except Exception as e:
-            return gr.update(value=[["读取失败", str(e), "", "", "", ""]])
-
-    def create_user(username, pin, display_name, department, position, role):
-        import sqlite3, os
-        try:
-            db_path = os.path.join(os.getcwd(), "users.db")
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO users (username, display_name, pin, department, position, role, tenant) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (username.strip().lower(), display_name, pin, department, position, role, username.strip().lower())
-            )
-            conn.commit()
-            conn.close()
-
-            # ✅ 修复：在函数内部重新查询数据库，直接生成新的列表，不用调用 load_users
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            cursor.execute("SELECT username, display_name, department, position, role, tenant FROM users ORDER BY id ASC")
-            data = cursor.fetchall()
-            conn.close()
-
-            return f"✅ 用户 {username} 创建成功！", gr.update(value=list(data))
-        except Exception as e:
-            return f"❌ 创建失败：{e}", gr.update(value=[])
-
-    # 强制刷新按钮的专用函数
-    def force_refresh_users():
-        return list(load_users())
-            
-    # 用户管理事件
-    refresh_users_btn.click(fn=load_users, inputs=[], outputs=[users_table])
-    create_user_btn.click(
-        fn=create_user,
-        inputs=[new_username, new_pin, new_display_name, new_department, new_position, new_role],
-        outputs=[create_user_msg, users_table]
-    )
-   
-
-    # ================= 项目创建与侧边栏事件绑定（隐藏飞镖） =================
-    # 1. 点击“项目 +”按钮：隐藏“+”按钮，显示创建输入行
+    # ================= 项目创建与切换事件绑定 =================
     add_project_btn.click(
         fn=lambda: (gr.update(visible=False), gr.update(visible=True)),
         inputs=None,
@@ -844,7 +747,6 @@ with gr.Blocks(title="AI 智能体") as demo:
         show_progress="hidden"
     )
 
-    # 2. 点击“×”取消按钮：隐藏创建输入行，恢复“+”按钮
     cancel_project_btn.click(
         fn=lambda: (gr.update(visible=True), gr.update(visible=False)),
         inputs=None,
@@ -852,13 +754,11 @@ with gr.Blocks(title="AI 智能体") as demo:
         show_progress="hidden"
     )
 
-    # 3. 创建项目逻辑（确保返回6个值，用 gr.update 更新 Radio）
-    def create_project(project_name, current_choices, project_names, current_project):
+    def create_project(project_name, project_names, current_project):
         if not project_name or not project_name.strip():
             return gr.update(), "", gr.update(visible=True), gr.update(visible=False), current_project, project_names
         
         new_name = project_name.strip()
-        # 确保列表开头永远是“主对话”
         new_choices = ["主对话"]
         for p in project_names:
             if p != "主对话":
@@ -876,15 +776,13 @@ with gr.Blocks(title="AI 智能体") as demo:
             new_project_names
         )
 
-    # 4. 点击“创建”按钮：执行创建逻辑
     create_project_btn.click(
         fn=create_project,
-        inputs=[project_input, project_list, project_names, current_project],
+        inputs=[project_input, project_names, current_project],
         outputs=[project_list, project_input, add_project_btn, project_creation_row, current_project, project_names],
         show_progress="hidden"
     )
 
-    # 5. 监听 Radio 切换项目
     def switch_project(new_project, user):
         if not user:
             return [], "", new_project
@@ -901,23 +799,10 @@ with gr.Blocks(title="AI 智能体") as demo:
         show_progress="hidden"
     )
 
-    # 6. 显示/隐藏删除按钮
-    def toggle_delete_btn(current_project):
-        if current_project:
-            return gr.update(visible=True)
-        return gr.update(visible=False)
-
-    project_list.change(
-        fn=toggle_delete_btn,
-        inputs=[current_project],
-        outputs=[delete_project_btn],
-        show_progress="hidden"
-    )
-
-    # 7. 删除项目逻辑
+    # 删除项目逻辑（删除按钮现在默认可见，无需额外的切换隐藏逻辑）
     def delete_project(current_project, project_names):
         if not current_project or current_project not in project_names:
-            return gr.update(), "", project_names, gr.update(visible=False)
+            return gr.update(), "", project_names
         
         new_names = [p for p in project_names if p != current_project]
         
@@ -926,21 +811,19 @@ with gr.Blocks(title="AI 智能体") as demo:
             return (
                 gr.update(choices=new_names, value=new_current),
                 new_current,
-                new_names,
-                gr.update(visible=True)
+                new_names
             )
         else:
             return (
                 gr.update(choices=["主对话"], value="主对话"),
                 "主对话",
-                ["主对话"],
-                gr.update(visible=False)
+                ["主对话"]
             )
     
     delete_project_btn.click(
         fn=delete_project,
         inputs=[current_project, project_names],
-        outputs=[project_list, current_project, project_names, delete_project_btn],
+        outputs=[project_list, current_project, project_names],
         show_progress="hidden"
     )
 
@@ -1098,7 +981,7 @@ if __name__ == "__main__":
                 flex-shrink: 0 !important;
             }
 
-            /* ========== 左侧侧边栏（保持完美的透明设计） ========== */
+            /* ========== 左侧完美设计 ========== */
             #project-sidebar,
             #project-sidebar .block,
             #project-sidebar .wrap,
@@ -1142,7 +1025,7 @@ if __name__ == "__main__":
                 color: white !important;
             }
 
-            /* ========== 底部输入卡片 ========== */
+            /* ========== 底部输入区（透明化，无任何残留白框！） ========== */
             #input-card {
                 background: transparent !important;
                 border: none !important;
@@ -1165,26 +1048,13 @@ if __name__ == "__main__":
                 min-width: 0 !important;
             }
 
-            /* 【终极最强杀招】直接灭掉 Textbox 的最外层 div 的白底！ */
+            /* 因为使用了 HTML，这里彻底透明，绝不会出现白框 */
             #attachment-html {
-                background: transparent !important;
-                border: none !important;
-                box-shadow: none !important;
-            }
-            #attachment-html .block,
-            #attachment-html .wrap,
-            #attachment-html .form,
-            #attachment-html div[data-testid="block"],
-            #attachment-html input,
-            #attachment-html .container {
                 background: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
                 padding: 0 !important;
                 margin: 0 !important;
-                width: auto !important;
-                color: #333 !important;
-                font-size: 14px !important;
                 text-align: right !important;
             }
 
@@ -1199,7 +1069,6 @@ if __name__ == "__main__":
                 font-weight: bold !important;
             }
 
-            /* 第二行：输入区 */
             #input-row-final {
                 display: flex !important;
                 flex-direction: row !important;
