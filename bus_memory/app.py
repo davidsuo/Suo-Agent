@@ -268,17 +268,17 @@ with gr.Blocks(title="AI 智能体") as demo:
                             with gr.Group(elem_id="input-card"):
                                 # 第一行：反馈按钮 + 占位符 + 文件名/❌（靠右）
                                 with gr.Row(elem_id="file-row"):
-                                    up_btn = gr.Button("👍 有帮助", scale=0, min_width=60)
-                                    down_btn = gr.Button("👎 无帮助", scale=0, min_width=60)
+                                    up_btn = gr.Button("👍 有帮助", scale=0, min_width=60, size="sm")
+                                    down_btn = gr.Button("👎 无帮助", scale=0, min_width=60, size="sm")
                                     feedback_msg = gr.Markdown("")
-                                    
-                                    # 弹性占位符，把后面的文件名和清除按钮推到最右端
-                                    spacer = gr.Markdown("", scale=4, elem_id="file-row-spacer")
-                                    
-                                    # 文件名（靠右）
+
+                                    # 绝对占位符（撑开剩余空间，将后续元素推至最右）
+                                    spacer = gr.Markdown("", scale=1, elem_id="file-row-spacer")
+
+                                    # 文件名（在最右侧显示）
                                     attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
-                                    
-                                    # 清除按钮（和文件名紧挨着靠右）
+
+                                    # ❌ 按钮（紧跟文件名在最右侧，且默认隐藏）
                                     clear_file_btn = gr.Button("❌", scale=0, min_width=0, elem_id="clear-btn", visible=False)
 
                                 # 第二行：输入框 + 图标 + 发送按钮
@@ -288,13 +288,13 @@ with gr.Blocks(title="AI 智能体") as demo:
                                         placeholder="发消息或按住空格说话，松开发送...",
                                         scale=4
                                     )
-                                    
+
                                     file_upload_btn = gr.UploadButton(
                                         "📎",
                                         file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
                                         scale=0, min_width=60, elem_id="upload-icon-btn"
                                     )
-                                    
+
                                     send_btn = gr.Button("⬆", scale=0, min_width=60, elem_id="send-btn")
 
                             # 隐藏的语音输入组件
@@ -1105,7 +1105,7 @@ if __name__ == "__main__":
                 gap: 8px !important;
             }
 
-            /* 第一行：强制横排、禁止竖排、占位符靠右 */
+            /* 第一行：占位符绝对撑开，文件名和X按钮吸附最右侧 */
             #file-row {
                 display: flex !important;
                 flex-direction: row !important;
@@ -1115,26 +1115,30 @@ if __name__ == "__main__":
                 margin-bottom: 5px !important;
                 width: 100% !important;
             }
-            #file-row button {
+            #file-row > * {
+                flex: 0 0 auto !important;
                 white-space: nowrap !important;
-                min-width: 60px !important;
             }
+
+            /* 核心：让占位符吃掉所有剩余宽度 */
             #file-row-spacer {
                 flex-grow: 1 !important;
                 min-width: 0 !important;
             }
+
             #attachment-html {
-                flex: 0 0 auto !important;
                 margin: 0 !important;
                 padding: 0 !important;
+                font-size: 14px !important;
+                color: #333 !important;
             }
             #clear-btn {
-                flex: 0 0 auto !important;
-                margin-left: 0 !important;
+                margin: 0 !important;
                 padding: 0 4px !important;
+                color: #e53e3e !important;
             }
 
-            /* 第二行：强制一行排列 */
+            /* 第二行 */
             #input-row-final {
                 display: flex !important;
                 flex-direction: row !important;
