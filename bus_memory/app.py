@@ -266,18 +266,20 @@ with gr.Blocks(title="AI 智能体") as demo:
                             
                             # ========== 底部合并卡片式输入区 ==========
                             with gr.Group(elem_id="input-card"):
-                                # 第一行：反馈按钮（左侧） + 占位符 + 文件名/❌（右侧）
+                                # 第一行：反馈按钮 + 占位符 + 文件名/❌（靠右）
                                 with gr.Row(elem_id="file-row"):
-                                    up_btn = gr.Button("👍 有帮助", scale=0, min_width=0)
-                                    down_btn = gr.Button("👎 无帮助", scale=0, min_width=0)
+                                    up_btn = gr.Button("👍 有帮助", scale=0, min_width=60)
+                                    down_btn = gr.Button("👎 无帮助", scale=0, min_width=60)
                                     feedback_msg = gr.Markdown("")
                                     
-                                    # ✅ 新增占位符：把后面的文件名推到最右侧
+                                    # 弹性占位符，把后面的文件名和清除按钮推到最右端
                                     spacer = gr.Markdown("", scale=4, elem_id="file-row-spacer")
                                     
-                                    # 文件名和清除按钮（位于最右侧，正好在回形针和蓝球上方）
+                                    # 文件名（靠右）
                                     attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
-                                    clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
+                                    
+                                    # 清除按钮（和文件名紧挨着靠右）
+                                    clear_file_btn = gr.Button("❌", scale=0, min_width=0, elem_id="clear-btn", visible=False)
 
                                 # 第二行：输入框 + 图标 + 发送按钮
                                 with gr.Row(elem_id="input-row-final"):
@@ -287,14 +289,12 @@ with gr.Blocks(title="AI 智能体") as demo:
                                         scale=4
                                     )
                                     
-                                    # 回形针上传按钮（设置 min_width 防止被挤压消失）
                                     file_upload_btn = gr.UploadButton(
                                         "📎",
                                         file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
                                         scale=0, min_width=60, elem_id="upload-icon-btn"
                                     )
                                     
-                                    # 蓝色圆形发送按钮（设置 min_width 防止被挤压消失）
                                     send_btn = gr.Button("⬆", scale=0, min_width=60, elem_id="send-btn")
 
                             # 隐藏的语音输入组件
@@ -1105,7 +1105,7 @@ if __name__ == "__main__":
                 gap: 8px !important;
             }
 
-            /* ✅ 文件行：绝对安全，撑开右侧，让文件名推到右端 */
+            /* 第一行：强制横排、禁止竖排、占位符靠右 */
             #file-row {
                 display: flex !important;
                 flex-direction: row !important;
@@ -1115,7 +1115,10 @@ if __name__ == "__main__":
                 margin-bottom: 5px !important;
                 width: 100% !important;
             }
-            /* 占位符自动伸缩，把后面的文件名和❌推到最右端 */
+            #file-row button {
+                white-space: nowrap !important;
+                min-width: 60px !important;
+            }
             #file-row-spacer {
                 flex-grow: 1 !important;
                 min-width: 0 !important;
@@ -1125,8 +1128,13 @@ if __name__ == "__main__":
                 margin: 0 !important;
                 padding: 0 !important;
             }
+            #clear-btn {
+                flex: 0 0 auto !important;
+                margin-left: 0 !important;
+                padding: 0 4px !important;
+            }
 
-            /* 输入行：强制一行排列 */
+            /* 第二行：强制一行排列 */
             #input-row-final {
                 display: flex !important;
                 flex-direction: row !important;
@@ -1142,7 +1150,6 @@ if __name__ == "__main__":
                 border: 1px solid #f3f4f6 !important;
             }
 
-            /* 回形针图标：绝对安全，固定大小 */
             #upload-icon-btn {
                 background: transparent !important;
                 border: none !important;
@@ -1162,7 +1169,6 @@ if __name__ == "__main__":
                 border-radius: 8px !important;
             }
 
-            /* 发送按钮：绝对安全，固定为蓝色圆球 */
             #send-btn {
                 width: 40px !important;
                 height: 40px !important;
