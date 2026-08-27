@@ -268,16 +268,13 @@ with gr.Blocks(title="AI 智能体") as demo:
 
                             # ========== 底部合并卡片式输入区 ==========
                             with gr.Group(elem_id="input-card"):
-                                # 第一行：反馈 + 占位符 + 文件名/❌（靠右）
                                 with gr.Row(elem_id="file-row"):
                                     up_btn = gr.Button("👍 有帮助", scale=0, min_width=80, size="sm")
                                     down_btn = gr.Button("👎 无帮助", scale=0, min_width=80, size="sm")
                                     feedback_msg = gr.Markdown("")
 
-                                    # 占位符：把后续元素推到最右
                                     spacer = gr.Markdown("", scale=4, elem_id="file-row-spacer")
 
-                                    # 文件名（防止折行）
                                     attachment_html = gr.Textbox(
                                         show_label=False,
                                         interactive=False,
@@ -287,10 +284,8 @@ with gr.Blocks(title="AI 智能体") as demo:
                                         elem_id="attachment-html"
                                     )
 
-                                    # ❌ 清除按钮
                                     clear_file_btn = gr.Button("×", scale=0, min_width=40, elem_id="clear-btn", visible=False)
 
-                                # 第二行：输入框 + 📎 + 发送按钮
                                 with gr.Row(elem_id="input-row-final"):
                                     text_input = gr.Textbox(
                                         show_label=False,
@@ -1049,8 +1044,8 @@ if __name__ == "__main__":
         css="""
             /* 隐藏语音输入组件 */
             #voice-file-input { display: none !important; }
-            
-            /* ========== 全局字体统一 ========== */
+
+            /* 全局字体 */
             body, button, input, textarea, select {
                 font-family: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif !important;
             }
@@ -1093,10 +1088,6 @@ if __name__ == "__main__":
             .gradio-container .status-tracker {
                 display: none !important;
             }
-            button[disabled] .loading {
-                display: none !important;
-                visibility: hidden !important;
-            }
 
             #current-user-row {
                 display: flex !important;
@@ -1109,23 +1100,22 @@ if __name__ == "__main__":
                 flex-shrink: 0 !important;
             }
 
-            /* ========== 项目侧边栏（核心修复：给所有Radio加灰底） ========== */
-            #project-sidebar .block {
-                background: transparent !important;
-                border-radius: 8px !important;
-                padding: 8px !important;
+            /* ========== 项目侧边栏（终极灰色通道） ========== */
+            /* 强制【全部】外部包裹层都变灰！ */
+            #project-list, #project-list .block, #project-list .wrap, #project-list .gr-box, #project-list .form, #project-list div[data-testid="block"] {
+                background: #f3f4f6 !important;
+                box-shadow: none !important;
+                border: none !important;
             }
-            #project-list .block {
-                background: transparent !important;
-                border: 1px solid #cbd5e1 !important;
-                border-radius: 8px !important;
-            }
+            /* 强制【每个】选项背景变灰 */
             #project-list label {
+                background: #f3f4f6 !important;
+                color: #333 !important;
                 border-bottom: 1px solid #e2e8f0 !important;
                 padding: 10px !important;
-                background: #f3f4f6 !important; /* 【关键】未选中项灰色底 */
-                cursor: pointer;
+                margin: 0 !important;
             }
+            /* 选中项强制变蓝 */
             #project-list label.selected {
                 background: #2563EB !important;
                 color: white !important;
@@ -1134,7 +1124,7 @@ if __name__ == "__main__":
                 border-bottom: none !important;
             }
 
-            /* ========== 底部输入卡片（彻底消除所有白底框） ========== */
+            /* ========== 底部输入卡片（终极透明通道） ========== */
             #input-card {
                 background: transparent !important;
                 border: none !important;
@@ -1143,7 +1133,7 @@ if __name__ == "__main__":
                 margin: 0 !important;
             }
 
-            /* ========== 第一行：文件区 ========== */
+            /* 第一行：文件区 */
             #file-row {
                 display: flex !important;
                 flex-direction: row !important;
@@ -1157,31 +1147,27 @@ if __name__ == "__main__":
                 flex-grow: 1 !important;
                 min-width: 0 !important;
             }
-            /* 【关键】去除上传文件名的白底框并强制不折行 */
-            #attachment-html {
-                background: transparent !important;
-                border: none !important;
-                box-shadow: none !important;
-                font-size: 14px !important;
-                color: #333 !important;
-                font-weight: 500 !important;
-                padding: 0 !important;
-                width: auto !important;
-                max-width: 180px !important;
-                white-space: nowrap !important;
-                overflow: hidden !important;
-                text-overflow: ellipsis !important;
-            }
-            /* 【关键】直接攻击 Textbox 内部结构，去掉所有白底 */
-            #attachment-html .block,
-            #attachment-html .wrap,
-            #attachment-html .form,
+
+            /* 【直接轰炸 attachment-html 及其所有内部 div】 让白框彻底融化！ */
+            #attachment-html, 
+            #attachment-html .block, 
+            #attachment-html .wrap, 
+            #attachment-html .form, 
+            #attachment-html div[data-testid="block"], 
             #attachment-html input {
                 background: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
                 padding: 0 !important;
+                margin: 0 !important;
+                white-space: nowrap !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
+                color: #333 !important;
+                font-size: 14px !important;
+                width: auto !important;
             }
+
             #clear-btn {
                 margin: 0 !important;
                 padding: 0 !important;
@@ -1193,7 +1179,7 @@ if __name__ == "__main__":
                 font-weight: bold !important;
             }
 
-            /* ========== 第二行：输入区 ========== */
+            /* ========== 第二行：输入区（严格左对齐） ========== */
             #input-row-final {
                 display: flex !important;
                 flex-direction: row !important;
@@ -1201,17 +1187,18 @@ if __name__ == "__main__":
                 align-items: center !important;
                 gap: 8px !important;
                 background: transparent !important;
-                /* 【关键】与反馈按钮对齐 */
-                padding-left: 15px !important;
+                padding-left: 0 !important; /* 核心：严格取消左缩进！ */
                 padding-right: 15px !important;
             }
-            /* 直接攻击输入框，去掉外部白框，保留浅灰底 */
+            /* 直接攻击输入框的所有包装层，让它们透明 */
             #input-row-final .block,
             #input-row-final .wrap,
-            #input-row-final .form {
+            #input-row-final .form,
+            #input-row-final div[data-testid="block"] {
                 background: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
+                margin: 0 !important;
             }
             #input-row-final input {
                 background: #f9fafb !important;
@@ -1260,7 +1247,7 @@ if __name__ == "__main__":
                 background-color: #1E4D8C !important;
             }
 
-            /* 项目创建区样式 */
+            /* 项目创建区 */
             #project-creation-row {
                 display: flex !important;
                 flex-direction: row !important;
