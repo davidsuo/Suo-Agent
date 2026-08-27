@@ -262,16 +262,12 @@ with gr.Blocks(title="AI 智能体") as demo:
                             
                             # ========== 底部合并卡片式输入区 ==========
                             with gr.Group(elem_id="input-card"):
-                                # 第一行：反馈 + 占位符 + 文件名/❌（靠右）
+                                # 第一行：反馈 + 文件名/❌（靠右）
                                 with gr.Row(elem_id="file-row"):
-                                    up_btn = gr.Button("👍 有帮助", scale=0, min_width=80, size="lg")
-                                    down_btn = gr.Button("👎 无帮助", scale=0, min_width=80, size="lg")
+                                    up_btn = gr.Button("👍 有帮助", scale=0, min_width=80, size="sm")
+                                    down_btn = gr.Button("👎 无帮助", scale=0, min_width=80, size="sm")
                                     feedback_msg = gr.Markdown("")
 
-                                    # 占位符：把后续元素推到最右
-                                    spacer = gr.Markdown("", scale=4, elem_id="file-row-spacer")
-
-                                    # 文件名（使用 Textbox，防止消失）
                                     attachment_html = gr.Textbox(
                                         show_label=False,
                                         interactive=False,
@@ -281,19 +277,17 @@ with gr.Blocks(title="AI 智能体") as demo:
                                         elem_id="attachment-html"
                                     )
 
-                                    # ❌ 清除按钮
                                     clear_file_btn = gr.Button("×", scale=0, min_width=40, elem_id="clear-btn", visible=False)
 
-                                # 第二行：输入框(缩短一半) + 占位符 + 📎 + 发送按钮
+                                # 第二行：输入框 + 📎 + 发送按钮（已移除幽灵占位符）
                                 with gr.Row(elem_id="input-row-final"):
                                     text_input = gr.Textbox(
                                         show_label=False,
                                         placeholder="发消息或按住空格说话，松开发送...",
-                                        scale=2
+                                        scale=1,
+                                        lines=2,   # 设置2行高度，让输入框更高
+                                        max_lines=4
                                     )
-                                    # 新增占位符，给输入框和右侧按钮之间留白，让输入框缩短一半
-                                    input_spacer = gr.Markdown("", scale=2, elem_id="input-row-spacer")
-                                    
                                     file_upload_btn = gr.UploadButton(
                                         "📎",
                                         file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
@@ -1058,18 +1052,16 @@ if __name__ == "__main__":
                 min-width: 0 !important;
             }
 
-            /* ========== 反馈按钮与输入框圆角化 & 字体放大 ========== */
-            #btn-row button {
-                border-radius: 12px !important;
-            }
+            /* 反馈按钮字体大小：修复过大问题 */
             #file-row button {
                 border-radius: 12px !important;
-                font-size: 16px !important;
+                font-size: 14px !important; /* 和“当前用户”同级别 */
                 padding: 4px 12px !important;
                 line-height: 1.5 !important;
                 font-weight: 600 !important;
             }
 
+            /* 幽灵白框清理（确保 Textbox 内部全透明） */
             #attachment-html,
             #attachment-html .block,
             #attachment-html .wrap,
@@ -1099,7 +1091,7 @@ if __name__ == "__main__":
                 border-radius: 6px !important;
             }
 
-            /* ========== 输入区（缩短一半 + 圆角 + 占位符） ========== */
+            /* ========== 输入区：缩短长度 + 增高 ========== */
             #input-row-final {
                 display: flex !important;
                 flex-direction: row !important;
@@ -1109,24 +1101,24 @@ if __name__ == "__main__":
                 background: transparent !important;
                 padding-left: 0 !important;
                 padding-right: 12px !important;
-            }
-            #input-row-spacer {
-                flex-grow: 1 !important;
-                min-width: 0 !important;
+                /* 强制输入框宽度为 45% (比原一半稍短)，右侧空白交给 margin */
             }
             #input-row-final .block {
                 background: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
-                margin-left: 0 !important;
-                padding-left: 0 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 45% !important; /* 缩短输入框宽度 */
+                min-width: 200px !important;
             }
             #input-row-final input {
                 background: #f9fafb !important;
-                border-radius: 12px !important;  /* 圆角加大 */
+                border-radius: 12px !important;
                 border: 1px solid #f3f4f6 !important;
-                padding: 12px 12px !important;   /* 增加内边距，更舒适 */
-                font-size: 16px !important;      /* 输入框字体加大 */
+                padding: 12px !important; /* 增加内边距，提高输入框高度 */
+                font-size: 16px !important;
+                height: auto !important;
             }
 
             #upload-icon-btn {
