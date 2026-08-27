@@ -271,7 +271,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     # 占位符：把后续元素推到最右
                                     spacer = gr.Markdown("", scale=4, elem_id="file-row-spacer")
 
-                                    # 文件名（使用 Textbox，放置在最右侧）
+                                    # 文件名（使用 Textbox，但会在 CSS 中强行让它隐形）
                                     attachment_html = gr.Textbox(
                                         show_label=False,
                                         interactive=False,
@@ -1165,13 +1165,18 @@ if __name__ == "__main__":
                 min-width: 0 !important;
             }
 
-            /* 【核心：终极融化空白白框】 让 attachment-html 及内部所有元素全透明！ */
-            #attachment-html,
+            /* 【终极最强杀招】直接灭掉 Textbox 的最外层 div 的白底！ */
+            #attachment-html {
+                background: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
+            }
             #attachment-html .block,
             #attachment-html .wrap,
             #attachment-html .form,
             #attachment-html div[data-testid="block"],
-            #attachment-html input {
+            #attachment-html input,
+            #attachment-html .container {
                 background: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
