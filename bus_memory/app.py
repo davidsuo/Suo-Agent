@@ -266,13 +266,14 @@ with gr.Blocks(title="AI 智能体") as demo:
                             
                             # ========== 底部合并卡片式输入区 ==========
                             with gr.Group(elem_id="input-card"):
-                                # 第一行：反馈按钮 + 文件名/清除按钮（文件暂存显示在最上方）
+                                # 第一行：反馈按钮 + 文件名/清除按钮（文件暂存显示）
                                 with gr.Row(elem_id="file-row"):
                                     up_btn = gr.Button("👍 有帮助", scale=0, min_width=0)
                                     down_btn = gr.Button("👎 无帮助", scale=0, min_width=0)
                                     feedback_msg = gr.Markdown("")
                                     
-                                    attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
+                                    # 修改：给 attachment_html 增加足够的宽度，确保文件名能显示出来
+                                    attachment_html = gr.HTML("", elem_id="attachment-html", scale=1, min_width=120)
                                     clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
 
                                 # 第二行：输入框 + 图标 + 发送按钮（固定物理宽度）
@@ -1112,6 +1113,20 @@ if __name__ == "__main__":
             #file-row > * {
                 flex: 0 0 auto !important;
                 white-space: nowrap !important;
+            }
+            /* 关键修改：保证 attachment_html 的元素能正常渲染，不被撑成0宽度 */
+            #attachment-html {
+                flex: 0 0 auto !important;
+                width: auto !important;
+                min-width: 120px !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                display: block !important;
+                color: #333 !important;
+                font-size: 14px !important;
+            }
+            #attachment-html span {
+                font-weight: 500 !important;
             }
 
             /* 输入行：强制一行排列 */
