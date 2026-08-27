@@ -271,7 +271,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     # 占位符：把后续元素推到最右
                                     spacer = gr.Markdown("", scale=4, elem_id="file-row-spacer")
 
-                                    # 文件名（【关键】默认 visible=False，上传后才出现，根治白框幽灵！）
+                                    # 文件名（关键：默认设置为 False，上传后才出现，彻底根治“幽灵框”）
                                     attachment_html = gr.Textbox(
                                         show_label=False,
                                         interactive=False,
@@ -282,7 +282,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                                         elem_id="attachment-html"
                                     )
 
-                                    # ❌ 清除按钮
+                                    # ❌ 清除按钮（默认隐藏）
                                     clear_file_btn = gr.Button("×", scale=0, min_width=40, elem_id="clear-btn", visible=False)
 
                                 # 第二行：输入框(缩短一半) + 占位符 + 📎 + 发送按钮
@@ -1058,7 +1058,7 @@ if __name__ == "__main__":
                 min-width: 0 !important;
             }
 
-            /* 【核心修复 1】强制反馈按钮永远横排，绝不折行！ */
+            /* 【核心修复 1】强制反馈按钮永不折行，保持横向排列 */
             #file-row button {
                 white-space: nowrap !important;
                 flex-shrink: 0 !important;
