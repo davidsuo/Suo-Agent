@@ -220,25 +220,40 @@ with gr.Blocks(title="AI 智能体") as demo:
                         # 左侧 1/3：项目侧边栏
                         with gr.Group(elem_id="side-project-group"):
                             with gr.Column(scale=1, min_width=280, elem_id="project-sidebar"):
-                                # 隐藏的租户下拉框
-                                tenant_dropdown = gr.Dropdown(choices=get_available_tenants(), value="default", label="", interactive=False, visible=False)
-                            
+                                # 隐藏的租户下拉框（仅参与逻辑）
+                                tenant_dropdown = gr.Dropdown(
+                                    choices=get_available_tenants(),
+                                    value="default",
+                                    label="",
+                                    interactive=False,
+                                    visible=False
+                                )
+
                                 # 当前用户展示
                                 with gr.Row(elem_id="current-user-row"):
-                                    current_user_display = gr.Markdown(value="**当前用户：** 未登录", elem_id="current-user-display")
-                                
-                                # 项目 + 按钮与内联创建区
+                                    current_user_display = gr.Markdown(
+                                        value="**当前用户：** 未登录",
+                                        elem_id="current-user-display"
+                                    )
+
+                                # 项目 + 按钮
                                 add_project_btn = gr.Button("项目 +", elem_id="add-project-btn", scale=0, visible=True)
+                            
                                 with gr.Row(elem_id="project-creation-row", visible=False) as project_creation_row:
                                     project_input = gr.Textbox(placeholder="输入项目名称...", scale=3, show_label=False, elem_id="project-input-box")
                                     create_project_btn = gr.Button("创建", scale=1, min_width=60, elem_id="create-project-btn")
                                     cancel_project_btn = gr.Button("×", scale=1, min_width=40, elem_id="cancel-project-btn")
+
+                                # 项目列表（只保留外层 ID，方便 CSS 精细化控制）
+                                project_list = gr.Radio(
+                                    choices=["主对话"],
+                                    value="主对话",
+                                    label="项目列表",
+                                    interactive=True,
+                                    visible=True,
+                                    elem_id="project-list"
+                                )
                             
-                                # 项目列表（强制灰底，原生Group包裹）
-                                with gr.Group(elem_id="project-list-group"):
-                                    project_list = gr.Radio(choices=["主对话"], value="主对话", label="项目列表", interactive=True, visible=True)
-                            
-                                # 删除当前项目按钮
                                 delete_project_btn = gr.Button("🗑️ 删除当前项目", visible=False, scale=0, elem_id="delete-project-btn")
 
                         # 右侧 3/4：聊天主区
@@ -1025,7 +1040,6 @@ if __name__ == "__main__":
             /* 隐藏语音输入组件 */
             #voice-file-input { display: none !important; }
 
-            /* 全局字体 */
             body, button, input, textarea, select {
                 font-family: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif !important;
             }
@@ -1080,41 +1094,44 @@ if __name__ == "__main__":
                 flex-shrink: 0 !important;
             }
 
-            /* ========== 左侧项目区（使用原生 Group 自带灰色背景） ========== */
-            #side-project-group {
-                background: #f9fafb !important;
+            /* ========== 核心：左侧仅保留一个白色外框 ========== */
+            #project-sidebar {
+                background: #ffffff !important;
                 border-radius: 12px !important;
                 border: 1px solid #e5e7eb !important;
-                padding: 10px !important;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.04) !important;
+                padding: 15px !important;
+                height: fit-content !important;
             }
             
-            #project-list-group,
-            #project-list-group > div,
-            #project-list-group div[data-testid="block"] {
+            /* 彻底消灭 Radio 的所有嵌套包装层！ */
+            #project-list,
+            #project-list .block,
+            #project-list .wrap,
+            #project-list .gr-box,
+            #project-list .form {
+                background: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            
+            /* 直接对内部选项（label）进行独立卡片化设计 */
+            #project-list label {
                 background: #f3f4f6 !important;
                 border-radius: 8px !important;
-                border: 1px solid #cbd5e1 !important;
+                padding: 12px !important;
+                margin-bottom: 8px !important;
+                border: 1px solid transparent !important;
+                cursor: pointer;
             }
-            
-            /* 强制所有未选中Radio选项变灰，选中变蓝 */
-            #project-list-group label {
-                background: #f3f4f6 !important;
-                color: #333 !important;
-                border-bottom: 1px solid #e2e8f0 !important;
-                padding: 10px !important;
-                margin: 0 !important;
-                display: block !important;
-                width: 100% !important;
-            }
-            #project-list-group label.selected {
+            #project-list label.selected {
                 background: #2563EB !important;
                 color: white !important;
             }
-            #project-list-group label:last-child {
-                border-bottom: none !important;
-            }
 
-            /* ========== 底部输入卡片（终极透明，斩断白盒子） ========== */
+            /* ========== 底部输入卡片 ========== */
             #input-card {
                 background: transparent !important;
                 border: none !important;
@@ -1136,28 +1153,27 @@ if __name__ == "__main__":
                 flex-grow: 1 !important;
                 min-width: 0 !important;
             }
-
-            /* 【终极穿透：直接把 Textbox 的所有外层盒子全部透明化！】 */
+            
+            /* 解决白框残留：强制将文件名框的所有包装层设为透明并靠右 */
             #attachment-html,
             #attachment-html .block,
             #attachment-html .wrap,
             #attachment-html .form,
-            #attachment-html div[data-testid="block"],
-            #attachment-html div[data-testid="block"] > div,
-            #attachment-html input {
+            #attachment-html div[data-testid="block"] {
                 background: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
                 padding: 0 !important;
                 margin: 0 !important;
-                white-space: nowrap !important;
-                overflow: hidden !important;
-                text-overflow: ellipsis !important;
                 color: #333 !important;
                 font-size: 14px !important;
-                width: auto !important;
             }
-
+            #attachment-html input {
+                background: transparent !important;
+                border: none !important;
+                padding: 0 !important;
+                text-align: right !important;
+            }
             #clear-btn {
                 margin: 0 !important;
                 padding: 0 !important;
@@ -1169,7 +1185,7 @@ if __name__ == "__main__":
                 font-weight: bold !important;
             }
 
-            /* ========== 底部输入区：完美左对齐 ========== */
+            /* 解决输入框左对齐问题：强制归零左侧偏移 */
             #input-row-final {
                 display: flex !important;
                 flex-direction: row !important;
@@ -1177,17 +1193,15 @@ if __name__ == "__main__":
                 align-items: center !important;
                 gap: 8px !important;
                 background: transparent !important;
-                padding-left: 0 !important;  /* 核心：严格取消左缩进！ */
-                padding-right: 15px !important;
+                padding-left: 0 !important;
+                padding-right: 12px !important;
             }
-            #input-row-final .block,
-            #input-row-final .wrap,
-            #input-row-final .form,
-            #input-row-final div[data-testid="block"] {
+            #input-row-final .block {
                 background: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
-                margin: 0 !important;
+                margin-left: 0 !important;
+                padding-left: 0 !important;
             }
             #input-row-final input {
                 background: #f9fafb !important;
@@ -1210,10 +1224,6 @@ if __name__ == "__main__":
                 justify-content: center !important;
                 cursor: pointer !important;
             }
-            #upload-icon-btn:hover {
-                background: #f3f4f6 !important;
-                border-radius: 8px !important;
-            }
 
             #send-btn {
                 width: 40px !important;
@@ -1230,10 +1240,6 @@ if __name__ == "__main__":
                 display: flex !important;
                 align-items: center !important;
                 justify-content: center !important;
-                line-height: 1 !important;
-            }
-            #send-btn:hover {
-                background-color: #1E4D8C !important;
             }
 
             /* 项目创建区 */
