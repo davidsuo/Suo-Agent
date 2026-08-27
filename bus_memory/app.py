@@ -227,20 +227,26 @@ with gr.Blocks(title="AI 智能体") as demo:
                                 interactive=False,
                                 visible=False
                             )
-                            # 当前用户与下拉菜单放在同一行
+
+                            # 当前用户展示
                             with gr.Row(elem_id="current-user-row"):
                                 current_user_display = gr.Markdown(
                                     value="**当前用户：** 未登录",
                                     elem_id="current-user-display"
                                 )
-                            
-                            # 项目 + 按钮与内联创建区
+
+                            # 项目 + 按钮与内联创建区（同一行：输入框 + 创建 + 取消）
                             add_project_btn = gr.Button("项目 +", elem_id="add-project-btn", scale=0, visible=True)
-                            with gr.Row(visible=False, elem_id="project-creation-row") as project_creation_row:
-                                project_input = gr.Textbox(placeholder="输入项目名称...", scale=4, show_label=False)
+                            with gr.Row(elem_id="project-creation-row", visible=False) as project_creation_row:
+                                project_input = gr.Textbox(
+                                    placeholder="输入项目名称...", 
+                                    scale=4, 
+                                    show_label=False, 
+                                    elem_id="project-input-box"
+                                )
                                 create_project_btn = gr.Button("创建", scale=1, elem_id="create-project-btn")
-                                cancel_project_btn = gr.Button("✖", scale=0, min_width=0, elem_id="cancel-project-btn")
-                            
+                                cancel_project_btn = gr.Button("✖", scale=0, elem_id="cancel-project-btn")
+
                             # 项目列表（主对话 + 用户自定义项目）
                             project_list = gr.Radio(
                                 choices=["主对话"],
@@ -249,8 +255,9 @@ with gr.Blocks(title="AI 智能体") as demo:
                                 interactive=True,
                                 visible=True
                             )
-                            # 提前定义删除按钮，避免变量未定义错误
-                            delete_project_btn = gr.Button("🗑️ 删除当前项目", visible=False, scale=0)
+                            
+                            # 删除当前项目按钮
+                            delete_project_btn = gr.Button("🗑️ 删除当前项目", visible=False, scale=0, elem_id="delete-project-btn")
 
                         # 右侧 3/4：聊天主区
                         with gr.Column(scale=3, elem_id="chat-main-area"):
@@ -812,24 +819,25 @@ with gr.Blocks(title="AI 智能体") as demo:
     add_project_btn.click(
         fn=lambda: (gr.update(visible=False), gr.update(visible=True)),
         inputs=None,
-        outputs=[add_project_btn, project_creation_row]
+        outputs=[add_project_btn, project_creation_row],
+        show_progress="hidden"  # ✅ 隐藏飞镖
     )
 
     # 2. 点击“✖”取消按钮：隐藏创建输入行，恢复“+”按钮
     cancel_project_btn.click(
         fn=lambda: (gr.update(visible=True), gr.update(visible=False)),
         inputs=None,
-        outputs=[add_project_btn, project_creation_row]
+        outputs=[add_project_btn, project_creation_row],
+        show_progress="hidden"  # ✅ 隐藏飞镖
     )
 
-    # 3. 创建项目逻辑（简化，返回6个值）
+    # 3. 创建项目逻辑（确保返回6个值，用 gr.update 更新 Radio）
     def create_project(project_name, current_choices, project_names, current_project):
         if not project_name or not project_name.strip():
             return gr.update(), "", gr.update(visible=True), gr.update(visible=False), current_project, project_names
         
         new_name = project_name.strip()
-        
-        # 构建新列表，确保“主对话”在第一位
+        # 确保列表开头永远是“主对话”
         new_choices = ["主对话"]
         for p in project_names:
             if p != "主对话":
@@ -837,30 +845,28 @@ with gr.Blocks(title="AI 智能体") as demo:
         if new_name not in new_choices:
             new_choices.append(new_name)
         
-        # 更新 project_names 状态
         new_project_names = new_choices.copy()
-        
-        # ✅ 关键修复：使用 gr.update 设置新的 choices 和 value
         return (
-            gr.update(choices=new_choices, value=new_name),  # 更新 Radio
-            "",                                                # 清空输入框
-            gr.update(visible=True),                           # 恢复“+”按钮
-            gr.update(visible=False),                          # 隐藏创建行
-            new_name,                                          # 更新当前项目状态
-            new_project_names                                  # 更新项目名列表
+            gr.update(choices=new_choices, value=new_name),
+            "",
+            gr.update(visible=True),
+            gr.update(visible=False),
+            new_name,
+            new_project_names
         )
 
+    # 3. 点击“创建”按钮：执行创建逻辑
     create_project_btn.click(
         fn=create_project,
-        inputs=[project_input, project_list, project_names, current_project],  # 增加 project_list
-        outputs=[project_list, project_input, add_project_btn, project_creation_row, current_project, project_names]
+        inputs=[project_input, project_list, project_names, current_project],
+        outputs=[project_list, project_input, add_project_btn, project_creation_row, current_project, project_names],
+        show_progress="hidden"  # ✅ 隐藏飞镖
     )
 
-    # 监听 Radio 切换项目
+    # 4. 监听 Radio 切换项目
     def switch_project(new_project, user):
         if not user:
             return [], "", new_project
-        # ✅ 确保使用“主对话”作为默认项目名
         if not new_project:
             new_project = "主对话"
         session_id = f"{user['username']}_{new_project}"
@@ -870,10 +876,11 @@ with gr.Blocks(title="AI 智能体") as demo:
     project_list.change(
         fn=switch_project,
         inputs=[project_list, user_state],
-        outputs=[chatbot, text_input, current_project]
+        outputs=[chatbot, text_input, current_project],
+        show_progress="hidden"  # ✅ 隐藏飞镖
     )
 
-    # 显示/隐藏删除按钮
+    # 5. 显示/隐藏删除按钮
     def toggle_delete_btn(current_project):
         if current_project:
             return gr.update(visible=True)
@@ -882,10 +889,11 @@ with gr.Blocks(title="AI 智能体") as demo:
     project_list.change(
         fn=toggle_delete_btn,
         inputs=[current_project],
-        outputs=[delete_project_btn]
+        outputs=[delete_project_btn],
+        show_progress="hidden"  # ✅ 隐藏飞镖
     )
 
-    # 删除项目逻辑
+    # 6. 删除项目逻辑
     def delete_project(current_project, project_names):
         if not current_project or current_project not in project_names:
             return gr.update(), "", project_names, gr.update(visible=False)
@@ -902,16 +910,17 @@ with gr.Blocks(title="AI 智能体") as demo:
             )
         else:
             return (
-                gr.update(choices=[], value=None),
-                "",
-                [],
+                gr.update(choices=["主对话"], value="主对话"),
+                "主对话",
+                ["主对话"],
                 gr.update(visible=False)
             )
     
     delete_project_btn.click(
         fn=delete_project,
         inputs=[current_project, project_names],
-        outputs=[project_list, current_project, project_names, delete_project_btn]
+        outputs=[project_list, current_project, project_names, delete_project_btn],
+        show_progress="hidden"  # ✅ 隐藏飞镖
     )
 
     # ================= 语音文件事件 =================
@@ -1198,6 +1207,33 @@ if __name__ == "__main__":
             .gradio-container button:focus {
                 outline: none !important;
                 box-shadow: none !important;
+            }
+            
+            /* 去掉项目输入框外面的白色底框 */
+            #project-input-box {
+                background: transparent !important;
+                box-shadow: none !important;
+                border: 1px solid #e5e7eb !important; /* 可选：保留一根细线方便看清位置 */
+            }
+            #project-input-box .wrap {
+                background: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
+            }
+            #project-input-box input {
+                background: transparent !important;
+                box-shadow: none !important;
+            }
+
+            /* 让创建和取消按钮的排列更紧凑 */
+            #project-creation-row {
+                gap: 4px !important;
+            }
+
+            /* 全局隐藏任何残留的飞镖 */
+            .loading-container, .spinner {
+                display: none !important;
+                opacity: 0 !important;
             }
         """
     )
