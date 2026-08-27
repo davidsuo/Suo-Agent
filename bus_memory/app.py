@@ -271,14 +271,14 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     # 占位符：把后续元素推到最右
                                     spacer = gr.Markdown("", scale=4, elem_id="file-row-spacer")
 
-                                    # 【关键】使用 Markdown 彻底去掉白框，默认隐藏
+                                    # 文件名（初始绝对隐藏，只有上传后才出现）
                                     attachment_html = gr.Markdown(
                                         value="",
                                         visible=False,
                                         elem_id="attachment-html"
                                     )
 
-                                    # ❌ 清除按钮（默认隐藏）
+                                    # ❌ 清除按钮（初始绝对隐藏）
                                     clear_file_btn = gr.Button("×", scale=0, min_width=40, elem_id="clear-btn", visible=False)
 
                                 # 第二行：输入框 + 占位符 + 📎 + 发送按钮
@@ -725,7 +725,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             return None, "", gr.update(visible=False)
         file_path = file.name if hasattr(file, 'name') else str(file)
         file_name = os.path.basename(file_path)
-        # 上传后，用 Markdown 强制显示文件名（并同步让组件变为可见）
+        # 上传后，文件框和清除按钮变为可见
         return file_path, f"📎 {file_name}", gr.update(visible=True)
 
     file_upload_btn.upload(
@@ -742,6 +742,31 @@ with gr.Blocks(title="AI 智能体") as demo:
         fn=clear_file,
         inputs=[],
         outputs=[pending_file, attachment_html, clear_file_btn],
+        show_progress="hidden"
+    )
+
+    # ================= 纯文本及混合输入事件（解决回车无响应！） =================
+    async def submit_text_with_file(message, history, user_state, pending_file_val, current_project):
+        if not message and not pending_file_val:
+            return history, "", None, "", gr.update(visible=False), "", ""
+        new_history, clear_text, _, user_msg, assistant_msg = await unified_handler(
+            message, history, pending_file_val, user_state, current_project
+        )
+        return new_history, clear_text, None, "", gr.update(visible=False), user_msg, assistant_msg
+
+    # 回车事件（确保完整输入输出：6个输入，6个输出）
+    text_input.submit(
+        fn=submit_text_with_file,
+        inputs=[text_input, chatbot, user_state, pending_file, current_project],
+        outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn, last_user_message, last_assistant_message],
+        show_progress="hidden"
+    )
+
+    # 点击发送按钮（同上）
+    send_btn.click(
+        fn=submit_text_with_file,
+        inputs=[text_input, chatbot, user_state, pending_file, current_project],
+        outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn, last_user_message, last_assistant_message],
         show_progress="hidden"
     )
 
@@ -1054,7 +1079,6 @@ if __name__ == "__main__":
                 min-width: 0 !important;
             }
 
-            /* 【彻底美化 Markdown 文件名显示区，绝对无白底框】 */
             #attachment-html,
             #attachment-html .block,
             #attachment-html .wrap,
@@ -1112,7 +1136,7 @@ if __name__ == "__main__":
                 background: #f9fafb !important;
                 border-radius: 12px !important;
                 border: 1px solid #f3f4f6 !important;
-                padding: 15px 12px !important;  /* 加高输入框 */
+                padding: 15px 12px !important;
                 font-size: 16px !important;
             }
 
