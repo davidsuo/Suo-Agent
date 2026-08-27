@@ -271,18 +271,10 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     # 占位符：把后续元素推到最右
                                     spacer = gr.Markdown("", scale=4, elem_id="file-row-spacer")
 
-                                    # ✅ 修改点：文件名框初始隐藏（visible=False），只有在上传后才显示
-                                    attachment_html = gr.Textbox(
-                                        show_label=False,
-                                        interactive=False,
-                                        value="",
-                                        scale=0,
-                                        min_width=180,
-                                        visible=False,  # ✅ 初始隐藏
-                                        elem_id="attachment-html"
-                                    )
+                                    # 改用 Markdown 显示文件名（绝对无白框，渲染稳定）
+                                    attachment_html = gr.Markdown("", elem_id="attachment-html", scale=0, min_width=120)
 
-                                    # ❌ 清除按钮（默认隐藏）
+                                    # ❌ 清除按钮
                                     clear_file_btn = gr.Button("×", scale=0, min_width=40, elem_id="clear-btn", visible=False)
 
                                 # 第二行：输入框 + 📎 + 发送按钮
@@ -726,7 +718,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             return None, "", gr.update(visible=False)
         file_path = file.name if hasattr(file, 'name') else str(file)
         file_name = os.path.basename(file_path)
-        # 上传后，让文件名框和清除按钮都显示出来
+        # 给 Markdown 传入纯文本标记
         return file_path, f"📎 {file_name}", gr.update(visible=True)
 
     file_upload_btn.upload(
@@ -1099,41 +1091,42 @@ if __name__ == "__main__":
                 flex-shrink: 0 !important;
             }
 
-            /* ========== 左侧侧边栏：彻底无框，极简设计 ========== */
+            /* ========== 核心：项目侧边栏（取消所有灰底，变成干净白色卡片） ========== */
             #project-sidebar {
                 background: transparent !important;
-                box-shadow: none !important;
                 border: none !important;
+                box-shadow: none !important;
                 padding: 0 !important;
-                margin-top: 10px !important;
             }
-
-            /* ========== 项目列表：选项本身是干净的白色小卡片 ========== */
-            /* 彻底清除外围所有包装层 */
+            
+            /* 彻底移除 Radio 组件自带的所有外层灰色背景框 */
             #project-list,
             #project-list .block,
             #project-list .wrap,
             #project-list .gr-box,
-            #project-list .form {
+            #project-list .form,
+            #project-list div[data-testid="block"] {
                 background: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
-                margin: 0 !important;
                 padding: 0 !important;
+                margin: 0 !important;
             }
-            /* 每个选项作为独立白色卡片 */
+            
+            /* 仅针对每个选项本身使用白色背景和边框 */
             #project-list label {
                 background: #ffffff !important;
+                border: 1px solid #e5e7eb !important;
                 border-radius: 8px !important;
-                padding: 10px 15px !important;
+                padding: 12px !important;
                 margin-bottom: 8px !important;
-                border: 1px solid #e5e7eb !important; /* 细边框 */
+                box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
                 cursor: pointer;
             }
             #project-list label.selected {
                 background: #2563EB !important;
-                border-color: #2563EB !important;
                 color: white !important;
+                border: 1px solid #2563EB !important;
             }
 
             /* ========== 底部输入卡片 ========== */
@@ -1158,20 +1151,20 @@ if __name__ == "__main__":
                 flex-grow: 1 !important;
                 min-width: 0 !important;
             }
-
-            /* 文件名框：无论显示与否，确保没有白底残留，纯文字显示 */
-            #attachment-html,
-            #attachment-html .block,
-            #attachment-html .wrap,
-            #attachment-html .form,
-            #attachment-html input {
-                background: transparent !important;
-                border: none !important;
-                box-shadow: none !important;
-                padding: 0 !important;
+            
+            /* 用 Markdown 显示文件名（无任何白框困扰） */
+            #attachment-html {
                 margin: 0 !important;
+                padding: 0 !important;
                 color: #333 !important;
                 font-size: 14px !important;
+                font-weight: 500 !important;
+                display: flex !important;
+                align-items: center !important;
+            }
+            #attachment-html p {
+                margin: 0 !important;
+                padding: 0 !important;
             }
             #clear-btn {
                 margin: 0 !important;
@@ -1184,7 +1177,7 @@ if __name__ == "__main__":
                 font-weight: bold !important;
             }
 
-            /* 第二行：输入区（严格左对齐） */
+            /* ========== 第二行：输入区（严格左对齐） ========== */
             #input-row-final {
                 display: flex !important;
                 flex-direction: row !important;
