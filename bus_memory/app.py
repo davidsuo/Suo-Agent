@@ -274,20 +274,20 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     down_btn = gr.Button("👎 无帮助", scale=0, min_width=80, size="sm")
                                     feedback_msg = gr.Markdown("")
 
-                                    # 占位符：吃光中间空隙，把文件名推到最右
+                                    # 占位符：把后续元素推到最右
                                     spacer = gr.Markdown("", scale=4, elem_id="file-row-spacer")
 
-                                    # 文件名（使用 Textbox，不依赖 HTML 渲染）
+                                    # 文件名（Textbox 宽度加大，防止折行）
                                     attachment_html = gr.Textbox(
                                         show_label=False,
                                         interactive=False,
                                         value="",
                                         scale=0,
-                                        min_width=120,
+                                        min_width=180,  # 增大到180
                                         elem_id="attachment-html"
                                     )
 
-                                    # ❌ 清除按钮（始终紧靠文件名）
+                                    # ❌ 清除按钮
                                     clear_file_btn = gr.Button("×", scale=0, min_width=40, elem_id="clear-btn", visible=False)
 
                                 # 第二行：输入框 + 📎 + 发送按钮
@@ -1109,14 +1109,38 @@ if __name__ == "__main__":
                 flex-shrink: 0 !important;
             }
 
-            /* ========== 底部输入卡片（去掉外框！） ========== */
+            /* ========== 项目侧边栏（核心修复：给所有Radio加灰底） ========== */
+            #project-sidebar .block {
+                background: transparent !important;
+                border-radius: 8px !important;
+                padding: 8px !important;
+            }
+            #project-list .block {
+                background: transparent !important;
+                border: 1px solid #cbd5e1 !important;
+                border-radius: 8px !important;
+            }
+            #project-list label {
+                border-bottom: 1px solid #e2e8f0 !important;
+                padding: 10px !important;
+                background: #f3f4f6 !important; /* 【关键】未选中项灰色底 */
+                cursor: pointer;
+            }
+            #project-list label.selected {
+                background: #2563EB !important;
+                color: white !important;
+            }
+            #project-list label:last-child {
+                border-bottom: none !important;
+            }
+
+            /* ========== 底部输入卡片（彻底消除所有白底框） ========== */
             #input-card {
                 background: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
                 padding: 0 !important;
                 margin: 0 !important;
-                gap: 0 !important;
             }
 
             /* ========== 第一行：文件区 ========== */
@@ -1125,7 +1149,7 @@ if __name__ == "__main__":
                 flex-direction: row !important;
                 flex-wrap: nowrap !important;
                 align-items: center !important;
-                gap: 4px !important;  /* 缩小间距 */
+                gap: 4px !important;
                 margin-bottom: 5px !important;
                 width: 100% !important;
             }
@@ -1133,7 +1157,7 @@ if __name__ == "__main__":
                 flex-grow: 1 !important;
                 min-width: 0 !important;
             }
-            /* 文件名 Textbox：去掉白底框，背景透明 */
+            /* 【关键】去除上传文件名的白底框并强制不折行 */
             #attachment-html {
                 background: transparent !important;
                 border: none !important;
@@ -1142,8 +1166,22 @@ if __name__ == "__main__":
                 color: #333 !important;
                 font-weight: 500 !important;
                 padding: 0 !important;
+                width: auto !important;
+                max-width: 180px !important;
+                white-space: nowrap !important;
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
             }
-            /* × 清除按钮样式 */
+            /* 【关键】直接攻击 Textbox 内部结构，去掉所有白底 */
+            #attachment-html .block,
+            #attachment-html .wrap,
+            #attachment-html .form,
+            #attachment-html input {
+                background: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
+                padding: 0 !important;
+            }
             #clear-btn {
                 margin: 0 !important;
                 padding: 0 !important;
@@ -1162,10 +1200,12 @@ if __name__ == "__main__":
                 flex-wrap: nowrap !important;
                 align-items: center !important;
                 gap: 8px !important;
-                padding-right: 12px !important;
                 background: transparent !important;
+                /* 【关键】与反馈按钮对齐 */
+                padding-left: 15px !important;
+                padding-right: 15px !important;
             }
-            /* 去掉输入框的白底框 */
+            /* 直接攻击输入框，去掉外部白框，保留浅灰底 */
             #input-row-final .block,
             #input-row-final .wrap,
             #input-row-final .form {
@@ -1177,6 +1217,7 @@ if __name__ == "__main__":
                 background: #f9fafb !important;
                 border-radius: 8px !important;
                 border: 1px solid #f3f4f6 !important;
+                padding-left: 8px !important;
             }
 
             #upload-icon-btn {
@@ -1217,35 +1258,6 @@ if __name__ == "__main__":
             }
             #send-btn:hover {
                 background-color: #1E4D8C !important;
-            }
-
-            /* ========== 项目侧边栏样式 ========== */
-            #project-sidebar .block {
-                background: #ffffff !important;
-                border-radius: 8px !important;
-                padding: 8px !important;
-            }
-            /* 让 Radio 选项默认浅灰背景 */
-            #project-list .block {
-                background: #f3f4f6 !important; /* 浅灰底色 */
-                border: 1px solid #cbd5e1 !important;
-                border-radius: 8px !important;
-            }
-            #project-list .wrap {
-                border: none !important;
-            }
-            #project-list label {
-                border-bottom: 1px solid #e2e8f0 !important;
-                padding: 10px !important;
-                background: #f9fafb !important; /* 未选中项灰色 */
-                cursor: pointer;
-            }
-            #project-list label.selected {
-                background: #2563EB !important; /* 选中项蓝色 */
-                color: white !important;
-            }
-            #project-list label:last-child {
-                border-bottom: none !important;
             }
 
             /* 项目创建区样式 */
