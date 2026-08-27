@@ -271,14 +271,14 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     # 占位符：把后续元素推到最右
                                     spacer = gr.Markdown("", scale=4, elem_id="file-row-spacer")
 
-                                    # 文件名（初始绝对隐藏，只有上传后才出现）
+                                    # 文件名（【关键】一直显示，但由CSS控制透明，有内容时才显现文字）
                                     attachment_html = gr.Markdown(
                                         value="",
-                                        visible=False,
+                                        visible=True,
                                         elem_id="attachment-html"
                                     )
 
-                                    # ❌ 清除按钮（初始绝对隐藏）
+                                    # ❌ 清除按钮（默认隐藏）
                                     clear_file_btn = gr.Button("×", scale=0, min_width=40, elem_id="clear-btn", visible=False)
 
                                 # 第二行：输入框 + 占位符 + 📎 + 发送按钮
@@ -725,7 +725,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             return None, "", gr.update(visible=False)
         file_path = file.name if hasattr(file, 'name') else str(file)
         file_name = os.path.basename(file_path)
-        # 上传后，文件框和清除按钮变为可见
+        # 直接给 Markdown 传纯文本文件名
         return file_path, f"📎 {file_name}", gr.update(visible=True)
 
     file_upload_btn.upload(
@@ -745,7 +745,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         show_progress="hidden"
     )
 
-    # ================= 纯文本及混合输入事件（解决回车无响应！） =================
+    # ================= 纯文本及混合输入事件 =================
     async def submit_text_with_file(message, history, user_state, pending_file_val, current_project):
         if not message and not pending_file_val:
             return history, "", None, "", gr.update(visible=False), "", ""
@@ -754,7 +754,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         )
         return new_history, clear_text, None, "", gr.update(visible=False), user_msg, assistant_msg
 
-    # 回车事件（确保完整输入输出：6个输入，6个输出）
+    # 回车事件
     text_input.submit(
         fn=submit_text_with_file,
         inputs=[text_input, chatbot, user_state, pending_file, current_project],
@@ -762,7 +762,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         show_progress="hidden"
     )
 
-    # 点击发送按钮（同上）
+    # 点击发送按钮
     send_btn.click(
         fn=submit_text_with_file,
         inputs=[text_input, chatbot, user_state, pending_file, current_project],
@@ -1079,6 +1079,7 @@ if __name__ == "__main__":
                 min-width: 0 !important;
             }
 
+            /* 【终极修复：文件名 Markdown 全部透明，消除白框。有内容时显示文字】 */
             #attachment-html,
             #attachment-html .block,
             #attachment-html .wrap,
