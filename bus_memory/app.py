@@ -266,20 +266,17 @@ with gr.Blocks(title="AI 智能体") as demo:
                             
                             # ========== 底部合并卡片式输入区 ==========
                             with gr.Group(elem_id="input-card"):
-                                # 第一行：反馈按钮 + 占位符 + 文件名/❌（靠右）
+                                # 第一行：反馈按钮 + 文件名/清除按钮（靠右吸附）
                                 with gr.Row(elem_id="file-row"):
                                     up_btn = gr.Button("👍 有帮助", scale=0, min_width=60, size="sm")
                                     down_btn = gr.Button("👎 无帮助", scale=0, min_width=60, size="sm")
                                     feedback_msg = gr.Markdown("")
 
-                                    # 绝对占位符（撑开剩余空间，将后续元素推至最右）
-                                    spacer = gr.Markdown("", scale=1, elem_id="file-row-spacer")
+                                    # 文件名（物理设置最小宽度，防止被压缩消失）
+                                    attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=80)
 
-                                    # 文件名（在最右侧显示）
-                                    attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
-
-                                    # ❌ 按钮（紧跟文件名在最右侧，且默认隐藏）
-                                    clear_file_btn = gr.Button("❌", scale=0, min_width=0, elem_id="clear-btn", visible=False)
+                                    # ❌ 清除按钮（紧跟文件名，靠右）
+                                    clear_file_btn = gr.Button("❌", scale=0, min_width=40, elem_id="clear-btn", visible=False)
 
                                 # 第二行：输入框 + 图标 + 发送按钮
                                 with gr.Row(elem_id="input-row-final"):
@@ -1105,7 +1102,7 @@ if __name__ == "__main__":
                 gap: 8px !important;
             }
 
-            /* 第一行：占位符绝对撑开，文件名和X按钮吸附最右侧 */
+            /* 第一行：极其可靠的右侧吸附 */
             #file-row {
                 display: flex !important;
                 flex-direction: row !important;
@@ -1115,25 +1112,20 @@ if __name__ == "__main__":
                 margin-bottom: 5px !important;
                 width: 100% !important;
             }
-            #file-row > * {
-                flex: 0 0 auto !important;
-                white-space: nowrap !important;
-            }
-
-            /* 核心：让占位符吃掉所有剩余宽度 */
-            #file-row-spacer {
-                flex-grow: 1 !important;
-                min-width: 0 !important;
-            }
-
+            
+            /* 核心：把文件名和X按钮踢到最右侧 */
             #attachment-html {
-                margin: 0 !important;
+                flex: 0 0 auto !important;
+                margin-left: auto !important;  /* 靠右吸附！ */
                 padding: 0 !important;
                 font-size: 14px !important;
                 color: #333 !important;
+                font-weight: 500 !important;
             }
             #clear-btn {
+                flex: 0 0 auto !important;
                 margin: 0 !important;
+                margin-left: 0px !important;
                 padding: 0 4px !important;
                 color: #e53e3e !important;
             }
