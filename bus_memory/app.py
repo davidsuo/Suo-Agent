@@ -271,14 +271,10 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     # 占位符：把后续元素推到最右
                                     spacer = gr.Markdown("", scale=4, elem_id="file-row-spacer")
 
-                                    # 文件名（始终可见，但靠 CSS 让它的外框透明隐形）
-                                    attachment_html = gr.Textbox(
-                                        show_label=False,
-                                        interactive=False,
+                                    # 【关键修改】使用 Markdown 彻底去掉白框，默认隐藏
+                                    attachment_html = gr.Markdown(
                                         value="",
-                                        visible=True,  # 修改：永远可见，靠 CSS 隐形，有内容才显示文字
-                                        scale=0,
-                                        min_width=180,
+                                        visible=False,
                                         elem_id="attachment-html"
                                     )
 
@@ -729,8 +725,8 @@ with gr.Blocks(title="AI 智能体") as demo:
             return None, "", gr.update(visible=False)
         file_path = file.name if hasattr(file, 'name') else str(file)
         file_name = os.path.basename(file_path)
-        # 上传后，强制让文件名框和清除按钮显示出来
-        return file_path, file_name, gr.update(visible=True)
+        # 上传后，用 Markdown 强制显示文件名（纯文本无白底）
+        return file_path, f"📎 {file_name}", gr.update(visible=True)
 
     file_upload_btn.upload(
         fn=handle_file_upload,
@@ -1058,32 +1054,25 @@ if __name__ == "__main__":
                 min-width: 0 !important;
             }
 
-            /* 【核心修复 1】强制反馈按钮永不折行，保持横向排列 */
-            #file-row button {
-                white-space: nowrap !important;
-                flex-shrink: 0 !important;
-                min-width: 90px !important;
-                border-radius: 12px !important;
-                font-size: 16px !important;
-                padding: 4px 12px !important;
-            }
-
-            /* 【核心修复 2】彻底隐形文件名外框，只显示文字 */
+            /* 【终极彻底消除白框】强制 attachment-html 内部透明！ */
             #attachment-html,
             #attachment-html .block,
             #attachment-html .wrap,
-            #attachment-html .form,
-            #attachment-html div[data-testid="block"],
-            #attachment-html input {
+            #attachment-html .gr-box,
+            #attachment-html .form {
                 background: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
                 padding: 0 !important;
                 margin: 0 !important;
-                width: auto !important;
-                color: #333 !important;
                 font-size: 14px !important;
-                text-align: right !important;
+                color: #333 !important;
+                font-weight: 500 !important;
+            }
+            /* 保证 HTML 组件绝对不产生任何盒子背景 */
+            #attachment-html p {
+                margin: 0 !important;
+                padding: 0 !important;
             }
 
             #clear-btn {
