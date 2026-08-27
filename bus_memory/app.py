@@ -264,35 +264,31 @@ with gr.Blocks(title="AI 智能体") as demo:
                             # 聊天框（彻底移除自带标签）
                             chatbot = gr.Chatbot(label="", show_label=False, height=500, value=[])
                             
-                            # ========== 底部原生合并卡片 ==========
+                            # ========== 底部合并卡片式输入区 ==========
                             with gr.Group(elem_id="input-card"):
-                                # 第一行：反馈按钮 + 文件名/清除按钮（全部靠左，无占位符）
+                                # 第一行：反馈按钮 + 文件名 + 清除按钮
                                 with gr.Row(elem_id="file-row"):
                                     up_btn = gr.Button("👍 有帮助", scale=0, min_width=0)
                                     down_btn = gr.Button("👎 无帮助", scale=0, min_width=0)
                                     feedback_msg = gr.Markdown("")
-                                    
-                                    # 文件名和清除按钮紧跟反馈按钮，不再被推向右端
+
+                                    # 暂存文件名显示组件（之前丢失了，现在补回来）
                                     attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
                                     clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
 
-                                # 第二行：输入框 + 📎图标 + 发送按钮（完美对齐）
+                                # 第二行：输入框 + 📎图标 + 蓝色圆球发送按钮
                                 with gr.Row(elem_id="input-row-final"):
-                                    # 输入框（占据主要宽度）
                                     text_input = gr.Textbox(
                                         show_label=False,
                                         placeholder="发消息或按住空格说话，松开发送...",
                                         scale=4
                                     )
-                                    
-                                    # 📎 上传按钮（只保留图标）
                                     file_upload_btn = gr.UploadButton(
                                         "📎",
                                         file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
                                         scale=0, min_width=0, elem_id="upload-icon-btn"
                                     )
-                                    
-                                    # 圆形蓝色发送按钮
+                                    # 蓝色圆球发送按钮（必须显式声明）
                                     send_btn = gr.Button("⬆", elem_id="send-btn", scale=0, min_width=0)
 
                             # 隐藏的语音输入组件
@@ -716,6 +712,7 @@ with gr.Blocks(title="AI 智能体") as demo:
 
 
     # ================= 事件绑定（文本、文件、语音） =================
+    # ================= 文件上传暂存逻辑 =================
     def handle_file_upload(file):
         if file is None:
             return None, "", gr.update(visible=False)
@@ -724,11 +721,12 @@ with gr.Blocks(title="AI 智能体") as demo:
         html = f"<span style='display:inline-block; margin:0; padding:0;'>{file_name}</span>"
         return file_path, html, gr.update(visible=True)
 
+    # 绑定上传事件
     file_upload_btn.upload(
         fn=handle_file_upload,
         inputs=[file_upload_btn],
         outputs=[pending_file, attachment_html, clear_file_btn],
-        show_progress="hidden"
+        show_progress="hidden"  # ✅ 隐藏飞镖
     )
 
     def clear_file():
@@ -737,7 +735,8 @@ with gr.Blocks(title="AI 智能体") as demo:
     clear_file_btn.click(
         fn=clear_file,
         inputs=[],
-        outputs=[pending_file, attachment_html, clear_file_btn]
+        outputs=[pending_file, attachment_html, clear_file_btn],
+        show_progress="hidden"  # ✅ 隐藏飞镖
     )
 
     # 纯文本及混合输入事件
@@ -1230,6 +1229,31 @@ if __name__ == "__main__":
             #create-project-btn {
                 min-width: 60px !important;
                 flex-shrink: 0 !important;
+            }
+            
+            /* 确保蓝色圆球发送按钮绝对出现，不受任何缩放影响 */
+            #send-btn {
+                width: 40px !important;
+                height: 40px !important;
+                border-radius: 50% !important;
+                background-color: #2563EB !important;
+                border: none !important;
+                color: white !important;
+                font-size: 20px !important;
+                padding: 0 !important;
+                min-width: 40px !important; /* 强制宽度，防止被压缩 */
+                flex-shrink: 0 !important;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.2) !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                line-height: 1 !important;
+            }
+
+            /* 上传暂存文件名靠左显示 */
+            #attachment-html {
+                margin-left: 6px !important;
+                display: inline-block !important;
             }
         """
     )
