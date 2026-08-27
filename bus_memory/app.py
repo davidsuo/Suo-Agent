@@ -262,32 +262,39 @@ with gr.Blocks(title="AI 智能体") as demo:
                             
                             # ========== 底部合并卡片式输入区 ==========
                             with gr.Group(elem_id="input-card"):
-                                # 第一行：反馈 + 文件名/❌（靠右）
+                                # 第一行：反馈 + 占位符 + 文件名/❌（靠右）
                                 with gr.Row(elem_id="file-row"):
-                                    up_btn = gr.Button("👍 有帮助", scale=0, min_width=80, size="sm")
-                                    down_btn = gr.Button("👎 无帮助", scale=0, min_width=80, size="sm")
+                                    up_btn = gr.Button("👍 有帮助", scale=0, min_width=90, size="sm")
+                                    down_btn = gr.Button("👎 无帮助", scale=0, min_width=90, size="sm")
                                     feedback_msg = gr.Markdown("")
 
+                                    # 占位符：把后续元素推到最右
+                                    spacer = gr.Markdown("", scale=4, elem_id="file-row-spacer")
+
+                                    # 文件名（【关键】默认 visible=False，上传后才出现，根治白框幽灵！）
                                     attachment_html = gr.Textbox(
                                         show_label=False,
                                         interactive=False,
                                         value="",
+                                        visible=False,
                                         scale=0,
                                         min_width=180,
                                         elem_id="attachment-html"
                                     )
 
+                                    # ❌ 清除按钮
                                     clear_file_btn = gr.Button("×", scale=0, min_width=40, elem_id="clear-btn", visible=False)
 
-                                # 第二行：输入框 + 📎 + 发送按钮（已移除幽灵占位符）
+                                # 第二行：输入框(缩短一半) + 占位符 + 📎 + 发送按钮
                                 with gr.Row(elem_id="input-row-final"):
                                     text_input = gr.Textbox(
                                         show_label=False,
                                         placeholder="发消息或按住空格说话，松开发送...",
-                                        scale=1,
-                                        lines=2,   # 设置2行高度，让输入框更高
-                                        max_lines=4
+                                        scale=1
                                     )
+                                    # 占位符：大幅缩短输入框，增加右侧留白
+                                    input_spacer = gr.Markdown("", scale=3, elem_id="input-row-spacer")
+                                    
                                     file_upload_btn = gr.UploadButton(
                                         "📎",
                                         file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
@@ -722,9 +729,8 @@ with gr.Blocks(title="AI 智能体") as demo:
             return None, "", gr.update(visible=False)
         file_path = file.name if hasattr(file, 'name') else str(file)
         file_name = os.path.basename(file_path)
-        # 直接返回简单的 HTML 文本
-        html = f"<span style='font-size: 14px; color: #333;'>📎 {file_name}</span>"
-        return file_path, html, gr.update(visible=True)
+        # 上传后，强制让文件名框显示出来
+        return file_path, file_name, gr.update(visible=True)
 
     file_upload_btn.upload(
         fn=handle_file_upload,
@@ -1052,16 +1058,20 @@ if __name__ == "__main__":
                 min-width: 0 !important;
             }
 
-            /* 反馈按钮字体大小：修复过大问题 */
+            /* 【核心修复 1】强制反馈按钮永远横排，绝不折行！ */
             #file-row button {
+                white-space: nowrap !important;
+                flex-shrink: 0 !important;
+                min-width: 90px !important;
                 border-radius: 12px !important;
-                font-size: 14px !important; /* 和“当前用户”同级别 */
+                font-size: 16px !important;
                 padding: 4px 12px !important;
-                line-height: 1.5 !important;
-                font-weight: 600 !important;
+            }
+            #file-row label, #file-row span {
+                white-space: nowrap !important;
             }
 
-            /* 幽灵白框清理（确保 Textbox 内部全透明） */
+            /* 【核心修复 2】上传文件名框只在有值时出现，且彻底透明！ */
             #attachment-html,
             #attachment-html .block,
             #attachment-html .wrap,
@@ -1091,7 +1101,7 @@ if __name__ == "__main__":
                 border-radius: 6px !important;
             }
 
-            /* ========== 输入区：缩短长度 + 增高 ========== */
+            /* ========== 输入区（缩短 + 变高 + 圆角） ========== */
             #input-row-final {
                 display: flex !important;
                 flex-direction: row !important;
@@ -1101,24 +1111,24 @@ if __name__ == "__main__":
                 background: transparent !important;
                 padding-left: 0 !important;
                 padding-right: 12px !important;
-                /* 强制输入框宽度为 45% (比原一半稍短)，右侧空白交给 margin */
+            }
+            #input-row-spacer {
+                flex-grow: 1 !important;
+                min-width: 0 !important;
             }
             #input-row-final .block {
                 background: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                width: 45% !important; /* 缩短输入框宽度 */
-                min-width: 200px !important;
+                margin-left: 0 !important;
+                padding-left: 0 !important;
             }
             #input-row-final input {
                 background: #f9fafb !important;
                 border-radius: 12px !important;
                 border: 1px solid #f3f4f6 !important;
-                padding: 12px !important; /* 增加内边距，提高输入框高度 */
+                padding: 15px 12px !important;  /* 加高输入框 */
                 font-size: 16px !important;
-                height: auto !important;
             }
 
             #upload-icon-btn {
