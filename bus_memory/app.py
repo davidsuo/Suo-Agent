@@ -247,7 +247,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                             project_list = gr.Radio(
                                 choices=["主对话"],
                                 value="主对话",
-                                label="项目列表",
+                                show_label=False,     # ✅ 隐藏“项目列表”标题
                                 interactive=True,
                                 visible=True,
                                 elem_id="project-list"
@@ -1037,6 +1037,7 @@ if __name__ == "__main__":
             /* 隐藏语音输入组件 */
             #voice-file-input { display: none !important; }
 
+            /* 全局字体 */
             body, button, input, textarea, select {
                 font-family: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif !important;
             }
@@ -1070,7 +1071,6 @@ if __name__ == "__main__":
                 color: white !important;
                 border-radius: 6px !important;
                 font-weight: bold !important;
-                font-size: 15px !important;
                 margin-left: auto !important;
             }
 
@@ -1091,45 +1091,38 @@ if __name__ == "__main__":
                 flex-shrink: 0 !important;
             }
 
-            /* ========== 核心：项目侧边栏（取消所有灰底，变成干净白色卡片） ========== */
-            #project-sidebar {
-                background: transparent !important;
-                border: none !important;
-                box-shadow: none !important;
-                padding: 0 !important;
-            }
-            
-            /* 彻底移除 Radio 组件自带的所有外层灰色背景框 */
+            /* ========== 项目列表（去掉灰色外层，只留白色卡片） ========== */
             #project-list,
             #project-list .block,
             #project-list .wrap,
             #project-list .gr-box,
-            #project-list .form,
-            #project-list div[data-testid="block"] {
+            #project-list .form {
                 background: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
-                padding: 0 !important;
                 margin: 0 !important;
+                padding: 0 !important;
             }
             
-            /* 仅针对每个选项本身使用白色背景和边框 */
+            /* 纯白背景的独立小卡片 */
             #project-list label {
                 background: #ffffff !important;
                 border: 1px solid #e5e7eb !important;
                 border-radius: 8px !important;
-                padding: 12px !important;
+                padding: 10px !important;
                 margin-bottom: 8px !important;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
+                box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
+                color: #333 !important;
                 cursor: pointer;
             }
+            /* 选中项样式 */
             #project-list label.selected {
                 background: #2563EB !important;
                 color: white !important;
-                border: 1px solid #2563EB !important;
+                border-color: #2563EB !important;
             }
 
-            /* ========== 底部输入卡片 ========== */
+            /* ========== 底部输入区 ========== */
             #input-card {
                 background: transparent !important;
                 border: none !important;
@@ -1143,7 +1136,7 @@ if __name__ == "__main__":
                 flex-direction: row !important;
                 flex-wrap: nowrap !important;
                 align-items: center !important;
-                gap: 4px !important;
+                gap: 0px !important; /* 将间距缩为0，方便文件靠右 */
                 margin-bottom: 5px !important;
                 width: 100% !important;
             }
@@ -1152,23 +1145,33 @@ if __name__ == "__main__":
                 min-width: 0 !important;
             }
             
-            /* 用 Markdown 显示文件名（无任何白框困扰） */
-            #attachment-html {
-                margin: 0 !important;
+            /* 文件名贴紧右侧，拉近与x距离 */
+            #attachment-html,
+            #attachment-html .block,
+            #attachment-html .wrap,
+            #attachment-html .form,
+            #attachment-html div[data-testid="block"] {
+                background: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
                 padding: 0 !important;
+                margin: 0 !important;
                 color: #333 !important;
                 font-size: 14px !important;
-                font-weight: 500 !important;
-                display: flex !important;
-                align-items: center !important;
+                text-align: right !important;
+                width: auto !important;
+                min-width: 0 !important;
             }
-            #attachment-html p {
-                margin: 0 !important;
+            #attachment-html input {
+                background: transparent !important;
+                border: none !important;
                 padding: 0 !important;
+                text-align: right !important;
+                width: 100% !important;
             }
             #clear-btn {
                 margin: 0 !important;
-                padding: 0 !important;
+                padding: 0 4px !important;
                 color: #e53e3e !important;
                 background: transparent !important;
                 border: none !important;
@@ -1177,7 +1180,7 @@ if __name__ == "__main__":
                 font-weight: bold !important;
             }
 
-            /* ========== 第二行：输入区（严格左对齐） ========== */
+            /* 输入行左对齐 */
             #input-row-final {
                 display: flex !important;
                 flex-direction: row !important;
