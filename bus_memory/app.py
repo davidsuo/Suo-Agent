@@ -266,13 +266,12 @@ with gr.Blocks(title="AI 智能体") as demo:
                             
                             # ========== 底部合并卡片式输入区 ==========
                             with gr.Group(elem_id="input-card"):
-                                # 第一行：反馈按钮 + 文件名/清除按钮（靠左）
+                                # 第一行：反馈按钮 + 文件名/清除按钮
                                 with gr.Row(elem_id="file-row"):
                                     up_btn = gr.Button("👍 有帮助", scale=0, min_width=0)
                                     down_btn = gr.Button("👎 无帮助", scale=0, min_width=0)
                                     feedback_msg = gr.Markdown("")
                                     
-                                    # 文件名和清除按钮（点击上传后这里会显示文件名）
                                     attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
                                     clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
 
@@ -284,7 +283,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                                         scale=4
                                     )
                                     
-                                    # 回形针图标按钮（模仿图2样式）
+                                    # 回形针上传按钮
                                     file_upload_btn = gr.UploadButton(
                                         "📎",
                                         file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
@@ -721,16 +720,14 @@ with gr.Blocks(title="AI 智能体") as demo:
             return None, "", gr.update(visible=False)
         file_path = file.name if hasattr(file, 'name') else str(file)
         file_name = os.path.basename(file_path)
-        # 使用HTML包裹文件名，确保它紧贴反馈按钮
         html = f"<span style='font-size: 14px; margin-left: 8px;'>{file_name}</span>"
         return file_path, html, gr.update(visible=True)
 
-    # 绑定上传按钮，必须确保输出列表完整：pending_file, attachment_html, clear_file_btn
     file_upload_btn.upload(
         fn=handle_file_upload,
         inputs=[file_upload_btn],
         outputs=[pending_file, attachment_html, clear_file_btn],
-        show_progress="hidden"  # 隐藏上传时的飞镖
+        show_progress="hidden"
     )
 
     def clear_file():
@@ -740,25 +737,31 @@ with gr.Blocks(title="AI 智能体") as demo:
         fn=clear_file,
         inputs=[],
         outputs=[pending_file, attachment_html, clear_file_btn],
-        show_progress="hidden"  # 隐藏清除时的飞镖
+        show_progress="hidden"
     )
 
-    # 纯文本及混合输入事件
+    # ================= 纯文本及混合输入事件（必须同时绑定回车和发送按钮） =================
+    async def submit_text_with_file(message, history, user_state, pending_file_val, current_project):
+        if not message and not pending_file_val:
+            return history, "", None, "", gr.update(visible=False), "", ""
+        new_history, clear_text, _, user_msg, assistant_msg = await unified_handler(
+            message, history, pending_file_val, user_state, current_project
+        )
+        return new_history, clear_text, None, "", gr.update(visible=False), user_msg, assistant_msg
+
     text_input.submit(
         fn=submit_text_with_file,
         inputs=[text_input, chatbot, user_state, pending_file, current_project],
         outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn, last_user_message, last_assistant_message],
-        show_progress="hidden",
-        js="(text, history, state, file, project) => { const ta = document.querySelector('#input-card-bottom textarea, #input-row-final textarea'); if(ta) ta.value = ''; return [text, history, state, file, project]; }"
+        show_progress="hidden"
     )
-    
-    # 绑定发送按钮（注意加入 current_project）
+
+    # ✅ 关键：必须给 send_btn 绑定完全相同的事件！
     send_btn.click(
         fn=submit_text_with_file,
         inputs=[text_input, chatbot, user_state, pending_file, current_project],
         outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn, last_user_message, last_assistant_message],
-        show_progress="hidden",
-        js="(text, history, state, file, project) => { const ta = document.querySelector('#input-card-bottom textarea, #input-row-final textarea'); if(ta) ta.value = ''; return [text, history, state, file, project]; }"
+        show_progress="hidden"
     )
     
     # 日志面板的刷新与清空
@@ -1121,8 +1124,7 @@ if __name__ == "__main__":
                 padding-bottom: 0px !important;
             }
 
-            /* ========== 底部输入区（彻底解决竖排问题！） ========== */
-            /* 第一行：反馈与文件管理 */
+            /* ========== 底部输入区（彻底解决竖排和消失问题！） ========== */
             #file-row {
                 display: flex !important;
                 flex-direction: row !important;
@@ -1136,7 +1138,6 @@ if __name__ == "__main__":
                 flex: 0 0 auto !important;
                 white-space: nowrap !important;
             }
-            /* 反馈按钮和文件按钮不换行 */
             #file-row button {
                 white-space: nowrap !important;
                 min-width: auto !important;
@@ -1158,15 +1159,15 @@ if __name__ == "__main__":
                 border: 1px solid #f3f4f6 !important;
             }
 
-            /* 📎 上传文件图标 */
+            /* 📎 上传文件图标（永不消失！） */
             #upload-icon-btn {
                 background: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
                 font-size: 24px !important;
                 padding: 0 !important;
-                min-width: 40px !important;
-                width: 40px !important;
+                min-width: 45px !important;
+                width: 45px !important;
                 height: 40px !important;
                 display: flex !important;
                 align-items: center !important;
@@ -1178,7 +1179,7 @@ if __name__ == "__main__":
                 border-radius: 8px !important;
             }
 
-            /* 发送按钮：完美的蓝色圆球 */
+            /* 发送按钮：完美的蓝色圆球（永不消失！） */
             #send-btn {
                 width: 40px !important;
                 height: 40px !important;
@@ -1233,86 +1234,6 @@ if __name__ == "__main__":
             #create-project-btn {
                 min-width: 60px !important;
                 flex-shrink: 0 !important;
-            }
-            
-            /* 确保蓝色圆球发送按钮绝对出现，不受任何缩放影响 */
-            #send-btn {
-                width: 40px !important;
-                height: 40px !important;
-                border-radius: 50% !important;
-                background-color: #2563EB !important;
-                border: none !important;
-                color: white !important;
-                font-size: 20px !important;
-                padding: 0 !important;
-                min-width: 40px !important; /* 强制宽度，防止被压缩 */
-                flex-shrink: 0 !important;
-                box-shadow: 0 2px 6px rgba(0,0,0,0.2) !important;
-                display: flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-                line-height: 1 !important;
-            }
-
-            /* 上传暂存文件名靠左显示 */
-            #attachment-html {
-                margin-left: 6px !important;
-                display: inline-block !important;
-            }
-            
-            /* ========== 上传图标与发送按钮的终极美化 ========== */
-            /* 回形针上传图标：无背景，无边框，略微加粗 */
-            #upload-icon-btn {
-                background: transparent !important;
-                border: none !important;
-                box-shadow: none !important;
-                font-size: 22px !important;
-                font-weight: bold !important;
-                padding: 0 !important;
-                min-width: 45px !important;
-                width: 45px !important;
-                height: 40px !important;
-                display: flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-                cursor: pointer !important;
-                transition: transform 0.1s ease, background 0.1s ease !important;
-            }
-            #upload-icon-btn:hover {
-                background: #f3f4f6 !important;
-                border-radius: 8px !important;
-                transform: scale(1.1) !important;
-            }
-
-            /* 蓝色圆形发送按钮：保持完美样式 */
-            #send-btn {
-                width: 40px !important;
-                height: 40px !important;
-                border-radius: 50% !important;
-                background-color: #2563EB !important;
-                border: none !important;
-                color: white !important;
-                font-size: 20px !important;
-                padding: 0 !important;
-                min-width: 0 !important;
-                flex-shrink: 0 !important;
-                box-shadow: 0 2px 6px rgba(0,0,0,0.2) !important;
-                display: flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-                line-height: 1 !important;
-            }
-            #send-btn:hover {
-                background-color: #1E4D8C !important;
-            }
-            
-            /* 让文件名组件紧贴反馈按钮 */
-            #attachment-html {
-                margin: 0 !important;
-                padding: 0 !important;
-                font-size: 14px !important;
-                color: #333 !important;
-                font-weight: 500 !important;
             }
         """
     )
