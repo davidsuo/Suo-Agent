@@ -268,26 +268,16 @@ with gr.Blocks(title="AI 智能体") as demo:
 
                             # ========== 底部合并卡片式输入区 ==========
                             with gr.Group(elem_id="input-card"):
-                                # 第一行：反馈 + 占位符 + 文件名/❌（靠右）
+                                # 第一行：反馈按钮 + 文件名/清除按钮（靠右）
                                 with gr.Row(elem_id="file-row"):
                                     up_btn = gr.Button("👍 有帮助", scale=0, min_width=80, size="sm")
                                     down_btn = gr.Button("👎 无帮助", scale=0, min_width=80, size="sm")
                                     feedback_msg = gr.Markdown("")
 
-                                    # 占位符：吃光中间空隙，把文件名推到最右
-                                    spacer = gr.Markdown("", scale=4, elem_id="file-row-spacer")
+                                    # 文件名（用 HTML，设置最小宽度避免挤压）
+                                    attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=150)
 
-                                    # 文件名（使用 Textbox，不依赖 HTML 渲染）
-                                    attachment_html = gr.Textbox(
-                                        show_label=False,
-                                        interactive=False,
-                                        value="",
-                                        scale=0,
-                                        min_width=120,
-                                        elem_id="attachment-html"
-                                    )
-
-                                    # ❌ 清除按钮（始终紧靠文件名）
+                                    # ❌ 清除按钮（默认隐藏）
                                     clear_file_btn = gr.Button("×", scale=0, min_width=40, elem_id="clear-btn", visible=False)
 
                                 # 第二行：输入框 + 📎 + 发送按钮
@@ -1050,7 +1040,7 @@ if __name__ == "__main__":
             /* 隐藏语音输入组件 */
             #voice-file-input { display: none !important; }
             
-            /* ========== 全局字体统一 ========== */
+            /* 全局字体 */
             body, button, input, textarea, select {
                 font-family: "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif !important;
             }
@@ -1084,7 +1074,7 @@ if __name__ == "__main__":
                 color: white !important;
                 border-radius: 6px !important;
                 font-weight: bold !important;
-                font-size: 15px !important; /* 退出登录字体大小 */
+                font-size: 15px !important;
                 margin-left: auto !important;
             }
 
@@ -1120,7 +1110,7 @@ if __name__ == "__main__":
                 gap: 8px !important;
             }
 
-            /* ========== 第一行：文件区 ========== */
+            /* ========== 第一行：文件区（重点修复白框和挤压） ========== */
             #file-row {
                 display: flex !important;
                 flex-direction: row !important;
@@ -1130,21 +1120,24 @@ if __name__ == "__main__":
                 margin-bottom: 5px !important;
                 width: 100% !important;
             }
-            #file-row-spacer {
-                flex-grow: 1 !important;
-                min-width: 0 !important;
-            }
-            /* 文件名 Textbox：去掉白底框 */
+            
+            /* 核心：强制清空文件名 HTML 的背景、边框和阴影，并防止挤压 */
             #attachment-html {
                 background: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
+                padding: 0 !important;
                 font-size: 14px !important;
                 color: #333 !important;
                 font-weight: 500 !important;
-                padding: 0 !important;
+                white-space: nowrap !important; /* 防止折行挤压 */
+                min-width: 150px !important;      /* 保证有足够宽度 */
+                max-width: 200px !important;      /* 防止过长 */
+                overflow: hidden !important;
+                text-overflow: ellipsis !important;
             }
-            /* × 清除按钮样式 */
+
+            /* ❌ 清除按钮 */
             #clear-btn {
                 margin: 0 !important;
                 padding: 0 4px !important;
@@ -1156,16 +1149,17 @@ if __name__ == "__main__":
                 font-weight: bold !important;
             }
 
-            /* ========== 第二行：输入区 ========== */
+            /* ========== 第二行：输入区（重点去掉外层白色底框） ========== */
             #input-row-final {
                 display: flex !important;
                 flex-direction: row !important;
                 flex-wrap: nowrap !important;
                 align-items: center !important;
                 gap: 8px !important;
-                padding-right: 12px !important; /* 防止蓝球贴边，往里缩 */
+                padding-right: 12px !important;
             }
-            /* 去掉输入框的白底框 */
+            
+            /* 核心：清除 Gradio 包裹组件的白框和阴影 */
             #input-row-final .block,
             #input-row-final .wrap,
             #input-row-final .form {
@@ -1219,15 +1213,16 @@ if __name__ == "__main__":
                 background-color: #1E4D8C !important;
             }
 
-            /* ========== 项目侧边栏样式 ========== */
+            /* ========== 项目侧边栏样式（重点修复Radio底色） ========== */
             #project-sidebar .block {
                 background: #ffffff !important;
                 border-radius: 8px !important;
                 padding: 8px !important;
             }
-            /* 加深 Radio 按钮边框 */
+            
+            /* 给 Radio 的每个选项设置浅灰底色，并带边界，防止看不清 */
             #project-list .block {
-                border: 2px solid #cbd5e1 !important;
+                border: 1px solid #cbd5e1 !important;
                 border-radius: 8px !important;
                 background: #ffffff !important;
             }
@@ -1235,11 +1230,14 @@ if __name__ == "__main__":
                 border: none !important;
             }
             #project-list label {
-                border-bottom: 1px solid #e2e8f0 !important;
+                background: #f3f4f6 !important; /* 浅灰底色 */
+                border-bottom: 1px solid #cbd5e1 !important;
                 padding: 8px !important;
+                margin: 2px !important;
+                border-radius: 4px !important;
             }
             #project-list label:last-child {
-                border-bottom: none !important;
+                border-bottom: 1px solid #cbd5e1 !important;
             }
 
             /* 项目创建区样式 */
