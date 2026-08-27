@@ -271,7 +271,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     # 占位符：把后续元素推到最右
                                     spacer = gr.Markdown("", scale=4, elem_id="file-row-spacer")
 
-                                    # 文件名（使用 Textbox，防止消失）
+                                    # 文件名（使用 Textbox，放置在最右侧）
                                     attachment_html = gr.Textbox(
                                         show_label=False,
                                         interactive=False,
@@ -1098,7 +1098,7 @@ if __name__ == "__main__":
                 flex-shrink: 0 !important;
             }
 
-            /* ========== 【核心修复】彻底让左侧侧边栏所有外层背景透明 ========== */
+            /* ========== 左侧侧边栏（保持完美的透明设计） ========== */
             #project-sidebar,
             #project-sidebar .block,
             #project-sidebar .wrap,
@@ -1110,7 +1110,6 @@ if __name__ == "__main__":
                 padding: 0 !important;
             }
 
-            /* 项目操作行：并排排列 */
             #project-actions-row {
                 display: flex !important;
                 flex-direction: row !important;
@@ -1119,7 +1118,6 @@ if __name__ == "__main__":
                 margin-bottom: 8px !important;
             }
 
-            /* 项目选项：纯白卡片，无外层灰底 */
             #project-list,
             #project-list .block,
             #project-list .wrap,
@@ -1166,22 +1164,25 @@ if __name__ == "__main__":
                 flex-grow: 1 !important;
                 min-width: 0 !important;
             }
+
+            /* 【核心：终极融化空白白框】 让 attachment-html 及内部所有元素全透明！ */
             #attachment-html,
             #attachment-html .block,
             #attachment-html .wrap,
             #attachment-html .form,
-            #attachment-html div[data-testid="block"] {
+            #attachment-html div[data-testid="block"],
+            #attachment-html input {
                 background: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
                 padding: 0 !important;
                 margin: 0 !important;
+                width: auto !important;
+                color: #333 !important;
+                font-size: 14px !important;
                 text-align: right !important;
             }
-            #attachment-html input {
-                background: transparent !important;
-                border: none !important;
-            }
+
             #clear-btn {
                 margin: 0 !important;
                 padding: 0 !important;
@@ -1193,6 +1194,7 @@ if __name__ == "__main__":
                 font-weight: bold !important;
             }
 
+            /* 第二行：输入区 */
             #input-row-final {
                 display: flex !important;
                 flex-direction: row !important;
