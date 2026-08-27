@@ -271,7 +271,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     # 占位符：把后续元素推到最右
                                     spacer = gr.Markdown("", scale=4, elem_id="file-row-spacer")
 
-                                    # 【关键修改】使用 Markdown 彻底去掉白框，默认隐藏
+                                    # 【关键】使用 Markdown 彻底去掉白框，默认隐藏
                                     attachment_html = gr.Markdown(
                                         value="",
                                         visible=False,
@@ -281,7 +281,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     # ❌ 清除按钮（默认隐藏）
                                     clear_file_btn = gr.Button("×", scale=0, min_width=40, elem_id="clear-btn", visible=False)
 
-                                # 第二行：输入框(缩短一半) + 占位符 + 📎 + 发送按钮
+                                # 第二行：输入框 + 占位符 + 📎 + 发送按钮
                                 with gr.Row(elem_id="input-row-final"):
                                     text_input = gr.Textbox(
                                         show_label=False,
@@ -725,7 +725,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             return None, "", gr.update(visible=False)
         file_path = file.name if hasattr(file, 'name') else str(file)
         file_name = os.path.basename(file_path)
-        # 上传后，用 Markdown 强制显示文件名（纯文本无白底）
+        # 上传后，用 Markdown 强制显示文件名（并同步让组件变为可见）
         return file_path, f"📎 {file_name}", gr.update(visible=True)
 
     file_upload_btn.upload(
@@ -1054,7 +1054,7 @@ if __name__ == "__main__":
                 min-width: 0 !important;
             }
 
-            /* 【终极彻底消除白框】强制 attachment-html 内部透明！ */
+            /* 【彻底美化 Markdown 文件名显示区，绝对无白底框】 */
             #attachment-html,
             #attachment-html .block,
             #attachment-html .wrap,
@@ -1069,7 +1069,6 @@ if __name__ == "__main__":
                 color: #333 !important;
                 font-weight: 500 !important;
             }
-            /* 保证 HTML 组件绝对不产生任何盒子背景 */
             #attachment-html p {
                 margin: 0 !important;
                 padding: 0 !important;
