@@ -245,11 +245,21 @@ with gr.Blocks(title="AI 智能体") as demo:
                                 create_project_btn = gr.Button("创建", scale=1, min_width=60, elem_id="create-project-btn")
                                 cancel_project_btn = gr.Button("×", scale=1, min_width=40, elem_id="cancel-project-btn")
 
+                            # ✅ 补全：项目列表组件（必须在这里定义！）
+                            project_list = gr.Radio(
+                                choices=["主对话"],
+                                value="主对话",
+                                label="项目列表",
+                                interactive=True,
+                                visible=True,
+                                elem_id="project-list"
+                            )
+
                         # 右侧 3/4：聊天主区
                         with gr.Column(scale=3, elem_id="chat-main-area"):
                             # 聊天框
                             chatbot = gr.Chatbot(label="对话", height=500, value=[], show_label=False)
-
+                            
                             # ========== 底部合并卡片式输入区 ==========
                             with gr.Group(elem_id="input-card"):
                                 # 第一行：反馈 + 占位符 + 文件名/❌（靠右）
@@ -261,8 +271,15 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     # 占位符：把后续元素推到最右
                                     spacer = gr.Markdown("", scale=4, elem_id="file-row-spacer")
 
-                                    # 改用 Markdown 显示文件名（绝对无白框，渲染稳定）
-                                    attachment_html = gr.Markdown("", elem_id="attachment-html", scale=0, min_width=120)
+                                    # 文件名（使用 Textbox，防止消失）
+                                    attachment_html = gr.Textbox(
+                                        show_label=False,
+                                        interactive=False,
+                                        value="",
+                                        scale=0,
+                                        min_width=180,
+                                        elem_id="attachment-html"
+                                    )
 
                                     # ❌ 清除按钮
                                     clear_file_btn = gr.Button("×", scale=0, min_width=40, elem_id="clear-btn", visible=False)
@@ -818,21 +835,21 @@ with gr.Blocks(title="AI 智能体") as demo:
     )
    
 
-    # ================= 项目创建与侧边栏事件绑定 =================
+    # ================= 项目创建与侧边栏事件绑定（隐藏飞镖） =================
     # 1. 点击“项目 +”按钮：隐藏“+”按钮，显示创建输入行
     add_project_btn.click(
         fn=lambda: (gr.update(visible=False), gr.update(visible=True)),
         inputs=None,
         outputs=[add_project_btn, project_creation_row],
-        show_progress="hidden"  # ✅ 隐藏飞镖
+        show_progress="hidden"
     )
 
-    # 2. 点击“✖”取消按钮：隐藏创建输入行，恢复“+”按钮
+    # 2. 点击“×”取消按钮：隐藏创建输入行，恢复“+”按钮
     cancel_project_btn.click(
         fn=lambda: (gr.update(visible=True), gr.update(visible=False)),
         inputs=None,
         outputs=[add_project_btn, project_creation_row],
-        show_progress="hidden"  # ✅ 隐藏飞镖
+        show_progress="hidden"
     )
 
     # 3. 创建项目逻辑（确保返回6个值，用 gr.update 更新 Radio）
@@ -859,15 +876,15 @@ with gr.Blocks(title="AI 智能体") as demo:
             new_project_names
         )
 
-    # 3. 点击“创建”按钮：执行创建逻辑
+    # 4. 点击“创建”按钮：执行创建逻辑
     create_project_btn.click(
         fn=create_project,
         inputs=[project_input, project_list, project_names, current_project],
         outputs=[project_list, project_input, add_project_btn, project_creation_row, current_project, project_names],
-        show_progress="hidden"  # ✅ 隐藏飞镖
+        show_progress="hidden"
     )
 
-    # 4. 监听 Radio 切换项目
+    # 5. 监听 Radio 切换项目
     def switch_project(new_project, user):
         if not user:
             return [], "", new_project
@@ -881,10 +898,10 @@ with gr.Blocks(title="AI 智能体") as demo:
         fn=switch_project,
         inputs=[project_list, user_state],
         outputs=[chatbot, text_input, current_project],
-        show_progress="hidden"  # ✅ 隐藏飞镖
+        show_progress="hidden"
     )
 
-    # 5. 显示/隐藏删除按钮
+    # 6. 显示/隐藏删除按钮
     def toggle_delete_btn(current_project):
         if current_project:
             return gr.update(visible=True)
@@ -894,10 +911,10 @@ with gr.Blocks(title="AI 智能体") as demo:
         fn=toggle_delete_btn,
         inputs=[current_project],
         outputs=[delete_project_btn],
-        show_progress="hidden"  # ✅ 隐藏飞镖
+        show_progress="hidden"
     )
 
-    # 6. 删除项目逻辑
+    # 7. 删除项目逻辑
     def delete_project(current_project, project_names):
         if not current_project or current_project not in project_names:
             return gr.update(), "", project_names, gr.update(visible=False)
@@ -924,7 +941,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         fn=delete_project,
         inputs=[current_project, project_names],
         outputs=[project_list, current_project, project_names, delete_project_btn],
-        show_progress="hidden"  # ✅ 隐藏飞镖
+        show_progress="hidden"
     )
 
     # ================= 语音文件事件 =================
