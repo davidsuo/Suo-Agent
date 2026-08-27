@@ -236,10 +236,10 @@ with gr.Blocks(title="AI 智能体") as demo:
                             
                             # 项目 + 按钮与内联创建区
                             add_project_btn = gr.Button("项目 +", elem_id="add-project-btn", scale=0, visible=True)
-                            with gr.Row(visible=False) as project_creation_row:
+                            with gr.Row(visible=False, elem_id="project-creation-row") as project_creation_row:
                                 project_input = gr.Textbox(placeholder="输入项目名称...", scale=4, show_label=False)
-                                create_project_btn = gr.Button("创建", scale=1)
-                                cancel_project_btn = gr.Button("✖", scale=0, min_width=0)
+                                create_project_btn = gr.Button("创建", scale=1, elem_id="create-project-btn")
+                                cancel_project_btn = gr.Button("✖", scale=0, min_width=0, elem_id="cancel-project-btn")
                             
                             # 项目列表（主对话 + 用户自定义项目）
                             project_list = gr.Radio(
@@ -1014,7 +1014,7 @@ if __name__ == "__main__":
             /* 隐藏语音输入组件 */
             #voice-file-input { display: none !important; }
             
-            /* ========== 全局布局调整（解决UI偏下问题） ========== */
+            /* ========== 全局布局调整 ========== */
             body, .gradio-container {
                 background: linear-gradient(135deg, #f3f4f6 0%, #e0e7ff 50%, #ffffff 100%) !important;
                 margin: 0 !important;
@@ -1023,7 +1023,7 @@ if __name__ == "__main__":
                 display: block !important;
             }
 
-            /* 顶部品牌栏：左右两端对齐，保证按钮在右侧 */
+            /* 顶部品牌栏 */
             #top-brand-bar {
                 display: flex !important;
                 align-items: center !important;
@@ -1033,7 +1033,6 @@ if __name__ == "__main__":
                 border-bottom: 1px solid #e5e7eb !important;
             }
 
-            /* 退出登录按钮：强制不换行、宽度自适应文字长度 */
             #top-logout-btn {
                 display: flex !important;
                 flex-direction: row !important;
@@ -1049,7 +1048,6 @@ if __name__ == "__main__":
                 margin-left: auto !important;
             }
 
-            /* 登录按钮固定为品牌深蓝 */
             #login-box button,
             #login-box button.primary {
                 background-color: #1E4D8C !important;
@@ -1065,48 +1063,30 @@ if __name__ == "__main__":
                 transition: transform 0.1s ease !important;
                 opacity: 1 !important;
             }
-            #login-box button:hover,
-            #login-box button.primary:hover {
-                background-color: #16386B !important;
-                background-image: none !important;
-                transform: translateY(-1px) !important;
-            }
-            #login-box button:active,
-            #login-box button.primary:active {
-                background-color: #16386B !important;
-                background-image: none !important;
-                transform: translateY(1px) !important;
-            }
-            /* 精准隐藏加载动画，绝不误伤任何表单结构 */
+
             .gradio-container .loading,
             .gradio-container .progress-text,
             .gradio-container .status-tracker {
                 display: none !important;
             }
-            /* 隐藏按钮内的“加载中”文字 */
             button[disabled] .loading {
                 display: none !important;
                 visibility: hidden !important;
             }
-            /* 让整个UI贴合顶部，去除居中导致的下移 */
-            body, .gradio-container {
-                margin: 0 !important;
-                padding: 0 !important;
-            }
-            /* 当前用户行：只负责横向排列，绝不干预组件的宽高！ */
+
+            /* 当前用户行 */
             #current-user-row {
                 display: flex !important;
                 align-items: center !important;
                 gap: 8px !important;
                 margin-bottom: 15px !important;
             }
-            /* 强制“当前用户：”四个字不换行 */
             #current-user-row p {
                 white-space: nowrap !important;
                 flex-shrink: 0 !important;
-            }  /* 补全缺失的大括号 */
-            
-            /* ========== 底部输入卡片（终极样式） ========== */
+            }
+
+            /* ========== 底部输入卡片 ========== */
             #input-card {
                 background: #ffffff !important;
                 border-radius: 12px !important;
@@ -1117,15 +1097,12 @@ if __name__ == "__main__":
                 margin-top: 0px !important;
                 gap: 8px !important;
             }
-            
-            /* 聊天框组件：清除底部残余边距 */
             #chat-main-area .block, 
             #chat-main-area .gr-box {
                 margin-bottom: 0px !important;
                 padding-bottom: 0px !important;
             }
 
-            /* 第一行按钮区：横排，自适应长度 */
             #btn-row {
                 display: flex !important;
                 align-items: center !important;
@@ -1137,7 +1114,6 @@ if __name__ == "__main__":
                 min-width: auto !important;
             }
 
-            /* 第二行：输入框与发送按钮强对齐 */
             #input-row-final {
                 display: flex !important;
                 align-items: center !important;
@@ -1153,7 +1129,6 @@ if __name__ == "__main__":
                 border: 1px solid #f3f4f6 !important;
             }
 
-            /* 发送按钮：完美的40x40圆形，箭头朝上 */
             #send-btn {
                 width: 40px !important;
                 height: 40px !important;
@@ -1171,26 +1146,58 @@ if __name__ == "__main__":
                 justify-content: center !important;
                 line-height: 1 !important;
             }
-            /* 发送按钮：强制蓝色圆球，白色箭头 */
-            #send-btn {
-                width: 40px !important;
-                height: 40px !important;
-                border-radius: 50% !important;
-                background-color: #2563EB !important;
-                border: none !important;
-                color: white !important;
-                font-size: 20px !important;
-                padding: 0 !important;
-                min-width: 40px !important;  /* 强制物理宽度 */
-                flex-shrink: 0 !important;
-                box-shadow: 0 2px 6px rgba(0,0,0,0.2) !important;
-                display: flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-                line-height: 1 !important;
-            }
             #send-btn:hover {
                 background-color: #1E4D8C !important;
+            }
+
+            /* ========== 【修改点】项目创建区样式的终极优化 ========== */
+            /* 1. 强制创建行横向排列，不换行 */
+            #project-creation-row {
+                display: flex !important;
+                flex-direction: row !important;
+                flex-wrap: nowrap !important;
+                align-items: center !important;
+                gap: 4px !important;
+                margin-bottom: 8px !important;
+            }
+            
+            /* 2. 去除输入框外部的白色底框/阴影，让其透明直接融入侧边栏 */
+            #project-creation-row .block,
+            #project-creation-row .wrap,
+            #project-creation-row .form {
+                background: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
+                padding: 0 !important;
+            }
+            #project-creation-row input {
+                background: #ffffff !important;
+                border: 1px solid #e5e7eb !important;
+                border-radius: 6px !important;
+                padding: 8px 10px !important;
+                width: 100% !important;
+            }
+
+            /* 3. 隐藏点击"创建"时的加载飞镖和默认蓝框 */
+            #create-project-btn {
+                transition: none !important;
+                outline: none !important;
+            }
+            #create-project-btn:focus,
+            #create-project-btn:active {
+                outline: none !important;
+                box-shadow: none !important;
+                background-color: #1E4D8C !important;
+            }
+            #create-project-btn .loading,
+            #create-project-btn .progress {
+                display: none !important;
+            }
+            
+            /* 同时隐藏其他按钮点击后的默认蓝框 */
+            .gradio-container button:focus {
+                outline: none !important;
+                box-shadow: none !important;
             }
         """
     )
