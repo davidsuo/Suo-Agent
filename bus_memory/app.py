@@ -266,16 +266,17 @@ with gr.Blocks(title="AI 智能体") as demo:
                             
                             # ========== 底部合并卡片式输入区 ==========
                             with gr.Group(elem_id="input-card"):
-                                # 第一行：反馈按钮 + 文件名/清除按钮（强制靠右）
+                                # 第一行：反馈按钮(左侧) + 文件名/X(右侧)
                                 with gr.Row(elem_id="file-row"):
-                                    up_btn = gr.Button("👍 有帮助", scale=0, min_width=60, size="sm")
-                                    down_btn = gr.Button("👎 无帮助", scale=0, min_width=60, size="sm")
+                                    # 给反馈按钮加固定宽度，防止挤压消失
+                                    up_btn = gr.Button("👍 有帮助", scale=0, min_width=80, size="sm")
+                                    down_btn = gr.Button("👎 无帮助", scale=0, min_width=80, size="sm")
                                     feedback_msg = gr.Markdown("")
 
-                                    # 文件名（使用 HTML，显示 📎 + 文件名）
-                                    attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=100)
+                                    # 文件名（靠右，加固定最小宽度和防压缩）
+                                    attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=120)
 
-                                    # ❌ 清除按钮（默认隐藏）
+                                    # ❌ 清除按钮（紧跟文件名，不动）
                                     clear_file_btn = gr.Button("❌", scale=0, min_width=40, elem_id="clear-btn", visible=False)
 
                                 # 第二行：输入框 + 📎 + 发送按钮
@@ -719,7 +720,6 @@ with gr.Blocks(title="AI 智能体") as demo:
             return None, "", gr.update(visible=False)
         file_path = file.name if hasattr(file, 'name') else str(file)
         file_name = os.path.basename(file_path)
-        # 使用简单的 HTML 拼凑，不要复杂的 auto
         html = f"<span style='font-size: 14px; color: #333;'>📎 {file_name}</span>"
         return file_path, html, gr.update(visible=True)
 
@@ -1103,7 +1103,7 @@ if __name__ == "__main__":
                 gap: 8px !important;
             }
 
-            /* 第一行：强制横向排列，靠右吸附 */
+            /* 第一行：左对齐，且左侧元素绝不挤压 */
             #file-row {
                 display: flex !important;
                 flex-direction: row !important;
@@ -1112,20 +1112,25 @@ if __name__ == "__main__":
                 gap: 8px !important;
                 margin-bottom: 5px !important;
                 width: 100% !important;
-                
-                /* 核心魔法：让子元素全部靠右对齐！ */
-                justify-content: flex-end !important; 
+                /* 删除 justify-content: flex-end，恢复默认左对齐 */
             }
             #file-row > * {
                 flex: 0 0 auto !important;
                 white-space: nowrap !important;
             }
-            
+            /* 强制所有左侧按钮有固定大小，防止被自动伸缩挤没 */
+            #file-row > button {
+                flex-shrink: 0 !important;
+            }
+
+            /* 核心：让文件名框吸收所有剩余空间并推到最右（不靠父容器挤） */
             #attachment-html {
+                margin-left: auto !important;
                 padding: 0 !important;
                 font-size: 14px !important;
                 color: #333 !important;
                 font-weight: 500 !important;
+                flex-shrink: 0 !important;
             }
             #clear-btn {
                 margin: 0 !important;
