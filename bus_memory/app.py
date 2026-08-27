@@ -271,12 +271,12 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     # 占位符：把后续元素推到最右
                                     spacer = gr.Markdown("", scale=4, elem_id="file-row-spacer")
 
-                                    # 文件名（关键：默认设置为 False，上传后才出现，彻底根治“幽灵框”）
+                                    # 文件名（始终可见，但靠 CSS 让它的外框透明隐形）
                                     attachment_html = gr.Textbox(
                                         show_label=False,
                                         interactive=False,
                                         value="",
-                                        visible=False,
+                                        visible=True,  # 修改：永远可见，靠 CSS 隐形，有内容才显示文字
                                         scale=0,
                                         min_width=180,
                                         elem_id="attachment-html"
@@ -729,7 +729,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             return None, "", gr.update(visible=False)
         file_path = file.name if hasattr(file, 'name') else str(file)
         file_name = os.path.basename(file_path)
-        # 上传后，强制让文件名框显示出来
+        # 上传后，强制让文件名框和清除按钮显示出来
         return file_path, file_name, gr.update(visible=True)
 
     file_upload_btn.upload(
@@ -1067,11 +1067,8 @@ if __name__ == "__main__":
                 font-size: 16px !important;
                 padding: 4px 12px !important;
             }
-            #file-row label, #file-row span {
-                white-space: nowrap !important;
-            }
 
-            /* 【核心修复 2】上传文件名框只在有值时出现，且彻底透明！ */
+            /* 【核心修复 2】彻底隐形文件名外框，只显示文字 */
             #attachment-html,
             #attachment-html .block,
             #attachment-html .wrap,
