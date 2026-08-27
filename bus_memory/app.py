@@ -266,29 +266,26 @@ with gr.Blocks(title="AI 智能体") as demo:
                             
                             # ========== 底部原生合并卡片 ==========
                             with gr.Group(elem_id="input-card"):
-                                # 第一行：反馈按钮 + 文件名/清除按钮（悬浮在发送按钮上方）
+                                # 第一行：反馈按钮 + 文件名/清除按钮（全部靠左，无占位符）
                                 with gr.Row(elem_id="file-row"):
                                     up_btn = gr.Button("👍 有帮助", scale=0, min_width=0)
                                     down_btn = gr.Button("👎 无帮助", scale=0, min_width=0)
                                     feedback_msg = gr.Markdown("")
                                     
-                                    # 占位，让文件名和清除按钮靠右对齐
-                                    gr.Markdown("", scale=4)
-                                    
-                                    # 文件名显示组件
+                                    # 文件名和清除按钮紧跟反馈按钮，不再被推向右端
                                     attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
                                     clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
 
-                                # 第二行：主输入行（输入框 + 📎上传图标 + 发送按钮）
+                                # 第二行：输入框 + 📎图标 + 发送按钮（完美对齐）
                                 with gr.Row(elem_id="input-row-final"):
-                                    # 输入框
+                                    # 输入框（占据主要宽度）
                                     text_input = gr.Textbox(
                                         show_label=False,
                                         placeholder="发消息或按住空格说话，松开发送...",
                                         scale=4
                                     )
                                     
-                                    # 📎 上传按钮（去掉文字，只留图标，放在输入框右侧）
+                                    # 📎 上传按钮（只保留图标）
                                     file_upload_btn = gr.UploadButton(
                                         "📎",
                                         file_types=[".csv", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".wav", ".mp3", ".m4a", ".ogg"],
@@ -1121,107 +1118,32 @@ if __name__ == "__main__":
                 padding-bottom: 0px !important;
             }
 
-            #btn-row {
-                display: flex !important;
-                align-items: center !important;
-                gap: 8px !important;
-                margin-bottom: 5px !important;
-            }
-            #btn-row button {
-                white-space: nowrap !important;
-                min-width: auto !important;
-            }
-
-            /* ========== 【修改点】项目创建区样式的终极优化 ========== */
-            #project-creation-row {
+            /* ========== 底部输入区（彻底解决竖排问题！） ========== */
+            /* 第一行：反馈与文件管理 */
+            #file-row {
                 display: flex !important;
                 flex-direction: row !important;
                 flex-wrap: nowrap !important;
                 align-items: center !important;
-                gap: 4px !important;
-                margin-bottom: 8px !important;
-            }
-            
-            #project-creation-row .block,
-            #project-creation-row .wrap,
-            #project-creation-row .form {
-                background: transparent !important;
-                border: none !important;
-                box-shadow: none !important;
-                padding: 0 !important;
-            }
-            #project-creation-row input {
-                background: #ffffff !important;
-                border: 1px solid #e5e7eb !important;
-                border-radius: 6px !important;
-                padding: 8px 10px !important;
-                width: 100% !important;
-            }
-
-            #create-project-btn {
-                transition: none !important;
-                outline: none !important;
-            }
-            #create-project-btn:focus,
-            #create-project-btn:active {
-                outline: none !important;
-                box-shadow: none !important;
-                background-color: #1E4D8C !important;
-            }
-            #create-project-btn .loading,
-            #create-project-btn .progress {
-                display: none !important;
-            }
-            
-            .gradio-container button:focus {
-                outline: none !important;
-                box-shadow: none !important;
-            }
-            
-            #project-input-box {
-                background: transparent !important;
-                box-shadow: none !important;
-                border: 1px solid #e5e7eb !important;
-            }
-            #project-input-box .wrap {
-                background: transparent !important;
-                border: none !important;
-                box-shadow: none !important;
-            }
-            #project-input-box input {
-                background: transparent !important;
-                box-shadow: none !important;
-            }
-
-            .loading-container, .spinner {
-                display: none !important;
-                opacity: 0 !important;
-            }
-            
-            #cancel-project-btn {
-                width: 40px !important;
-                height: 40px !important;
-                min-width: 40px !important;
-                flex-shrink: 0 !important;
-                display: flex !important;
-                align-items: center !important;
-                justify-content: center !important;
-                border-radius: 6px !important;
-            }
-            #create-project-btn {
-                min-width: 60px !important;
-                flex-shrink: 0 !important;
-            }
-            
-            /* ========== 底部输入区布局（去重版） ========== */
-            #file-row {
-                display: flex !important;
-                align-items: center !important;
                 gap: 8px !important;
                 margin-bottom: 5px !important;
+                width: 100% !important;
             }
+            #file-row > * {
+                flex: 0 0 auto !important;
+                white-space: nowrap !important;
+            }
+            /* 反馈按钮和文件按钮不换行 */
+            #file-row button {
+                white-space: nowrap !important;
+                min-width: auto !important;
+            }
+
+            /* 第二行：输入框 + 图标 + 发送 */
             #input-row-final {
                 display: flex !important;
+                flex-direction: row !important;
+                flex-wrap: nowrap !important;
                 align-items: center !important;
                 gap: 8px !important;
             }
@@ -1233,12 +1155,12 @@ if __name__ == "__main__":
                 border: 1px solid #f3f4f6 !important;
             }
 
-            /* 上传文件图标（只留下📎，去掉边框） */
+            /* 📎 上传文件图标 */
             #upload-icon-btn {
                 background: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
-                font-size: 20px !important;
+                font-size: 24px !important;
                 padding: 0 !important;
                 min-width: 40px !important;
                 width: 40px !important;
@@ -1273,6 +1195,41 @@ if __name__ == "__main__":
             }
             #send-btn:hover {
                 background-color: #1E4D8C !important;
+            }
+
+            /* ========== 项目创建区样式优化 ========== */
+            #project-creation-row {
+                display: flex !important;
+                flex-direction: row !important;
+                flex-wrap: nowrap !important;
+                align-items: center !important;
+                gap: 4px !important;
+                margin-bottom: 8px !important;
+            }
+            #project-creation-row input {
+                background: #ffffff !important;
+                border: 1px solid #e5e7eb !important;
+                border-radius: 6px !important;
+                padding: 8px 10px !important;
+                width: 100% !important;
+            }
+            .loading-container, .spinner {
+                display: none !important;
+                opacity: 0 !important;
+            }
+            #cancel-project-btn {
+                width: 40px !important;
+                height: 40px !important;
+                min-width: 40px !important;
+                flex-shrink: 0 !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                border-radius: 6px !important;
+            }
+            #create-project-btn {
+                min-width: 60px !important;
+                flex-shrink: 0 !important;
             }
         """
     )
