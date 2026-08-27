@@ -240,12 +240,12 @@ with gr.Blocks(title="AI 智能体") as demo:
                             with gr.Row(elem_id="project-creation-row", visible=False) as project_creation_row:
                                 project_input = gr.Textbox(
                                     placeholder="输入项目名称...", 
-                                    scale=4, 
+                                    scale=3,  # ✅ 缩小输入框比例，给右边留空间
                                     show_label=False, 
                                     elem_id="project-input-box"
                                 )
-                                create_project_btn = gr.Button("创建", scale=1, elem_id="create-project-btn")
-                                cancel_project_btn = gr.Button("✖", scale=0, elem_id="cancel-project-btn")
+                                create_project_btn = gr.Button("创建", scale=1, min_width=60, elem_id="create-project-btn") # ✅ 稍微缩小创建框，固定宽度
+                                cancel_project_btn = gr.Button("✖", scale=1, min_width=40, elem_id="cancel-project-btn") # ✅ 放大“✖”框，固定宽度，不再被挤出边界
 
                             # 项目列表（主对话 + 用户自定义项目）
                             project_list = gr.Radio(
@@ -1234,6 +1234,22 @@ if __name__ == "__main__":
             .loading-container, .spinner {
                 display: none !important;
                 opacity: 0 !important;
+            }
+            
+            /* 优化创建行按钮尺寸，防止 X 按钮溢出 */
+            #cancel-project-btn {
+                width: 40px !important;
+                height: 40px !important;
+                min-width: 40px !important;
+                flex-shrink: 0 !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                border-radius: 6px !important;
+            }
+            #create-project-btn {
+                min-width: 60px !important;
+                flex-shrink: 0 !important;
             }
         """
     )
