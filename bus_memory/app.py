@@ -1070,7 +1070,7 @@ if __name__ == "__main__":
                 flex-direction: row !important;
                 flex-wrap: nowrap !important;
                 align-items: center !important;
-                gap: 4px !important;
+                gap: 0 !important;             /* 强制清除组件间隙 */
                 margin-bottom: 5px !important;
                 width: 100% !important;
             }
@@ -1079,7 +1079,7 @@ if __name__ == "__main__":
                 min-width: 0 !important;
             }
 
-            /* 【终极修复：文件名 Markdown 全部透明，消除白框。有内容时显示文字】 */
+            /* 【核心修改】将文件名强制推向右侧，消除空隙 */
             #attachment-html,
             #attachment-html .block,
             #attachment-html .wrap,
@@ -1088,17 +1088,20 @@ if __name__ == "__main__":
                 background: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
-                padding: 0 !important;
                 margin: 0 !important;
+                padding: 0 !important;
                 font-size: 14px !important;
                 color: #333 !important;
                 font-weight: 500 !important;
+                display: flex !important;
+                justify-content: flex-end !important;
             }
             #attachment-html p {
                 margin: 0 !important;
                 padding: 0 !important;
             }
 
+            /* ❌ 按钮紧贴文件名，同样清除一切多余边距 */
             #clear-btn {
                 margin: 0 !important;
                 padding: 0 !important;
