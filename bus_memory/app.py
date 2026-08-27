@@ -739,16 +739,20 @@ with gr.Blocks(title="AI 智能体") as demo:
         show_progress="hidden"
     )
 
-    # ================= 纯文本及混合输入事件（补全按钮绑定） =================
+    # ================= 纯文本及混合输入事件（保护暂存状态） =================
     async def submit_text_with_file(message, history, user_state, pending_file_val, current_project):
         if not message and not pending_file_val:
             return history, "", None, "", gr.update(visible=False), "", ""
+
         new_history, clear_text, _, user_msg, assistant_msg = await unified_handler(
             message, history, pending_file_val, user_state, current_project
         )
-        return new_history, clear_text, None, "", gr.update(visible=False), user_msg, assistant_msg
+        # ✅ 修改点：如果本次发送有文件，发送后自动清空 UI 暂存；如果没有文件，保持原样！
+        if pending_file_val:
+            return new_history, clear_text, None, "", gr.update(visible=False), user_msg, assistant_msg
+        else:
+            return new_history, clear_text, None, None, gr.update(), user_msg, assistant_msg
 
-    # 回车事件
     text_input.submit(
         fn=submit_text_with_file,
         inputs=[text_input, chatbot, user_state, pending_file, current_project],
@@ -756,7 +760,6 @@ with gr.Blocks(title="AI 智能体") as demo:
         show_progress="hidden"
     )
 
-    # 点击蓝色圆球发送事件
     send_btn.click(
         fn=submit_text_with_file,
         inputs=[text_input, chatbot, user_state, pending_file, current_project],
@@ -1114,7 +1117,6 @@ if __name__ == "__main__":
                 white-space: nowrap !important;
             }
             
-            /* 核心：强制把文件名和❌按钮推到最右侧 */
             #attachment-html {
                 margin-left: auto !important;
                 padding: 0 !important;
