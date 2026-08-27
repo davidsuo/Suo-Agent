@@ -277,13 +277,13 @@ with gr.Blocks(title="AI 智能体") as demo:
                                     # 占位符：把后续元素推到最右
                                     spacer = gr.Markdown("", scale=4, elem_id="file-row-spacer")
 
-                                    # 文件名（Textbox 宽度加大，防止折行）
+                                    # 文件名（防止折行）
                                     attachment_html = gr.Textbox(
                                         show_label=False,
                                         interactive=False,
                                         value="",
                                         scale=0,
-                                        min_width=180,  # 增大到180
+                                        min_width=180,
                                         elem_id="attachment-html"
                                     )
 
