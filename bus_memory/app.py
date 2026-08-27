@@ -218,28 +218,28 @@ with gr.Blocks(title="AI 智能体") as demo:
                     with gr.Row(elem_id="core-work-area"):
 
                         # 左侧 1/3：项目侧边栏
-                    with gr.Group(elem_id="side-project-group"):
-                        with gr.Column(scale=1, min_width=280, elem_id="project-sidebar"):
-                            # 隐藏的租户下拉框
-                            tenant_dropdown = gr.Dropdown(choices=get_available_tenants(), value="default", label="", interactive=False, visible=False)
+                        with gr.Group(elem_id="side-project-group"):
+                            with gr.Column(scale=1, min_width=280, elem_id="project-sidebar"):
+                                # 隐藏的租户下拉框
+                                tenant_dropdown = gr.Dropdown(choices=get_available_tenants(), value="default", label="", interactive=False, visible=False)
                             
-                            # 当前用户展示
-                            with gr.Row(elem_id="current-user-row"):
-                                current_user_display = gr.Markdown(value="**当前用户：** 未登录", elem_id="current-user-display")
+                                # 当前用户展示
+                                with gr.Row(elem_id="current-user-row"):
+                                    current_user_display = gr.Markdown(value="**当前用户：** 未登录", elem_id="current-user-display")
                                 
-                            # 项目 + 按钮与内联创建区
-                            add_project_btn = gr.Button("项目 +", elem_id="add-project-btn", scale=0, visible=True)
-                            with gr.Row(elem_id="project-creation-row", visible=False) as project_creation_row:
-                                project_input = gr.Textbox(placeholder="输入项目名称...", scale=3, show_label=False, elem_id="project-input-box")
-                                create_project_btn = gr.Button("创建", scale=1, min_width=60, elem_id="create-project-btn")
-                                cancel_project_btn = gr.Button("×", scale=1, min_width=40, elem_id="cancel-project-btn")
+                                # 项目 + 按钮与内联创建区
+                                add_project_btn = gr.Button("项目 +", elem_id="add-project-btn", scale=0, visible=True)
+                                with gr.Row(elem_id="project-creation-row", visible=False) as project_creation_row:
+                                    project_input = gr.Textbox(placeholder="输入项目名称...", scale=3, show_label=False, elem_id="project-input-box")
+                                    create_project_btn = gr.Button("创建", scale=1, min_width=60, elem_id="create-project-btn")
+                                    cancel_project_btn = gr.Button("×", scale=1, min_width=40, elem_id="cancel-project-btn")
                             
-                            # 项目列表（强制灰底，原生Group包裹）
-                            with gr.Group(elem_id="project-list-group"):
-                                project_list = gr.Radio(choices=["主对话"], value="主对话", label="项目列表", interactive=True, visible=True)
+                                # 项目列表（强制灰底，原生Group包裹）
+                                with gr.Group(elem_id="project-list-group"):
+                                    project_list = gr.Radio(choices=["主对话"], value="主对话", label="项目列表", interactive=True, visible=True)
                             
-                            # 删除当前项目按钮
-                            delete_project_btn = gr.Button("🗑️ 删除当前项目", visible=False, scale=0, elem_id="delete-project-btn")
+                                # 删除当前项目按钮
+                                delete_project_btn = gr.Button("🗑️ 删除当前项目", visible=False, scale=0, elem_id="delete-project-btn")
 
                         # 右侧 3/4：聊天主区
                         with gr.Column(scale=3, elem_id="chat-main-area"):
