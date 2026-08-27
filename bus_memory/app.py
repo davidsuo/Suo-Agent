@@ -266,16 +266,23 @@ with gr.Blocks(title="AI 智能体") as demo:
                             
                             # ========== 底部合并卡片式输入区 ==========
                             with gr.Group(elem_id="input-card"):
-                                # 第一行：反馈按钮 + 文件名/❌（靠右）
+                                # 第一行：反馈按钮 + 文件名/清除按钮（靠右）
                                 with gr.Row(elem_id="file-row"):
                                     up_btn = gr.Button("👍 有帮助", scale=0, min_width=60, size="sm")
                                     down_btn = gr.Button("👎 无帮助", scale=0, min_width=60, size="sm")
                                     feedback_msg = gr.Markdown("")
+
+                                    # 改用 gr.Textbox 显示文件名（比 HTML 更稳定）
+                                    attachment_html = gr.Textbox(
+                                        show_label=False,
+                                        interactive=False,
+                                        value="",
+                                        scale=0,
+                                        min_width=100,
+                                        elem_id="attachment-html"
+                                    )
                                     
-                                    # 文件名（靠右，使用HTML）
-                                    attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=80)
-                                    
-                                    # ❌ 清除按钮（紧跟在文件名后面，默认隐藏）
+                                    # ❌ 清除按钮（默认隐藏）
                                     clear_file_btn = gr.Button("❌", scale=0, min_width=40, elem_id="clear-btn", visible=False)
 
                                 # 第二行：输入框 + 📎 + 发送按钮
@@ -719,8 +726,8 @@ with gr.Blocks(title="AI 智能体") as demo:
             return None, "", gr.update(visible=False)
         file_path = file.name if hasattr(file, 'name') else str(file)
         file_name = os.path.basename(file_path)
-        html = f"<span style='font-size: 14px; color: #333; margin-left: auto;'>📎 {file_name}</span>"
-        return file_path, html, gr.update(visible=True)
+        # 使用纯文本作为 Textbox 的值，不依赖 HTML 渲染
+        return file_path, file_name, gr.update(visible=True)
 
     file_upload_btn.upload(
         fn=handle_file_upload,
@@ -1117,20 +1124,20 @@ if __name__ == "__main__":
                 white-space: nowrap !important;
             }
             
+            /* 文件名显示框：强制靠右、去除内部边框、显示为普通文字 */
             #attachment-html {
                 margin-left: auto !important;
+                border: none !important;
+                box-shadow: none !important;
+                background: transparent !important;
                 padding: 0 !important;
+                max-width: 150px !important;
                 font-size: 14px !important;
-                color: #333 !important;
-                font-weight: 500 !important;
             }
             #clear-btn {
                 margin: 0 !important;
                 padding: 0 4px !important;
                 color: #e53e3e !important;
-                background: transparent !important;
-                border: none !important;
-                box-shadow: none !important;
             }
 
             /* 第二行：强制一行排列 */
