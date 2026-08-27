@@ -218,48 +218,28 @@ with gr.Blocks(title="AI 智能体") as demo:
                     with gr.Row(elem_id="core-work-area"):
 
                         # 左侧 1/3：项目侧边栏
+                    with gr.Group(elem_id="side-project-group"):
                         with gr.Column(scale=1, min_width=280, elem_id="project-sidebar"):
                             # 隐藏的租户下拉框
-                            tenant_dropdown = gr.Dropdown(
-                                choices=get_available_tenants(),
-                                value="default",
-                                label="",
-                                interactive=False,
-                                visible=False
-                            )
-
+                            tenant_dropdown = gr.Dropdown(choices=get_available_tenants(), value="default", label="", interactive=False, visible=False)
+                            
                             # 当前用户展示
                             with gr.Row(elem_id="current-user-row"):
-                                current_user_display = gr.Markdown(
-                                    value="**当前用户：** 未登录",
-                                    elem_id="current-user-display"
-                                )
-
+                                current_user_display = gr.Markdown(value="**当前用户：** 未登录", elem_id="current-user-display")
+                                
                             # 项目 + 按钮与内联创建区
-                            add_project_btn = gr.Button("项目 +", elem_id="add-project-btn", scale=0, visible=True, elem_classes="side-btn")
+                            add_project_btn = gr.Button("项目 +", elem_id="add-project-btn", scale=0, visible=True)
                             with gr.Row(elem_id="project-creation-row", visible=False) as project_creation_row:
-                                project_input = gr.Textbox(
-                                    placeholder="输入项目名称...",
-                                    scale=3,
-                                    show_label=False,
-                                    elem_id="project-input-box"
-                                )
-                                create_project_btn = gr.Button("创建", scale=1, min_width=60, elem_id="create-project-btn", elem_classes="side-btn")
-                                cancel_project_btn = gr.Button("x", scale=1, min_width=40, elem_id="cancel-project-btn", elem_classes="side-btn")  # 修改：改成"x"
-
-                            # 项目列表
-                            project_list = gr.Radio(
-                                choices=["主对话"],
-                                value="主对话",
-                                label="项目列表",
-                                interactive=True,
-                                visible=True,
-                                elem_id="project-list-radio",
-                                elem_classes="side-radio"
-                            )
-
+                                project_input = gr.Textbox(placeholder="输入项目名称...", scale=3, show_label=False, elem_id="project-input-box")
+                                create_project_btn = gr.Button("创建", scale=1, min_width=60, elem_id="create-project-btn")
+                                cancel_project_btn = gr.Button("×", scale=1, min_width=40, elem_id="cancel-project-btn")
+                            
+                            # 项目列表（强制灰底，原生Group包裹）
+                            with gr.Group(elem_id="project-list-group"):
+                                project_list = gr.Radio(choices=["主对话"], value="主对话", label="项目列表", interactive=True, visible=True)
+                            
                             # 删除当前项目按钮
-                            delete_project_btn = gr.Button("🗑️ 删除当前项目", visible=False, scale=0, elem_id="delete-project-btn", elem_classes="side-btn")
+                            delete_project_btn = gr.Button("🗑️ 删除当前项目", visible=False, scale=0, elem_id="delete-project-btn")
 
                         # 右侧 3/4：聊天主区
                         with gr.Column(scale=3, elem_id="chat-main-area"):
@@ -1100,31 +1080,41 @@ if __name__ == "__main__":
                 flex-shrink: 0 !important;
             }
 
-            /* ========== 项目侧边栏（终极灰色通道） ========== */
-            /* 强制【全部】外部包裹层都变灰！ */
-            #project-list, #project-list .block, #project-list .wrap, #project-list .gr-box, #project-list .form, #project-list div[data-testid="block"] {
-                background: #f3f4f6 !important;
-                box-shadow: none !important;
-                border: none !important;
+            /* ========== 左侧项目区（使用原生 Group 自带灰色背景） ========== */
+            #side-project-group {
+                background: #f9fafb !important;
+                border-radius: 12px !important;
+                border: 1px solid #e5e7eb !important;
+                padding: 10px !important;
             }
-            /* 强制【每个】选项背景变灰 */
-            #project-list label {
+            
+            #project-list-group,
+            #project-list-group > div,
+            #project-list-group div[data-testid="block"] {
+                background: #f3f4f6 !important;
+                border-radius: 8px !important;
+                border: 1px solid #cbd5e1 !important;
+            }
+            
+            /* 强制所有未选中Radio选项变灰，选中变蓝 */
+            #project-list-group label {
                 background: #f3f4f6 !important;
                 color: #333 !important;
                 border-bottom: 1px solid #e2e8f0 !important;
                 padding: 10px !important;
                 margin: 0 !important;
+                display: block !important;
+                width: 100% !important;
             }
-            /* 选中项强制变蓝 */
-            #project-list label.selected {
+            #project-list-group label.selected {
                 background: #2563EB !important;
                 color: white !important;
             }
-            #project-list label:last-child {
+            #project-list-group label:last-child {
                 border-bottom: none !important;
             }
 
-            /* ========== 底部输入卡片（终极透明通道） ========== */
+            /* ========== 底部输入卡片（终极透明，斩断白盒子） ========== */
             #input-card {
                 background: transparent !important;
                 border: none !important;
@@ -1133,7 +1123,6 @@ if __name__ == "__main__":
                 margin: 0 !important;
             }
 
-            /* 第一行：文件区 */
             #file-row {
                 display: flex !important;
                 flex-direction: row !important;
@@ -1148,12 +1137,13 @@ if __name__ == "__main__":
                 min-width: 0 !important;
             }
 
-            /* 【直接轰炸 attachment-html 及其所有内部 div】 让白框彻底融化！ */
-            #attachment-html, 
-            #attachment-html .block, 
-            #attachment-html .wrap, 
-            #attachment-html .form, 
-            #attachment-html div[data-testid="block"], 
+            /* 【终极穿透：直接把 Textbox 的所有外层盒子全部透明化！】 */
+            #attachment-html,
+            #attachment-html .block,
+            #attachment-html .wrap,
+            #attachment-html .form,
+            #attachment-html div[data-testid="block"],
+            #attachment-html div[data-testid="block"] > div,
             #attachment-html input {
                 background: transparent !important;
                 border: none !important;
@@ -1179,7 +1169,7 @@ if __name__ == "__main__":
                 font-weight: bold !important;
             }
 
-            /* ========== 第二行：输入区（严格左对齐） ========== */
+            /* ========== 底部输入区：完美左对齐 ========== */
             #input-row-final {
                 display: flex !important;
                 flex-direction: row !important;
@@ -1187,10 +1177,9 @@ if __name__ == "__main__":
                 align-items: center !important;
                 gap: 8px !important;
                 background: transparent !important;
-                padding-left: 0 !important; /* 核心：严格取消左缩进！ */
+                padding-left: 0 !important;  /* 核心：严格取消左缩进！ */
                 padding-right: 15px !important;
             }
-            /* 直接攻击输入框的所有包装层，让它们透明 */
             #input-row-final .block,
             #input-row-final .wrap,
             #input-row-final .form,
