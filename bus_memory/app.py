@@ -266,17 +266,19 @@ with gr.Blocks(title="AI 智能体") as demo:
                             
                             # ========== 底部合并卡片式输入区 ==========
                             with gr.Group(elem_id="input-card"):
-                                # 第一行：反馈按钮(左侧) + 文件名/X(右侧)
+                                # 第一行：反馈按钮(靠左) + 占位符(撑满) + 文件名/X(靠右)
                                 with gr.Row(elem_id="file-row"):
-                                    # 给反馈按钮加固定宽度，防止挤压消失
                                     up_btn = gr.Button("👍 有帮助", scale=0, min_width=80, size="sm")
                                     down_btn = gr.Button("👎 无帮助", scale=0, min_width=80, size="sm")
                                     feedback_msg = gr.Markdown("")
 
-                                    # 文件名（靠右，加固定最小宽度和防压缩）
-                                    attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=120)
+                                    # 占位符：自动吃掉中间所有空隙，把文件名推到最右
+                                    spacer = gr.Markdown("", scale=1, elem_id="file-row-spacer")
 
-                                    # ❌ 清除按钮（紧跟文件名，不动）
+                                    # 文件名（靠右）
+                                    attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=100)
+
+                                    # ❌ 清除按钮（紧跟文件名，默认隐藏）
                                     clear_file_btn = gr.Button("❌", scale=0, min_width=40, elem_id="clear-btn", visible=False)
 
                                 # 第二行：输入框 + 📎 + 发送按钮
@@ -1103,7 +1105,7 @@ if __name__ == "__main__":
                 gap: 8px !important;
             }
 
-            /* 第一行：左对齐，且左侧元素绝不挤压 */
+            /* 第一行：强制横排，占位符撑开 */
             #file-row {
                 display: flex !important;
                 flex-direction: row !important;
@@ -1112,36 +1114,36 @@ if __name__ == "__main__":
                 gap: 8px !important;
                 margin-bottom: 5px !important;
                 width: 100% !important;
-                /* 删除 justify-content: flex-end，恢复默认左对齐 */
+                /* 禁止溢出裁剪 */
+                overflow: visible !important;
             }
-            #file-row > * {
-                flex: 0 0 auto !important;
-                white-space: nowrap !important;
-            }
-            /* 强制所有左侧按钮有固定大小，防止被自动伸缩挤没 */
+            /* 左侧的反馈按钮固定大小，绝不压缩 */
             #file-row > button {
                 flex-shrink: 0 !important;
             }
-
-            /* 核心：让文件名框吸收所有剩余空间并推到最右（不靠父容器挤） */
+            /* 占位符：撑满中间全部区域 */
+            #file-row-spacer {
+                flex-grow: 1 !important;
+                min-width: 0 !important;
+            }
+            /* 文件名容器固定宽度，防止被挤压出界 */
             #attachment-html {
-                margin-left: auto !important;
+                flex: 0 0 auto !important;
+                width: max-content !important;
+                min-width: 100px !important;
                 padding: 0 !important;
                 font-size: 14px !important;
                 color: #333 !important;
                 font-weight: 500 !important;
-                flex-shrink: 0 !important;
             }
             #clear-btn {
+                flex: 0 0 auto !important;
                 margin: 0 !important;
                 padding: 0 4px !important;
                 color: #e53e3e !important;
-                background: transparent !important;
-                border: none !important;
-                box-shadow: none !important;
             }
 
-            /* 第二行：强制一行排列 */
+            /* 第二行 */
             #input-row-final {
                 display: flex !important;
                 flex-direction: row !important;
