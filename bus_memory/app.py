@@ -218,43 +218,42 @@ with gr.Blocks(title="AI 智能体") as demo:
                     with gr.Row(elem_id="core-work-area"):
 
                         # 左侧 1/3：项目侧边栏
-                        with gr.Group(elem_id="side-project-group"):
-                            with gr.Column(scale=1, min_width=280, elem_id="project-sidebar"):
-                                # 隐藏的租户下拉框（仅参与逻辑）
-                                tenant_dropdown = gr.Dropdown(
-                                    choices=get_available_tenants(),
-                                    value="default",
-                                    label="",
-                                    interactive=False,
-                                    visible=False
+                        with gr.Column(scale=1, min_width=280, elem_id="project-sidebar"):
+                            # 隐藏的租户下拉框（仅参与逻辑）
+                            tenant_dropdown = gr.Dropdown(
+                                choices=get_available_tenants(),
+                                value="default",
+                                label="",
+                                interactive=False,
+                                visible=False
+                            )
+
+                            # 当前用户展示
+                            with gr.Row(elem_id="current-user-row"):
+                                current_user_display = gr.Markdown(
+                                    value="**当前用户：** 未登录",
+                                    elem_id="current-user-display"
                                 )
 
-                                # 当前用户展示
-                                with gr.Row(elem_id="current-user-row"):
-                                    current_user_display = gr.Markdown(
-                                        value="**当前用户：** 未登录",
-                                        elem_id="current-user-display"
-                                    )
-
-                                # 项目 + 按钮
-                                add_project_btn = gr.Button("项目 +", elem_id="add-project-btn", scale=0, visible=True)
+                            # 项目 + 按钮
+                            add_project_btn = gr.Button("项目 +", elem_id="add-project-btn", scale=0, visible=True)
                             
-                                with gr.Row(elem_id="project-creation-row", visible=False) as project_creation_row:
-                                    project_input = gr.Textbox(placeholder="输入项目名称...", scale=3, show_label=False, elem_id="project-input-box")
-                                    create_project_btn = gr.Button("创建", scale=1, min_width=60, elem_id="create-project-btn")
-                                    cancel_project_btn = gr.Button("×", scale=1, min_width=40, elem_id="cancel-project-btn")
+                            with gr.Row(elem_id="project-creation-row", visible=False) as project_creation_row:
+                                project_input = gr.Textbox(placeholder="输入项目名称...", scale=3, show_label=False, elem_id="project-input-box")
+                                create_project_btn = gr.Button("创建", scale=1, min_width=60, elem_id="create-project-btn")
+                                cancel_project_btn = gr.Button("×", scale=1, min_width=40, elem_id="cancel-project-btn")
 
-                                # 项目列表（只保留外层 ID，方便 CSS 精细化控制）
-                                project_list = gr.Radio(
-                                    choices=["主对话"],
-                                    value="主对话",
-                                    label="项目列表",
-                                    interactive=True,
-                                    visible=True,
-                                    elem_id="project-list"
-                                )
+                            # 项目列表（自身变为白色小卡片，无外框）
+                            project_list = gr.Radio(
+                                choices=["主对话"],
+                                value="主对话",
+                                label="项目列表",
+                                interactive=True,
+                                visible=True,
+                                elem_id="project-list"
+                            )
                             
-                                delete_project_btn = gr.Button("🗑️ 删除当前项目", visible=False, scale=0, elem_id="delete-project-btn")
+                            delete_project_btn = gr.Button("🗑️ 删除当前项目", visible=False, scale=0, elem_id="delete-project-btn")
 
                         # 右侧 3/4：聊天主区
                         with gr.Column(scale=3, elem_id="chat-main-area"):
@@ -263,24 +262,30 @@ with gr.Blocks(title="AI 智能体") as demo:
 
                             # ========== 底部合并卡片式输入区 ==========
                             with gr.Group(elem_id="input-card"):
+                                # 第一行：反馈 + 占位符 + 文件名/❌（靠右）
                                 with gr.Row(elem_id="file-row"):
                                     up_btn = gr.Button("👍 有帮助", scale=0, min_width=80, size="sm")
                                     down_btn = gr.Button("👎 无帮助", scale=0, min_width=80, size="sm")
                                     feedback_msg = gr.Markdown("")
 
+                                    # 占位符：把后续元素推到最右
                                     spacer = gr.Markdown("", scale=4, elem_id="file-row-spacer")
 
+                                    # ✅ 修改点：文件名框初始隐藏（visible=False），只有在上传后才显示
                                     attachment_html = gr.Textbox(
                                         show_label=False,
                                         interactive=False,
                                         value="",
                                         scale=0,
                                         min_width=180,
+                                        visible=False,  # ✅ 初始隐藏
                                         elem_id="attachment-html"
                                     )
 
+                                    # ❌ 清除按钮（默认隐藏）
                                     clear_file_btn = gr.Button("×", scale=0, min_width=40, elem_id="clear-btn", visible=False)
 
+                                # 第二行：输入框 + 📎 + 发送按钮
                                 with gr.Row(elem_id="input-row-final"):
                                     text_input = gr.Textbox(
                                         show_label=False,
@@ -721,7 +726,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             return None, "", gr.update(visible=False)
         file_path = file.name if hasattr(file, 'name') else str(file)
         file_name = os.path.basename(file_path)
-        # 直接返回纯文本，交给 Textbox 显示
+        # 上传后，让文件名框和清除按钮都显示出来
         return file_path, f"📎 {file_name}", gr.update(visible=True)
 
     file_upload_btn.upload(
@@ -1094,17 +1099,17 @@ if __name__ == "__main__":
                 flex-shrink: 0 !important;
             }
 
-            /* ========== 核心：左侧仅保留一个白色外框 ========== */
+            /* ========== 左侧侧边栏：彻底无框，极简设计 ========== */
             #project-sidebar {
-                background: #ffffff !important;
-                border-radius: 12px !important;
-                border: 1px solid #e5e7eb !important;
-                box-shadow: 0 2px 6px rgba(0,0,0,0.04) !important;
-                padding: 15px !important;
-                height: fit-content !important;
+                background: transparent !important;
+                box-shadow: none !important;
+                border: none !important;
+                padding: 0 !important;
+                margin-top: 10px !important;
             }
-            
-            /* 彻底消灭 Radio 的所有嵌套包装层！ */
+
+            /* ========== 项目列表：选项本身是干净的白色小卡片 ========== */
+            /* 彻底清除外围所有包装层 */
             #project-list,
             #project-list .block,
             #project-list .wrap,
@@ -1116,18 +1121,18 @@ if __name__ == "__main__":
                 margin: 0 !important;
                 padding: 0 !important;
             }
-            
-            /* 直接对内部选项（label）进行独立卡片化设计 */
+            /* 每个选项作为独立白色卡片 */
             #project-list label {
-                background: #f3f4f6 !important;
+                background: #ffffff !important;
                 border-radius: 8px !important;
-                padding: 12px !important;
+                padding: 10px 15px !important;
                 margin-bottom: 8px !important;
-                border: 1px solid transparent !important;
+                border: 1px solid #e5e7eb !important; /* 细边框 */
                 cursor: pointer;
             }
             #project-list label.selected {
                 background: #2563EB !important;
+                border-color: #2563EB !important;
                 color: white !important;
             }
 
@@ -1153,13 +1158,13 @@ if __name__ == "__main__":
                 flex-grow: 1 !important;
                 min-width: 0 !important;
             }
-            
-            /* 解决白框残留：强制将文件名框的所有包装层设为透明并靠右 */
+
+            /* 文件名框：无论显示与否，确保没有白底残留，纯文字显示 */
             #attachment-html,
             #attachment-html .block,
             #attachment-html .wrap,
             #attachment-html .form,
-            #attachment-html div[data-testid="block"] {
+            #attachment-html input {
                 background: transparent !important;
                 border: none !important;
                 box-shadow: none !important;
@@ -1167,12 +1172,6 @@ if __name__ == "__main__":
                 margin: 0 !important;
                 color: #333 !important;
                 font-size: 14px !important;
-            }
-            #attachment-html input {
-                background: transparent !important;
-                border: none !important;
-                padding: 0 !important;
-                text-align: right !important;
             }
             #clear-btn {
                 margin: 0 !important;
@@ -1185,7 +1184,7 @@ if __name__ == "__main__":
                 font-weight: bold !important;
             }
 
-            /* 解决输入框左对齐问题：强制归零左侧偏移 */
+            /* 第二行：输入区（严格左对齐） */
             #input-row-final {
                 display: flex !important;
                 flex-direction: row !important;
