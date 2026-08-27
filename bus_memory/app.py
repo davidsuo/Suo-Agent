@@ -266,17 +266,20 @@ with gr.Blocks(title="AI 智能体") as demo:
                             
                             # ========== 底部合并卡片式输入区 ==========
                             with gr.Group(elem_id="input-card"):
-                                # 第一行：反馈按钮 + 文件名/清除按钮（文件暂存显示）
+                                # 第一行：反馈按钮（左侧） + 占位符 + 文件名/❌（右侧）
                                 with gr.Row(elem_id="file-row"):
                                     up_btn = gr.Button("👍 有帮助", scale=0, min_width=0)
                                     down_btn = gr.Button("👎 无帮助", scale=0, min_width=0)
                                     feedback_msg = gr.Markdown("")
                                     
-                                    # 修改：给 attachment_html 增加足够的宽度，确保文件名能显示出来
-                                    attachment_html = gr.HTML("", elem_id="attachment-html", scale=1, min_width=120)
+                                    # ✅ 新增占位符：把后面的文件名推到最右侧
+                                    spacer = gr.Markdown("", scale=4, elem_id="file-row-spacer")
+                                    
+                                    # 文件名和清除按钮（位于最右侧，正好在回形针和蓝球上方）
+                                    attachment_html = gr.HTML("", elem_id="attachment-html", scale=0, min_width=0)
                                     clear_file_btn = gr.Button("❌", scale=0, elem_id="clear-btn", visible=False)
 
-                                # 第二行：输入框 + 图标 + 发送按钮（固定物理宽度）
+                                # 第二行：输入框 + 图标 + 发送按钮
                                 with gr.Row(elem_id="input-row-final"):
                                     text_input = gr.Textbox(
                                         show_label=False,
@@ -721,7 +724,8 @@ with gr.Blocks(title="AI 智能体") as demo:
             return None, "", gr.update(visible=False)
         file_path = file.name if hasattr(file, 'name') else str(file)
         file_name = os.path.basename(file_path)
-        html = f"<span style='font-size: 14px; color: #333; margin-left: 8px;'>📎 {file_name}</span>"
+        # 显示在右侧的文件名（贴个📎图标标记）
+        html = f"<span style='font-size: 14px; color: #333;'>📎 {file_name}</span>"
         return file_path, html, gr.update(visible=True)
 
     file_upload_btn.upload(
@@ -1101,6 +1105,7 @@ if __name__ == "__main__":
                 gap: 8px !important;
             }
 
+            /* ✅ 文件行：绝对安全，撑开右侧，让文件名推到右端 */
             #file-row {
                 display: flex !important;
                 flex-direction: row !important;
@@ -1110,23 +1115,15 @@ if __name__ == "__main__":
                 margin-bottom: 5px !important;
                 width: 100% !important;
             }
-            #file-row > * {
-                flex: 0 0 auto !important;
-                white-space: nowrap !important;
+            /* 占位符自动伸缩，把后面的文件名和❌推到最右端 */
+            #file-row-spacer {
+                flex-grow: 1 !important;
+                min-width: 0 !important;
             }
-            /* 关键修改：保证 attachment_html 的元素能正常渲染，不被撑成0宽度 */
             #attachment-html {
                 flex: 0 0 auto !important;
-                width: auto !important;
-                min-width: 120px !important;
                 margin: 0 !important;
                 padding: 0 !important;
-                display: block !important;
-                color: #333 !important;
-                font-size: 14px !important;
-            }
-            #attachment-html span {
-                font-weight: 500 !important;
             }
 
             /* 输入行：强制一行排列 */
