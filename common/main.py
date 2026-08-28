@@ -3,6 +3,7 @@ import sys, os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import json, asyncio, traceback, re, datetime, time
+import threading
 from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
@@ -118,6 +119,9 @@ def enhanced_log_plan(session_id, user_query, plan, results, step_times, final_s
     except Exception as e:
         print(f"[规划审计] 写入失败: {e}", flush=True)
 
+# 全局日志锁
+log_lock = threading.Lock()
+
 def simple_log_tool(session_id, user_query, tool_name, arguments, result):
     """记录常规模式下的单个工具调用"""
     real_username = session_id.split('_')[0] if '_' in session_id else session_id
@@ -139,8 +143,10 @@ def simple_log_tool(session_id, user_query, tool_name, arguments, result):
         "mode": "regular"
     }
     try:
-        with open("plan_log.json", "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        # 加锁写入，防止并发写坏文件
+        with log_lock:
+            with open("plan_log.json", "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
         print(f"[审计] 工具调用已记录: user={username}, role={role}, tool={tool_name}, status={status}", flush=True)
     except Exception as e:
         print(f"[审计] 写入失败: {e}", flush=True)
@@ -244,21 +250,15 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
     # 检测用户是否在问当前时间（无视任何上传的文件上下文！）
     if any(kw in query for kw in ["现在几点", "现在时间", "几点了", "什么时间", "当前时间"]):
         try:
-            # 直接调用真实时间工具（让模型彻底清醒）
             time_result = get_current_time()
             print(f"[时间查询] 直接获取工具真实时间: {time_result}")
             
-            # 【核心修复】写入审计日志
+            # 【核心修复】确保时间查询必写日志！
             simple_log_tool(session_id, query, "get_current_time", {}, time_result)
             
-            # 构建标准回答
             time_answer = f"现在是 {time_result}（北京时间）。"
-            
-            # 只有基础文字对话，不携带任何文件记忆，直接返回！
             memory.append(session_id, query, time_answer)
             return output_guard(time_answer)
-        except Exception as e:
-            print(f"[时间查询] 直接调用失败，回退到模型逻辑: {e}")
 
     # ================= RAG 极速计算优化（秒级响应） =================
     from common.rag import search_knowledge
