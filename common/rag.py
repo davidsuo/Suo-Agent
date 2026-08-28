@@ -43,6 +43,13 @@ def index_document(file_path: str, session_id: str, tags: str = "") -> str:
     try:
         import pandas as pd
         
+        # 【修复】安全处理传入的非字符串路径（如 Gradio 对象），彻底避免红字报错
+        if not isinstance(file_path, str):
+            if hasattr(file_path, 'name'):
+                file_path = file_path.name
+            else:
+                file_path = str(file_path)
+                
         ext = os.path.splitext(file_path)[1].lower()
         content = ""
         
@@ -51,16 +58,15 @@ def index_document(file_path: str, session_id: str, tags: str = "") -> str:
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
                 
-        # 2. 处理 CSV / Excel 文件（转成 Markdown 表格形式存入，便于AI检索且不出错）
+        # 2. 处理 CSV / Excel 文件
         elif ext in [".csv", ".xlsx", ".xls"]:
             if ext == ".csv":
                 df = pd.read_csv(file_path)
             else:
                 df = pd.read_excel(file_path)
-            # 转换为干净的Markdown表格
             content = df.to_markdown(index=False)
             
-        # 3. 新增：处理 PDF 文件
+        # 3. 处理 PDF 文件
         elif ext == ".pdf":
             try:
                 from pypdf import PdfReader
@@ -70,14 +76,13 @@ def index_document(file_path: str, session_id: str, tags: str = "") -> str:
             except ImportError:
                 return "❌ 缺少 pypdf 库，请先运行: pip install pypdf"
                 
-        # 4. 新增：处理 Word 文档 (.docx)
+        # 4. 处理 Word 文档 (.docx)
         elif ext == ".docx":
             try:
                 from docx import Document
                 doc = Document(file_path)
                 for para in doc.paragraphs:
                     content += para.text + "\n"
-                # 提取表格内容
                 for table in doc.tables:
                     for row in table.rows:
                         row_text = [cell.text for cell in row.cells]
@@ -88,7 +93,6 @@ def index_document(file_path: str, session_id: str, tags: str = "") -> str:
         else:
             return f"❌ 不支持的文件格式: {ext}。目前支持: .txt, .md, .csv, .xlsx, .pdf, .docx"
 
-        # 如果没有提取到内容
         if not content.strip():
             return "❌ 文件内容为空或无法解析。"
 

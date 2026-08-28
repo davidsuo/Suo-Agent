@@ -424,7 +424,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                     with gr.Row():
                         kb_upload = gr.File(
                             label="上传知识文档",
-                            file_types=[".txt", ".md", ".csv"],
+                            file_types=[".txt", ".md", ".csv", ".pdf", ".docx"],  # 【修复】支持 PDF 和 Word
                             type="filepath"
                         )
                         kb_tags_input = gr.Textbox(
@@ -648,12 +648,13 @@ with gr.Blocks(title="AI 智能体") as demo:
             return "❌ 请先登录！"
         if not file:
             return "❌ 请先上传文件！"
+        
+        # 【修复】安全处理 Gradio 文件对象，确保一定是字符串路径
+        file_path = file if isinstance(file, str) else (file.name if hasattr(file, 'name') else str(file))
+        
         session_id = f"{user['username']}_{current_project}"
-        msg = index_document(file, session_id, kb_tags)
-        
-        # 补全知识库索引操作日志
-        simple_log_tool(session_id, f"上传知识库文件:{file}", "knowledge_index", {"file_path": file, "tags": kb_tags}, msg)
-        
+        msg = index_document(file_path, session_id, kb_tags)
+        simple_log_tool(session_id, f"上传知识库文件:{file_path}", "knowledge_index", {"file_path": file_path, "tags": kb_tags}, msg)
         return msg
 
     kb_index_btn.click(
