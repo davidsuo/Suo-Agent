@@ -28,6 +28,19 @@ from common.rag import index_document
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)) + "/..")
 
+# ================= 自动清理损坏的日志文件 =================
+def check_and_repair_log_file():
+    if os.path.exists("plan_log.json"):
+        try:
+            with open("plan_log.json", "r", encoding="utf-8") as f:
+                f.readlines()
+        except Exception as e:
+            print(f"[日志] 日志文件损坏，自动删除重建: {e}")
+            os.remove("plan_log.json")
+            print("[日志] 已自动删除损坏的 plan_log.json")
+
+check_and_repair_log_file()
+
 # ================= 全局资源初始化 =================
 bus = EventBus()
 
@@ -399,11 +412,9 @@ with gr.Blocks(title="AI 智能体") as demo:
             return []
         logs_data = []
         try:
-            # 【核心修复】使用二进制模式读取，配合 errors="ignore" 跳过损坏的 0xff 字节
+            # 【核心防御】用二进制模式读取，确保不因为损坏字符报错
             with open("plan_log.json", "rb") as f:
                 raw_content = f.read()
-            
-            # 强制解码为 UTF-8，忽略错误字符
             text_content = raw_content.decode("utf-8", errors="ignore")
             lines = text_content.splitlines()
 
@@ -451,7 +462,6 @@ with gr.Blocks(title="AI 智能体") as demo:
                     
                     logs_data.append([timestamp, username, role, action, detail, status])
                 except json.JSONDecodeError:
-                    # 跳过损坏的行
                     continue
         except Exception as e:
             print(f"[日志] 加载日志异常，已阻止崩溃: {e}")
