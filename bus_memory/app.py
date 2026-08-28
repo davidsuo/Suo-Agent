@@ -349,13 +349,87 @@ with gr.Blocks(title="AI 智能体") as demo:
                         refresh_logs_btn = gr.Button("🔄 刷新日志", elem_id="refresh-logs-btn")
                         clear_logs_btn = gr.Button("🗑️ 清空日志", variant="secondary", elem_id="clear-logs-btn")
                     
-                    # 用 Dataframe 替代 Textbox，让日志结构清晰可见
                     logs_table = gr.Dataframe(
                         headers=["时间", "用户", "角色", "动作", "详情", "状态"],
                         interactive=False,
                         wrap=True,
                         elem_id="logs-table"
                     )
+                    
+    # ================= 日志读取与清空逻辑（修复 tool 未定义问题） =================
+    def load_logs(user=None):
+        import os
+        if not os.path.exists("plan_log.json"):
+            return []
+        
+        logs_data = []
+        try:
+            with open("plan_log.json", "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    try:
+                        entry = json.loads(line.strip())
+                        timestamp = entry.get('timestamp', '未知时间')
+                        username = entry.get('username', 'unknown')
+                        role = entry.get('role', 'unknown')
+                        mode = entry.get('mode', '系统')
+                        user_query = entry.get('user_query', '')
+                        tool = entry.get('tool', '') # 【修复】必须定义 tool
+                        
+                        if mode == 'plan':
+                            action = "生成工作计划"
+                            detail = user_query if user_query else "系统自动生成计划"
+                        elif tool == 'file_upload':
+                            action = "上传文件"
+                            detail = user_query if user_query else "上传文件"
+                        elif tool == 'get_current_time':
+                            action = "查询当前时间"
+                            detail = user_query if user_query else "询问当前时间"
+                        elif tool == 'web_search':
+                            action = "联网搜索"
+                            detail = user_query if user_query else "搜索内容"
+                        elif tool == 'query_database':
+                            action = "查询数据库"
+                            detail = user_query if user_query else "查询数据"
+                        else:
+                            action = tool if tool else "系统操作"
+                            detail = user_query if user_query else ""
+                        
+                        status = entry.get('status', 'success')
+                        status_map = {'success': '成功', 'failed': '失败', 'error': '错误'}
+                        status = status_map.get(status, status)
+                        
+                        logs_data.append([timestamp, username, role, action, detail, status])
+                    except json.JSONDecodeError:
+                        continue
+        except Exception as e:
+            print(f"[日志] 加载日志异常，已阻止崩溃: {e}")
+            return []
+        return logs_data
+
+    def clear_logs():
+        import os
+        try:
+            if os.path.exists("plan_log.json"):
+                os.remove("plan_log.json")
+            return []
+        except Exception as e:
+            print(f"[日志] 清空日志异常: {e}")
+            return []
+            
+    # ================= 日志面板的刷新与清空（必须在 UI 定义后绑定） =================
+    refresh_logs_btn.click(
+        fn=load_logs,
+        inputs=[],
+        outputs=[logs_table],
+        show_progress="hidden"
+    )
+    
+    clear_logs_btn.click(
+        fn=clear_logs,
+        inputs=[],
+        outputs=[logs_table],
+        show_progress="hidden"
+    )
 
                 # ================= 用户管理 Tab（仅管理员可见） =================
                 with gr.Tab("用户管理", visible=False) as user_management_tab:
@@ -406,85 +480,6 @@ with gr.Blocks(title="AI 智能体") as demo:
 
         # 隐藏的用户状态组件（供后端 outputs 使用，不显示在界面上）
         user_display = gr.Markdown("", visible=False)
-        
-
-    # ================= 日志读取与清空逻辑 =================
-    # 日志读取（支持用户隔离且防崩溃）
-    def load_logs(user=None):
-        import os
-        # 确保路径存在
-        if not os.path.exists("plan_log.json"):
-            return []
-        
-        logs_data = []
-        try:
-            with open("plan_log.json", "r", encoding="utf-8", errors="ignore") as f:  # 忽略错误字节，防止崩溃
-                for line in f:
-                    try:
-                        entry = json.loads(line.strip())
-                        # 提取数据逻辑（保留原逻辑即可）
-                        timestamp = entry.get('timestamp', '未知时间')
-                        username = entry.get('username', 'unknown')
-                        role = entry.get('role', 'unknown')
-                        mode = entry.get('mode', '系统')
-                        user_query = entry.get('user_query', '')
-                        
-                        # 规范化提取（类似之前优化）
-                        if mode == 'plan':
-                            action = "生成工作计划"
-                            detail = user_query if user_query else "系统自动生成计划"
-                        elif tool == 'file_upload':
-                            action = "上传文件"
-                            detail = user_query if user_query else "上传文件"
-                        elif tool == 'get_current_time':
-                            action = "查询当前时间"
-                            detail = user_query if user_query else "询问当前时间"
-                        elif tool == 'web_search':
-                            action = "联网搜索"
-                            detail = user_query if user_query else "搜索内容"
-                        elif tool == 'query_database':
-                            action = "查询数据库"
-                            detail = user_query if user_query else "查询数据"
-                        else:
-                            action = tool if tool else "系统操作"
-                            detail = user_query if user_query else ""
-                        
-                        status = entry.get('status', 'success')
-                        status_map = {'success': '成功', 'failed': '失败', 'error': '错误'}
-                        status = status_map.get(status, status)
-                        
-                        logs_data.append([timestamp, username, role, action, detail, status])
-                    except json.JSONDecodeError:
-                        continue
-        except Exception as e:
-            print(f"[日志] 加载日志异常，已阻止崩溃: {e}")
-            return []
-        return logs_data
-
-    def clear_logs():
-        import os
-        try:
-            if os.path.exists("plan_log.json"):
-                os.remove("plan_log.json")
-            return []
-        except Exception as e:
-            print(f"[日志] 清空日志异常: {e}")
-            return []
-            
-    # ================= 日志面板的刷新与清空 =================
-    refresh_logs_btn.click(
-        fn=load_logs,
-        inputs=[],
-        outputs=[logs_table],
-        show_progress="hidden"
-    )
-    
-    clear_logs_btn.click(
-        fn=clear_logs,
-        inputs=[],
-        outputs=[logs_table],
-        show_progress="hidden"
-    )
 
 
     # ================= 登录、退出、加载函数 =================
