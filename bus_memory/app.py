@@ -129,10 +129,12 @@ voice_script = """
         if (e.code !== 'Space' || isRecording) return;
 
         const active = document.activeElement;
-        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') && active.value && active.value.trim() !== '') {
+        // 【核心修复】只要光标在输入框或文本域内，直接返回，不触发录音，也不让空格键输入字符！
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
             return;
         }
 
+        // 只有焦点不在输入框时，才屏蔽默认行为并触发录音
         e.preventDefault();
         isRecording = true;
         audioChunks = [];
@@ -171,6 +173,13 @@ voice_script = """
 
     document.addEventListener('keyup', (e) => {
         if (e.code !== 'Space' || !isRecording) return;
+        
+        const active = document.activeElement;
+        // 【核心修复】同样防止在输入框时触发
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
+            return;
+        }
+
         e.preventDefault();
         isRecording = false;
         if (mediaRecorder && mediaRecorder.state === 'recording') {
@@ -698,10 +707,10 @@ with gr.Blocks(title="AI 智能体") as demo:
                 # 【核心修复】如果用户没有输入文字，直接把语音转写的结果作为用户的问题！
                 if not message or not message.strip():
                     message = file_result
-                history.append({"role": "user", "content": f"📎 上传语音：{file_name}，并发送了问题"})
-                # 如果用户有输入文字，自动拼接语音内容
                 elif message and message.strip():
                     message = f"{message}\n(用户语音补充：{file_result})"
+
+                history.append({"role": "user", "content": f"📎 上传语音：{file_name}，并发送了问题"})
             
             # ========== 其他文件处理（图片/CSV/Excel） ==========
             else:
@@ -987,6 +996,25 @@ if __name__ == "__main__":
                 display: block !important;
             }
 
+            /* === 隐藏所有 Gradio 加载动画和飞镖（包括发送时的遮罩层） === */
+            .gradio-container .loading,
+            .gradio-container .progress-bar,
+            .gradio-container .progress-text,
+            .gradio-container .status-tracker,
+            .gradio-container .spinner,
+            .gradio-container .loading-container,
+            .gradio-container .loading-icon,
+            button .loading,
+            button .spin,
+            .gradio-container .progress-container {
+                display: none !important;
+                opacity: 0 !important;
+                visibility: hidden !important;
+                width: 0 !important;
+                height: 0 !important;
+                pointer-events: none !important;
+            }
+
             #top-brand-bar {
                 display: flex !important;
                 align-items: center !important;
@@ -1012,12 +1040,6 @@ if __name__ == "__main__":
                 margin-left: auto !important;
             }
 
-            .gradio-container .loading,
-            .gradio-container .progress-text,
-            .gradio-container .status-tracker {
-                display: none !important;
-            }
-
             #current-user-row {
                 display: flex !important;
                 align-items: center !important;
@@ -1029,7 +1051,6 @@ if __name__ == "__main__":
                 flex-shrink: 0 !important;
             }
 
-            /* ========== 左侧侧边栏 ========== */
             #project-sidebar,
             #project-sidebar .block,
             #project-sidebar .wrap,
@@ -1073,7 +1094,6 @@ if __name__ == "__main__":
                 color: white !important;
             }
 
-            /* ========== 底部输入卡片 ========== */
             #input-card {
                 background: transparent !important;
                 border: none !important;
@@ -1087,7 +1107,7 @@ if __name__ == "__main__":
                 flex-direction: row !important;
                 flex-wrap: nowrap !important;
                 align-items: center !important;
-                gap: 0 !important;             /* 强制清除组件间隙 */
+                gap: 0 !important;
                 margin-bottom: 5px !important;
                 width: 100% !important;
             }
@@ -1096,7 +1116,6 @@ if __name__ == "__main__":
                 min-width: 0 !important;
             }
 
-            /* 【核心修改】将文件名强制推向右侧，消除空隙 */
             #attachment-html,
             #attachment-html .block,
             #attachment-html .wrap,
@@ -1118,7 +1137,6 @@ if __name__ == "__main__":
                 padding: 0 !important;
             }
 
-            /* ❌ 按钮紧贴文件名，同样清除一切多余边距 */
             #clear-btn {
                 margin: 0 !important;
                 padding: 0 !important;
@@ -1131,7 +1149,6 @@ if __name__ == "__main__":
                 border-radius: 6px !important;
             }
 
-            /* ========== 输入区（缩短 + 变高 + 圆角） ========== */
             #input-row-final {
                 display: flex !important;
                 flex-direction: row !important;
@@ -1193,7 +1210,6 @@ if __name__ == "__main__":
                 justify-content: center !important;
             }
 
-            /* 项目创建区 */
             #project-creation-row {
                 display: flex !important;
                 flex-direction: row !important;
