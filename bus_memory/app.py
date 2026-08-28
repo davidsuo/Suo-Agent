@@ -111,6 +111,7 @@ voice_script = """
     let mediaRecorder;
     let audioChunks = [];
     let isRecording = false;
+    let originalInputValue = ""; // 用于保存按下空格前的原始输入框内容
 
     const statusDiv = document.createElement('div');
     statusDiv.id = 'recording-status';
@@ -129,13 +130,17 @@ voice_script = """
         if (e.code !== 'Space' || isRecording) return;
 
         const active = document.activeElement;
-        // 【核心修复】只要光标在输入框或文本域内，直接返回，不触发录音，也不让空格键输入字符！
-        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
-            return;
+        const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
+
+        // 【核心修改】无论光标在哪里，都开始录音
+        // 如果是输入框：不调用 preventDefault（光标正常右移，输入空格），但保存当前内容
+        if (isInput) {
+            originalInputValue = active.value;
+        } else {
+            // 如果不是输入框，为了防止页面滚动，阻止默认行为
+            e.preventDefault();
         }
 
-        // 只有焦点不在输入框时，才屏蔽默认行为并触发录音
-        e.preventDefault();
         isRecording = true;
         audioChunks = [];
         showStatus('🎤 正在录音...');
@@ -175,12 +180,17 @@ voice_script = """
         if (e.code !== 'Space' || !isRecording) return;
         
         const active = document.activeElement;
-        // 【核心修复】同样防止在输入框时触发
-        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
-            return;
+        const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
+
+        // 【核心修改】松开空格，停止录音，并清理输入框里多出来的空格（恢复按空格前的状态）
+        if (isInput) {
+            active.value = originalInputValue;
+            // 将光标移回原来的位置（可选，如果需要更完美）
+            // active.setSelectionRange(originalInputValue.length, originalInputValue.length);
+        } else {
+            e.preventDefault();
         }
 
-        e.preventDefault();
         isRecording = false;
         if (mediaRecorder && mediaRecorder.state === 'recording') {
             mediaRecorder.stop();
