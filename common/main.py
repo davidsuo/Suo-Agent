@@ -241,15 +241,20 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
     history = memory.get(session_id)
     
     # ================= 强制时间查询处理（杜绝文件上下文幻觉） =================
+    # 检测用户是否在问当前时间（无视任何上传的文件上下文！）
     if any(kw in query for kw in ["现在几点", "现在时间", "几点了", "什么时间", "当前时间"]):
         try:
+            # 直接调用真实时间工具（让模型彻底清醒）
             time_result = get_current_time()
             print(f"[时间查询] 直接获取工具真实时间: {time_result}")
             
-            # 【核心修复】必须加上这一行，时间查询才会写入日志
+            # 【核心修复】写入审计日志
             simple_log_tool(session_id, query, "get_current_time", {}, time_result)
             
+            # 构建标准回答
             time_answer = f"现在是 {time_result}（北京时间）。"
+            
+            # 只有基础文字对话，不携带任何文件记忆，直接返回！
             memory.append(session_id, query, time_answer)
             return output_guard(time_answer)
         except Exception as e:
