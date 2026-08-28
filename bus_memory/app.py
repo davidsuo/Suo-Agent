@@ -710,7 +710,13 @@ with gr.Blocks(title="AI 智能体") as demo:
                 elif message and message.strip():
                     message = f"{message}\n(用户语音补充：{file_result})"
 
-                history.append({"role": "user", "content": f"📎 上传语音：{file_name}，并发送了问题"})
+                # 【精确修复】区分“按住空格录音”和“上传语音文件”的显示格式
+                if ext == '.webm':
+                    # 按空格录制的语音：不显示文件名，只显示上传语音和转写的文字
+                    history.append({"role": "user", "content": f"📎 上传语音：{message}"})
+                else:
+                    # 上传的语音文件：显示文件名和转写的文字
+                    history.append({"role": "user", "content": f"📎 上传文件：{file_name}，{message}"})
             
             # ========== 其他文件处理（图片/CSV/Excel） ==========
             else:
