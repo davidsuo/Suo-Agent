@@ -588,6 +588,10 @@ with gr.Blocks(title="AI 智能体") as demo:
             return "❌ 请先上传文件！"
         session_id = f"{user['username']}_{current_project}"
         msg = index_document(file, session_id, kb_tags)
+        
+        # 补全知识库索引操作日志
+        simple_log_tool(session_id, f"上传知识库文件:{file}", "knowledge_index", {"file_path": file, "tags": kb_tags}, msg)
+        
         return msg
 
     kb_index_btn.click(

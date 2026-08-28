@@ -88,7 +88,8 @@ def _is_error_result(result) -> bool:
 
 def enhanced_log_plan(session_id, user_query, plan, results, step_times, final_status, total_time, completed_steps=None):
     """记录规划模式执行日志（含用户、角色、状态等）"""
-    user_info = get_user_info(session_id) if session_id else None
+    real_username = session_id.split('_')[0] if '_' in session_id else session_id
+    user_info = get_user_info(real_username) if real_username else None
     username = user_info.get("username", "unknown") if user_info else "unknown"
     role = user_info.get("role", "unknown") if user_info else "unknown"
 
@@ -119,7 +120,8 @@ def enhanced_log_plan(session_id, user_query, plan, results, step_times, final_s
 
 def simple_log_tool(session_id, user_query, tool_name, arguments, result):
     """记录常规模式下的单个工具调用"""
-    user_info = get_user_info(session_id) if session_id else None
+    real_username = session_id.split('_')[0] if '_' in session_id else session_id
+    user_info = get_user_info(real_username) if real_username else None
     username = user_info.get("username", "unknown") if user_info else "unknown"
     role = user_info.get("role", "unknown") if user_info else "unknown"
     status = "success" if not _is_error_result(result) else "failed"
@@ -239,17 +241,14 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
     history = memory.get(session_id)
     
     # ================= 强制时间查询处理（杜绝文件上下文幻觉） =================
-    # 检测用户是否在问当前时间（无视任何上传的文件上下文！）
     if any(kw in query for kw in ["现在几点", "现在时间", "几点了", "什么时间", "当前时间"]):
         try:
-            # 直接调用真实时间工具（让模型彻底清醒）
             time_result = get_current_time()
             print(f"[时间查询] 直接获取工具真实时间: {time_result}")
+            # 补全日志
+            simple_log_tool(session_id, query, "get_current_time", {}, time_result)
             
-            # 构建标准回答
             time_answer = f"现在是 {time_result}（北京时间）。"
-            
-            # 只有基础文字对话，不携带任何文件记忆，直接返回！
             memory.append(session_id, query, time_answer)
             return output_guard(time_answer)
         except Exception as e:
@@ -261,7 +260,6 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
     if kb_context:
         print(f"[RAG] 已检索到知识库内容")
 
-        # 2. 动态计算月度汇总（纯Python加速，不用大模型算）
         import re as _re
         _year_match = _re.search(r'(20\d{2})年', query)
         _month_match = _re.search(r'(\d{1,2})月份', query)
@@ -269,7 +267,6 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
         final_quick_answer = ""
         if _year_match and _month_match:
             _target_date = f"{_year_match.group(1)}/{int(_month_match.group(1))}/"
-            # 提取该月份所有金额并求和
             _prices = []
             for line in kb_context.split("\n"):
                 if _target_date in line:
@@ -285,21 +282,21 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                 final_quick_answer = f"根据知识库统计，{int(_month_match.group(1))}月份销售总收入为: {total} 元（共 {count} 笔交易）。"
                 print(f"[RAG] 极速计算完成：{total}")
 
-        # 3. 构造让模型“直接复述”的强指令
         if final_quick_answer:
+            # 补全日志：知识库检索和计算
+            simple_log_tool(session_id, query, "knowledge_search", {"query": query}, final_quick_answer)
+            
             query = (
                 f"请直接输出以下预计算结果，严禁调用任何工具计算。\n"
                 f"【预计算结果】\n{final_quick_answer}\n"
             )
         else:
-            # 如果没有匹配到月度，走通用逻辑
             query = (
                 f"请严格按照以下【企业知识库数据】中的原始数据来回答用户的问题。\n"
                 f"严禁调用任何数据库查询工具（如 query_database 或查看表结构）。\n\n"
                 f"【企业知识库数据】\n{kb_context}\n\n"
                 f"【用户问题】\n{query}"
             )
-        # 如果有知识库，context 就设为知识库内容
         context = kb_context
 
     # ================= 获取用户角色（强化容错，防止权限误判） =================
