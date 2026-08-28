@@ -720,12 +720,13 @@ with gr.Blocks(title="AI 智能体") as demo:
 
     # ================= 事件绑定（文本、文件、语音） =================
     # ================= 文件暂存与清除事件 =================
+    # ================= 文件暂存与清除事件 =================
     def handle_file_upload(file):
         if file is None:
             return None, "", gr.update(visible=False)
         file_path = file.name if hasattr(file, 'name') else str(file)
         file_name = os.path.basename(file_path)
-        # 直接给 Markdown 传纯文本文件名
+        # 上传后，文件框和清除按钮变为可见
         return file_path, f"📎 {file_name}", gr.update(visible=True)
 
     file_upload_btn.upload(
@@ -745,10 +746,12 @@ with gr.Blocks(title="AI 智能体") as demo:
         show_progress="hidden"
     )
 
-    # ================= 纯文本及混合输入事件 =================
+    # ================= 纯文本及混合输入事件（杜绝上下文污染） =================
     async def submit_text_with_file(message, history, user_state, pending_file_val, current_project):
         if not message and not pending_file_val:
             return history, "", None, "", gr.update(visible=False), "", ""
+        
+        # 明确分离：只有当用户同时输入了文字和上传了文件，才传递文件
         new_history, clear_text, _, user_msg, assistant_msg = await unified_handler(
             message, history, pending_file_val, user_state, current_project
         )
