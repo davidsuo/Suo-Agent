@@ -38,14 +38,63 @@ def index_document(file_path: str, session_id: str, tags: str = "") -> str:
     """索引文档：
     - 如果 tags 为空，则存入全局共享区（所有项目可见）；
     - 如果 tags 不为空，则存入对应的标签隔离区。
+    - 支持 .txt, .md, .csv, .xlsx, .pdf, .docx
     """
     try:
-        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-            content = f.read()
+        import pandas as pd
+        
+        ext = os.path.splitext(file_path)[1].lower()
+        content = ""
+        
+        # 1. 处理纯文本类文件
+        if ext in [".txt", ".md"]:
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+                
+        # 2. 处理 CSV / Excel 文件（转成 Markdown 表格形式存入，便于AI检索且不出错）
+        elif ext in [".csv", ".xlsx", ".xls"]:
+            if ext == ".csv":
+                df = pd.read_csv(file_path)
+            else:
+                df = pd.read_excel(file_path)
+            # 转换为干净的Markdown表格
+            content = df.to_markdown(index=False)
+            
+        # 3. 新增：处理 PDF 文件
+        elif ext == ".pdf":
+            try:
+                from pypdf import PdfReader
+                reader = PdfReader(file_path)
+                for page in reader.pages:
+                    content += page.extract_text() + "\n"
+            except ImportError:
+                return "❌ 缺少 pypdf 库，请先运行: pip install pypdf"
+                
+        # 4. 新增：处理 Word 文档 (.docx)
+        elif ext == ".docx":
+            try:
+                from docx import Document
+                doc = Document(file_path)
+                for para in doc.paragraphs:
+                    content += para.text + "\n"
+                # 提取表格内容
+                for table in doc.tables:
+                    for row in table.rows:
+                        row_text = [cell.text for cell in row.cells]
+                        content += " | ".join(row_text) + "\n"
+            except ImportError:
+                return "❌ 缺少 python-docx 库，请先运行: pip install python-docx"
+        
+        else:
+            return f"❌ 不支持的文件格式: {ext}。目前支持: .txt, .md, .csv, .xlsx, .pdf, .docx"
+
+        # 如果没有提取到内容
+        if not content.strip():
+            return "❌ 文件内容为空或无法解析。"
+
         chunks = _chunk_text(content)
         store = _load_store()
 
-        # 确定存储区域：无标签则全局共享，有标签则按标签隔离
         if tags and tags.strip():
             target_key = f"tag_{tags.strip()}"
         else:
@@ -61,7 +110,7 @@ def index_document(file_path: str, session_id: str, tags: str = "") -> str:
                 "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             })
         _save_store(store)
-        return f"✅ 文档已成功索引（共 {len(chunks)} 个片段）。"
+        return f"✅ 文档已成功索引（共 {len(chunks)} 个片段，支持 PDF/Word/表格）。"
     except Exception as e:
         return f"❌ 文档处理失败: {e}"
 
