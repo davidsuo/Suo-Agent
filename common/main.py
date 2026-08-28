@@ -245,7 +245,8 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
         try:
             time_result = get_current_time()
             print(f"[时间查询] 直接获取工具真实时间: {time_result}")
-            # 补全日志
+            
+            # 【核心修复】必须加上这一行，时间查询才会写入日志
             simple_log_tool(session_id, query, "get_current_time", {}, time_result)
             
             time_answer = f"现在是 {time_result}（北京时间）。"
