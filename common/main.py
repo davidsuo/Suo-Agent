@@ -119,7 +119,7 @@ def enhanced_log_plan(session_id, user_query, plan, results, step_times, final_s
     except Exception as e:
         print(f"[规划审计] 写入失败: {e}", flush=True)
 
-# 全局日志锁
+# 全局日志锁（放在文件顶部，import threading 之后）
 log_lock = threading.Lock()
 
 def simple_log_tool(session_id, user_query, tool_name, arguments, result):
@@ -143,7 +143,7 @@ def simple_log_tool(session_id, user_query, tool_name, arguments, result):
         "mode": "regular"
     }
     try:
-        # 加锁写入，防止并发写坏文件
+        # 【核心修复】加锁写入，防止多线程同时写导致文件乱码！
         with log_lock:
             with open("plan_log.json", "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")

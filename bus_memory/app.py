@@ -399,58 +399,64 @@ with gr.Blocks(title="AI 智能体") as demo:
             return []
         logs_data = []
         try:
-            with open("plan_log.json", "r", encoding="utf-8", errors="ignore") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        entry = json.loads(line)
-                        timestamp = entry.get('timestamp', '未知时间')
-                        username = entry.get('username', 'unknown')
-                        role = entry.get('role', 'unknown')
-                        mode = entry.get('mode', '系统')
-                        user_query = entry.get('user_query', '')
-                        tool = entry.get('tool', '')
-                        
-                        if mode == 'plan':
-                            action = "生成工作计划"
-                            detail = user_query if user_query else "系统自动生成计划"
-                        elif tool == 'file_upload':
-                            action = "上传文件"
-                            detail = user_query if user_query else "上传文件"
-                        elif tool == 'get_current_time':
-                            action = "查询当前时间"
-                            detail = user_query if user_query else "询问当前时间"
-                        elif tool == 'knowledge_search':
-                            action = "知识库检索"
-                            detail = user_query if user_query else "检索知识库"
-                        elif tool == 'knowledge_index':
-                            action = "知识库索引"
-                            detail = user_query if user_query else "上传知识文档"
-                        elif tool == 'web_search':
-                            action = "联网搜索"
-                            detail = user_query if user_query else "搜索内容"
-                        elif tool == 'query_database':
-                            action = "查询数据库"
-                            detail = user_query if user_query else "查询数据"
-                        else:
-                            action = tool if tool else "系统操作"
-                            detail = user_query if user_query else ""
-                        
-                        status = entry.get('status', 'success')
-                        status_map = {'success': '成功', 'failed': '失败', 'error': '错误'}
-                        status = status_map.get(status, status)
-                        
-                        logs_data.append([timestamp, username, role, action, detail, status])
-                    except json.JSONDecodeError:
-                        # 跳过损坏的行（多线程写入失败产生的残缺行）
-                        continue
+            # 【核心修复】使用二进制模式读取，配合 errors="ignore" 跳过损坏的 0xff 字节
+            with open("plan_log.json", "rb") as f:
+                raw_content = f.read()
+            
+            # 强制解码为 UTF-8，忽略错误字符
+            text_content = raw_content.decode("utf-8", errors="ignore")
+            lines = text_content.splitlines()
+
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                    timestamp = entry.get('timestamp', '未知时间')
+                    username = entry.get('username', 'unknown')
+                    role = entry.get('role', 'unknown')
+                    mode = entry.get('mode', '系统')
+                    user_query = entry.get('user_query', '')
+                    tool = entry.get('tool', '')
+                    
+                    if mode == 'plan':
+                        action = "生成工作计划"
+                        detail = user_query if user_query else "系统自动生成计划"
+                    elif tool == 'file_upload':
+                        action = "上传文件"
+                        detail = user_query if user_query else "上传文件"
+                    elif tool == 'get_current_time':
+                        action = "查询当前时间"
+                        detail = user_query if user_query else "询问当前时间"
+                    elif tool == 'knowledge_search':
+                        action = "知识库检索"
+                        detail = user_query if user_query else "检索知识库"
+                    elif tool == 'knowledge_index':
+                        action = "知识库索引"
+                        detail = user_query if user_query else "上传知识文档"
+                    elif tool == 'web_search':
+                        action = "联网搜索"
+                        detail = user_query if user_query else "搜索内容"
+                    elif tool == 'query_database':
+                        action = "查询数据库"
+                        detail = user_query if user_query else "查询数据"
+                    else:
+                        action = tool if tool else "系统操作"
+                        detail = user_query if user_query else ""
+                    
+                    status = entry.get('status', 'success')
+                    status_map = {'success': '成功', 'failed': '失败', 'error': '错误'}
+                    status = status_map.get(status, status)
+                    
+                    logs_data.append([timestamp, username, role, action, detail, status])
+                except json.JSONDecodeError:
+                    # 跳过损坏的行
+                    continue
         except Exception as e:
             print(f"[日志] 加载日志异常，已阻止崩溃: {e}")
             return []
         
-        # 确保即使没有任何日志，也返回空列表，这样点击刷新才会清空表格
         return logs_data if logs_data else []
 
     def clear_logs():
