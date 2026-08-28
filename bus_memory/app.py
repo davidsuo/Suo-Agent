@@ -684,23 +684,43 @@ with gr.Blocks(title="AI 智能体") as demo:
             ext = os.path.splitext(file_path)[1].lower()
             file_name = os.path.basename(file_path)
             file_result = ""
-            if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif'):
-                file_result = await asyncio.to_thread(ocr_image, file_path)
-            elif ext in ('.csv', '.xlsx', '.xls'):
-                file_result = await asyncio.to_thread(analyze_file, file_path)
-            elif ext in ('.wav', '.mp3', '.m4a', '.ogg', '.webm'):
+            
+            # ========== 语音文件特殊处理（防止上下文爆炸和时间卡死） ==========
+            if ext in ('.wav', '.mp3', '.m4a', '.ogg', '.webm'):
                 file_result = await asyncio.to_thread(speech_to_text, file_path)
+                # 强制截断防止异常超长字符串进入上下文
+                if len(file_result) > 2000:
+                    file_result = file_result[:2000] + "...(内容过长，已截断)"
+                # 存入记忆，但仅作简要记录
+                memory.set_file_context(session_id, f"【用户语音转写】{file_result}")
+                memory.add_uploaded_file(session_id, file_name, file_result)
+                
+                # 【核心修复】如果用户没有输入文字，直接把语音转写的结果作为用户的问题！
+                if not message or not message.strip():
+                    message = file_result
+                history.append({"role": "user", "content": f"📎 上传语音：{file_name}，并发送了问题"})
+                # 如果用户有输入文字，自动拼接语音内容
+                elif message and message.strip():
+                    message = f"{message}\n(用户语音补充：{file_result})"
+            
+            # ========== 其他文件处理（图片/CSV/Excel） ==========
             else:
-                file_result = "不支持的文件类型"
+                if ext in ('.png', '.jpg', '.jpeg', '.bmp', '.gif'):
+                    file_result = await asyncio.to_thread(ocr_image, file_path)
+                elif ext in ('.csv', '.xlsx', '.xls'):
+                    file_result = await asyncio.to_thread(analyze_file, file_path)
+                else:
+                    file_result = "不支持的文件类型"
 
-            file_result = str(file_result)
-            memory.set_file_context(session_id, f"【上传文件：{file_name}】\n{file_result}")
-            memory.add_uploaded_file(session_id, file_name, file_result)
-            simple_log_tool(session_id, file_name, "file_upload", {"file_name": file_name}, "文件上传成功")
+                file_result = str(file_result)
+                memory.set_file_context(session_id, f"【上传文件：{file_name}】\n{file_result}")
+                memory.add_uploaded_file(session_id, file_name, file_result)
+                simple_log_tool(session_id, file_name, "file_upload", {"file_name": file_name}, "文件上传成功")
 
-            history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
-            if message and message.strip():
-                history.append({"role": "user", "content": message})
+                history.append({"role": "user", "content": f"📎 上传文件：{file_name}"})
+                if message and message.strip():
+                    history.append({"role": "user", "content": message})
+
             answer = await chat_core(session_id, message if message else f"请帮我分析文件 {file_name} 的内容", query_worker, command_worker, TOOL_ROUTER)
             history.append({"role": "assistant", "content": answer})
             return history, "", None, message, answer

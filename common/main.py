@@ -248,7 +248,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
 
     # ================= 变量初始化（必须放在最前面，防止报错！） =================
     context = "暂无相关文档（知识库未加载）"
-    history = memory.get(session_id)
+    history = memory.get(session_id)[-20:]
     
     # ================= 强制时间查询处理（杜绝文件上下文幻觉） =================
     # 检测用户是否在问当前时间（无视任何上传的文件上下文！）
