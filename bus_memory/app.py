@@ -431,51 +431,51 @@ with gr.Blocks(title="AI 智能体") as demo:
         show_progress="hidden"
     )
 
-                # ================= 用户管理 Tab（仅管理员可见） =================
-                with gr.Tab("用户管理", visible=False) as user_management_tab:
-                    gr.Markdown("## 👥 系统用户管理")
+    # ================= 用户管理 Tab（仅管理员可见） =================
+    with gr.Tab("用户管理", visible=False) as user_management_tab:
+        gr.Markdown("## 👥 系统用户管理")
                     
-                    with gr.Row():
-                        refresh_users_btn = gr.Button("🔄 刷新用户列表")
+        with gr.Row():
+            refresh_users_btn = gr.Button("🔄 刷新用户列表")
                     
-                    users_table = gr.Dataframe(
-                        headers=["用户名", "姓名", "部门", "职位", "角色", "租户"],
-                        interactive=False
-                    )
+        users_table = gr.Dataframe(
+            headers=["用户名", "姓名", "部门", "职位", "角色", "租户"],
+            interactive=False
+        )
                     
-                    # 将之前的 markdown 改为普通说明（不再需要点击）
-                    gr.Markdown("### 直接在下方填写信息，点击“创建用户”即可新增")
+        # 将之前的 markdown 改为普通说明（不再需要点击）
+        gr.Markdown("### 直接在下方填写信息，点击“创建用户”即可新增")
                     
-                    with gr.Row():
-                        new_username = gr.Textbox(label="用户名 (小写)", scale=1)
-                        new_pin = gr.Textbox(label="密码", type="password", scale=1)
-                        new_display_name = gr.Textbox(label="姓名", scale=1)
-                        new_department = gr.Textbox(label="部门", scale=1)
-                        new_position = gr.Textbox(label="职位", scale=1)
-                        new_role = gr.Dropdown(choices=["developer", "manager", "admin", "viewer"], value="viewer", label="角色", scale=1)
+        with gr.Row():
+            new_username = gr.Textbox(label="用户名 (小写)", scale=1)
+            new_pin = gr.Textbox(label="密码", type="password", scale=1)
+            new_display_name = gr.Textbox(label="姓名", scale=1)
+            new_department = gr.Textbox(label="部门", scale=1)
+            new_position = gr.Textbox(label="职位", scale=1)
+            new_role = gr.Dropdown(choices=["developer", "manager", "admin", "viewer"], value="viewer", label="角色", scale=1)
                     
-                    with gr.Row():
-                        create_user_btn = gr.Button("创建用户", variant="primary")
-                    create_user_msg = gr.Markdown("")
+        with gr.Row():
+            create_user_btn = gr.Button("创建用户", variant="primary")
+        create_user_msg = gr.Markdown("")
                     
-                # ================= 知识库 Tab =================
-                with gr.Tab("知识库"):
-                    gr.Markdown("## 📚 企业垂直知识库（RAG）")
-                    gr.Markdown("上传文档（txt/md/csv），可添加标签以便检索时精准过滤。")
-                    with gr.Row():
-                        kb_upload = gr.File(
-                            label="上传知识文档",
-                            file_types=[".txt", ".md", ".csv"],
-                            type="filepath"
-                        )
-                        # ✅ 新增：标签输入框
-                        kb_tags_input = gr.Textbox(
-                            label="元数据标签（可选，用逗号分隔）",
-                            placeholder="例如：财务报表, 产品文档"
-                        )
-                        kb_index_btn = gr.Button("🚀 提交索引", variant="primary")
+    # ================= 知识库 Tab =================
+    with gr.Tab("知识库"):
+        gr.Markdown("## 📚 企业垂直知识库（RAG）")
+        gr.Markdown("上传文档（txt/md/csv），可添加标签以便检索时精准过滤。")
+        with gr.Row():
+            kb_upload = gr.File(
+                label="上传知识文档",
+                file_types=[".txt", ".md", ".csv"],
+                type="filepath"
+            )
+            # ✅ 新增：标签输入框
+            kb_tags_input = gr.Textbox(
+                label="元数据标签（可选，用逗号分隔）",
+                placeholder="例如：财务报表, 产品文档"
+            )
+            kb_index_btn = gr.Button("🚀 提交索引", variant="primary")
                     
-                    kb_status = gr.Markdown("")
+        kb_status = gr.Markdown("")
 
 
         # 隐藏的用户状态组件（供后端 outputs 使用，不显示在界面上）
