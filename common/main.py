@@ -248,6 +248,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
     
     # ================= 强制时间查询处理（杜绝文件上下文幻觉） =================
     # 检测用户是否在问当前时间（无视任何上传的文件上下文！）
+    # ================= 强制时间查询处理（杜绝文件上下文幻觉） =================
     if any(kw in query for kw in ["现在几点", "现在时间", "几点了", "什么时间", "当前时间"]):
         try:
             time_result = get_current_time()
@@ -259,6 +260,8 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
             time_answer = f"现在是 {time_result}（北京时间）。"
             memory.append(session_id, query, time_answer)
             return output_guard(time_answer)
+        except Exception as e:
+            print(f"[时间查询] 直接调用失败，回退到模型逻辑: {e}")
 
     # ================= RAG 极速计算优化（秒级响应） =================
     from common.rag import search_knowledge
