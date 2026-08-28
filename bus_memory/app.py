@@ -111,7 +111,8 @@ voice_script = """
     let mediaRecorder;
     let audioChunks = [];
     let isRecording = false;
-    let originalInputValue = ""; // 用于保存按下空格前的原始输入框内容
+    let spacePressTimer = null;
+    let originalInputValue = "";
 
     const statusDiv = document.createElement('div');
     statusDiv.id = 'recording-status';
@@ -126,21 +127,7 @@ voice_script = """
         statusDiv.style.display = 'none';
     }
 
-    document.addEventListener('keydown', async (e) => {
-        if (e.code !== 'Space' || isRecording) return;
-
-        const active = document.activeElement;
-        const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
-
-        // 【核心修改】无论光标在哪里，都开始录音
-        // 如果是输入框：不调用 preventDefault（光标正常右移，输入空格），但保存当前内容
-        if (isInput) {
-            originalInputValue = active.value;
-        } else {
-            // 如果不是输入框，为了防止页面滚动，阻止默认行为
-            e.preventDefault();
-        }
-
+    async function startRecording() {
         isRecording = true;
         audioChunks = [];
         showStatus('🎤 正在录音...');
@@ -174,19 +161,47 @@ voice_script = """
             setTimeout(hideStatus, 2000);
             isRecording = false;
         }
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (e.code !== 'Space' || isRecording) return;
+
+        const active = document.activeElement;
+        const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
+
+        // 【核心修复】保存原始输入内容，不拦截默认行为（光标正常移动/拼音选词）
+        if (isInput) {
+            originalInputValue = active.value;
+        } else {
+            e.preventDefault(); // 页面防滚动
+        }
+
+        // 【核心修复】长按300ms才触发录音，完美避免拼音选词误触
+        spacePressTimer = setTimeout(() => {
+            spacePressTimer = null;
+            startRecording();
+        }, 300);
     });
 
     document.addEventListener('keyup', (e) => {
-        if (e.code !== 'Space' || !isRecording) return;
+        if (e.code !== 'Space') return;
+
+        // 如果还没到300ms就松开了，取消定时器，绝不当做语音输入
+        if (spacePressTimer) {
+            clearTimeout(spacePressTimer);
+            spacePressTimer = null;
+            return;
+        }
+
+        if (!isRecording) return;
         
         const active = document.activeElement;
         const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
 
-        // 【核心修改】松开空格，停止录音，并清理输入框里多出来的空格（恢复按空格前的状态）
+        // 停止录音并清理多余的空格
         if (isInput) {
+            // 还原输入框内容，清理长按产生的空格
             active.value = originalInputValue;
-            // 将光标移回原来的位置（可选，如果需要更完美）
-            // active.setSelectionRange(originalInputValue.length, originalInputValue.length);
         } else {
             e.preventDefault();
         }
