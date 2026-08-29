@@ -361,7 +361,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                         kb_index_btn = gr.Button("🚀 提交索引", variant="primary")
                     kb_status = gr.Markdown("")
 
-                    # 【布局修复】将刷新按钮放在标题上方，并缩小标题与表格的间距
+                    # 【布局修复】按钮在最上面，中间无空隙
                     refresh_kb_docs_btn = gr.Button("🔄 刷新文档列表", elem_id="refresh-kb-docs-btn")
                     gr.Markdown("### 📂 已上传文档列表", elem_id="kb-doc-list-header")
                     kb_doc_table = gr.Dataframe(headers=["文档名称", "索引时间"], interactive=False, wrap=True, elem_id="kb-doc-table")
@@ -997,7 +997,7 @@ if __name__ == "__main__":
                 min-width: 60px !important;
                 flex-shrink: 0 !important;
             }
-            /* 【布局优化】缩小知识库列表间距 */
+            /* 【布局优化】消除知识库间距 */
             #refresh-kb-docs-btn {
                 margin-top: 0 !important;
                 margin-bottom: 0 !important;

@@ -19,8 +19,9 @@ def _get_conn():
         tags TEXT,
         created_at TEXT
     )''')
-    # 【新增】创建文件列表存储表
+    # 新增：创建文件列表存储表
     conn.execute('''CREATE TABLE IF NOT EXISTS rag_files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         file_name TEXT,
         tags TEXT,
         created_at TEXT
@@ -42,25 +43,31 @@ def _load_store() -> dict:
         pass
     return store
 
+# 【核心修复】将之前的“全量删除”改为“增量追加”，确保多个文档共存
 def _save_store(store: dict):
     try:
         conn = _get_conn()
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM rag_items")
+        
+        # 获取当前的 store_key 和 text 组合，防止重复插入
+        cursor.execute("SELECT store_key, text FROM rag_items")
+        existing = set(cursor.fetchall())
+        
         for key, items in store.items():
             for item in items:
-                cursor.execute("INSERT INTO rag_items (id, store_key, text) VALUES (?, ?, ?)",
-                               (str(uuid.uuid4()), key, item["text"]))
+                if (key, item["text"]) not in existing:
+                    cursor.execute("INSERT INTO rag_items (id, store_key, text, tags, created_at) VALUES (?, ?, ?, ?, ?)",
+                                   (str(uuid.uuid4()), key, item["text"], item.get("tags", ""), item.get("time", "")))
         conn.commit()
         conn.close()
     except Exception:
         pass
 
-# 【新增】获取已上传文档列表的函数
 def list_indexed_files():
     conn = _get_conn()
     cursor = conn.cursor()
     try:
+        # 【核心修复】每次读取所有文件，绝不丢弃
         cursor.execute("SELECT file_name, created_at FROM rag_files ORDER BY created_at DESC")
         rows = cursor.fetchall()
         return [{"file_name": r[0], "created_at": r[1]} for r in rows]
@@ -154,10 +161,9 @@ def index_document(file_path: str, session_id: str, tags: str = "") -> str:
             })
         _save_store(store)
         
-        # 【新增】将文件名写入列表数据库
+        # 将文件名写入列表数据库（保证多个文件都能保存）
         conn = _get_conn()
         cursor = conn.cursor()
-        # 只取文件名，不带路径
         file_name = os.path.basename(file_path)
         cursor.execute("INSERT INTO rag_files (file_name, tags, created_at) VALUES (?, ?, ?)",
                        (file_name, tags, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
