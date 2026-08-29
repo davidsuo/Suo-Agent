@@ -1,181 +1,103 @@
 # common/memory.py
-"""
-会话记忆与持久化模块
-
-职责：
-1. 存储多租户、多用户的对话历史
-2. 维护租户映射和当前用户信息
-3. 将记忆持久化到本地 JSON 文件，支持跨请求恢复
-4. 提供线程安全的数据访问，防止并发冲突
-"""
-
 import json
 import os
-import threading
-import tempfile
-from typing import Any, Dict, List, Optional
+import uuid
+from typing import List, Dict, Optional
+
+MEMORY_FILE = os.path.join(os.getcwd(), "memory.json")
 
 class ConversationMemory:
-    """多租户会话记忆管理器，支持持久化和线程安全"""
+    def __init__(self):
+        self.memory_store = {}  # 存储会话记忆
+        self.all_tenants = set()  # 存储所有租户
+        self.current_user = None
+        self._load()
 
-    def __init__(self, storage_path: str = "memory_state.json"):
-        self.storage_path = storage_path
-        self.sessions: Dict[str, List[Dict[str, str]]] = {}
-        self.tenant_map: Dict[str, str] = {}
-        self.all_tenants: set = {"default"}
-        self.current_user: Optional[Dict[str, str]] = None
-        self._lock = threading.Lock()          # 保护共享状态
-        self.load_from_file()
-        self.file_contexts: Dict[str, str] = {}
-        # 新增：存储每个会话已上传的文件（文件名 -> 内容）
-        self.uploaded_files: Dict[str, Dict[str, str]] = {}
+    def _load(self):
+        if os.path.exists(MEMORY_FILE):
+            try:
+                with open(MEMORY_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    self.memory_store = data.get("store", {})
+                    self.all_tenants = set(data.get("tenants", []))
+            except Exception:
+                pass
 
-    # ================== 持久化核心 ==================
-    def _save_to_file(self) -> None:
-        """将当前状态原子地保存到 JSON 文件（临时文件+替换）"""
-        data = {
-            "sessions": self.sessions,
-            "tenant_map": self.tenant_map,
-            "all_tenants": list(self.all_tenants),
-            "current_user": self.current_user,
-            "file_contexts": self.file_contexts,
-            "uploaded_files": self.uploaded_files,
-        }
-        try:
-            # 先写入临时文件，再原子替换，避免进程中断导致文件损坏
-            fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(self.storage_path) or ".")
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            os.replace(tmp_path, self.storage_path)
-            print(f"[Memory] 保存成功，会话总数: {len(self.sessions)}")
-        except Exception as e:
-            print(f"[Memory] 保存失败: {e}")
-            
-    def save_history(self, session_id, history):
-        """保存指定用户的历史记录"""
-        # ✅ 修复：必须使用 _get_session_key 获取带租户的真实键
-        key = self._get_session_key(session_id)
-        self.sessions[key] = history
-        self._save_to_file()   
+    def _save(self):
+        data = {"store": self.memory_store, "tenants": list(self.all_tenants)}
+        with open(MEMORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
 
-    def load_from_file(self) -> None:
-        """从 JSON 文件加载记忆状态"""
-        if not os.path.exists(self.storage_path):
-            print("[Memory] 文件不存在，使用默认空记忆")
-            return
-        try:
-            with open(self.storage_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            self.sessions = data.get("sessions", {})
-            self.tenant_map = data.get("tenant_map", {})
-            loaded_tenants = data.get("all_tenants", ["default"])
-            self.all_tenants = set(loaded_tenants) if loaded_tenants else {"default"}
-            self.current_user = data.get("current_user", None)
-            self.file_contexts = data.get("file_contexts", {})
-            self.uploaded_files = data.get("uploaded_files", {})
-            print(f"[Memory] 加载成功，租户映射: {self.tenant_map}, 会话键数量: {len(self.sessions)}")
-        except Exception as e:
-            print(f"[Memory] 加载失败: {e}，将使用空记忆并可能覆盖旧文件")
-    
-    # 新增方法
-    def add_uploaded_file(self, session_id: str, file_name: str, content: str) -> None:
-        """记录一个已上传的文件及其内容"""
-        with self._lock:
-            if session_id not in self.uploaded_files:
-                self.uploaded_files[session_id] = {}
-            self.uploaded_files[session_id][file_name] = content[:2000]  # 截断避免过大
-            self._save_to_file()
-
-    def get_uploaded_file_names(self, session_id: str) -> list:
-        """返回该会话已上传的文件名列表（按上传时间倒序，最近在前）"""
-        files = self.uploaded_files.get(session_id, {})
-        return list(files.keys())[::-1]  # 最近在前
-
-    def get_uploaded_file_content(self, session_id: str, file_name: str) -> str:
-        """获取指定文件的内容，若不存在返回空字符串"""
-        return self.uploaded_files.get(session_id, {}).get(file_name, "")
-    
-
-    # ================== 租户管理 ==================
-    def set_tenant(self, session_id: str, tenant_id: str) -> None:
-        """设置某个会话ID对应的租户"""
-        with self._lock:
-            self.tenant_map[session_id] = tenant_id
-            self.all_tenants.add(tenant_id)
-            self._save_to_file()
+    def set_tenant(self, session_id: str, tenant: str):
+        self.all_tenants.add(tenant)
+        self._save()
 
     def get_tenant(self, session_id: str) -> str:
-        """获取会话ID对应的租户，默认 'default'"""
-        return self.tenant_map.get(session_id, "default")
-        
-    def set_file_context(self, session_id: str, content: str) -> None:
-        """设置某个会话的文件内容（仅供模型使用，不显示在聊天历史）"""
-        with self._lock:
-            self.file_contexts[session_id] = content
-            self._save_to_file()
+        for s_id, data in self.memory_store.items():
+            if s_id == session_id:
+                return data.get("tenant", "default")
+        return "default"
+
+    def set_current_user(self, user: Optional[dict]):
+        self.current_user = user
+
+    def append(self, session_id: str, user_msg: str, assistant_msg: str):
+        if session_id not in self.memory_store:
+            self.memory_store[session_id] = {"history": [], "tenant": "default", "files": {}, "file_context": ""}
+        self.memory_store[session_id]["history"].append({"role": "user", "content": user_msg})
+        self.memory_store[session_id]["history"].append({"role": "assistant", "content": assistant_msg})
+        self._save()
+
+    def get(self, session_id: str) -> List[dict]:
+        if session_id in self.memory_store:
+            return self.memory_store[session_id]["history"]
+        return []
+
+    def get_history(self, session_id: str) -> List[dict]:
+        return self.get(session_id)
+
+    def set_file_context(self, session_id: str, context: str):
+        if session_id not in self.memory_store:
+            self.memory_store[session_id] = {"history": [], "tenant": "default", "files": {}, "file_context": ""}
+        self.memory_store[session_id]["file_context"] = context
+        self._save()
 
     def get_file_context(self, session_id: str) -> str:
-        """获取某个会话的文件内容，若不存在返回空字符串"""
-        return self.file_contexts.get(session_id, "")
+        if session_id in self.memory_store:
+            return self.memory_store[session_id].get("file_context", "")
+        return ""
 
-    # ================== 会话历史管理 ==================
-    def _get_session_key(self, session_id: str) -> str:
-        """生成会话键："{tenant}:{session_id}"，确保租户隔离"""
-        return f"{self.get_tenant(session_id)}:{session_id}"
+    def add_uploaded_file(self, session_id: str, filename: str, content: str):
+        if session_id not in self.memory_store:
+            self.memory_store[session_id] = {"history": [], "tenant": "default", "files": {}, "file_context": ""}
+        self.memory_store[session_id]["files"][filename] = content
+        self._save()
 
-    def get(self, session_id: str) -> List[Dict[str, str]]:
-        """获取会话历史副本，避免外部修改内部数据"""
-        key = self._get_session_key(session_id)
-        return self.sessions.get(key, []).copy()
+    def get_uploaded_file_names(self, session_id: str) -> List[str]:
+        if session_id in self.memory_store:
+            return list(self.memory_store[session_id].get("files", {}).keys())
+        return []
 
-    def append(self, session_id: str, user_msg: str, assistant_msg: str) -> None:
-        """追加一轮对话（用户消息+助手消息），线程安全"""
-        key = self._get_session_key(session_id)
-        with self._lock:
-            if key not in self.sessions:
-                self.sessions[key] = []
-            self.sessions[key].append({"role": "user", "content": user_msg})
-            self.sessions[key].append({"role": "assistant", "content": assistant_msg})
-            self._save_to_file()
+    def get_uploaded_file_content(self, session_id: str, filename: str) -> str:
+        if session_id in self.memory_store:
+            return self.memory_store[session_id].get("files", {}).get(filename, "")
+        return ""
 
-    def get_history(self, session_id):
-        """获取指定用户的历史记录"""
-        # ✅ 修复：同样使用 _get_session_key 才能读到正确数据
-        key = self._get_session_key(session_id)
-        return self.sessions.get(key, [])
+    def get_all_projects(self, username: str) -> List[str]:
+        """安全获取某用户的所有项目名（不依赖内部属性）"""
+        projects = ["主对话"]
+        for key in self.memory_store.keys():
+            if key.startswith(f"{username}_"):
+                proj = key.split("_", 1)[1]
+                if proj != "主对话":
+                    projects.append(proj)
+        # 去重并保持顺序
+        seen = set()
+        unique_projects = []
+        for p in projects:
+            if p not in seen:
+                unique_projects.append(p)
+                seen.add(p)
+        return unique_projects
 
-    def set_history(self, session_id: str, history: List[Dict[str, str]]) -> None:
-        """直接设置会话历史（覆盖），线程安全"""
-        if history:
-            key = self._get_session_key(session_id)
-            with self._lock:
-                self.sessions[key] = history.copy()
-                self._save_to_file()
-
-    # ================== 当前用户管理 ==================
-    def set_current_user(self, user_info: Optional[Dict[str, str]]) -> None:
-        """设置当前登录用户信息，None 表示清除"""
-        with self._lock:
-            self.current_user = user_info
-            self._save_to_file()
-
-    def get_current_user(self) -> Optional[Dict[str, str]]:
-        """获取当前登录用户信息，未登录返回 None"""
-        return self.current_user
-
-    # 兼容旧接口
-    def set_user_info(self, session_id: str, user_info: Dict[str, str]) -> None:
-        """兼容方法：设置当前用户（忽略 session_id）"""
-        self.set_current_user(user_info)
-
-    def get_user_info(self, session_id: Optional[str] = None) -> Optional[Dict[str, str]]:
-        """兼容方法：获取当前用户（忽略 session_id）"""
-        return self.get_current_user()
-
-    def clear_user_info(self, session_id: Optional[str] = None) -> None:
-        """清除当前用户信息"""
-        self.set_current_user(None)
-
-
-# ================== 全局单例 ==================
 memory = ConversationMemory()

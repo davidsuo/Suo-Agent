@@ -7,8 +7,7 @@ import re
 from typing import List
 
 RAG_DATA_FILE = os.path.join(os.getcwd(), "rag_data.json")
-GLOBAL_KEY = "__global__"  # 全局共享知识库的键名
-
+GLOBAL_KEY = "__global__"
 
 def _load_store() -> dict:
     if os.path.exists(RAG_DATA_FILE):
@@ -19,13 +18,12 @@ def _load_store() -> dict:
             return {}
     return {}
 
-
 def _save_store(store: dict):
     with open(RAG_DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(store, f, ensure_ascii=False, indent=2)
 
-
-def _chunk_text(text: str, chunk_size=2000) -> List[str]:
+# 【优化1】切分增大，减少切片数量至约75个，提升性能
+def _chunk_text(text: str, chunk_size=3000) -> List[str]:
     if len(text) <= chunk_size:
         return [text]
     chunks = []
@@ -33,17 +31,10 @@ def _chunk_text(text: str, chunk_size=2000) -> List[str]:
         chunks.append(text[i:i + chunk_size])
     return chunks
 
-
 def index_document(file_path: str, session_id: str, tags: str = "") -> str:
-    """索引文档：
-    - 如果 tags 为空，则存入全局共享区（所有项目可见）；
-    - 如果 tags 不为空，则存入对应的标签隔离区。
-    - 支持 .txt, .md, .csv, .xlsx, .pdf, .docx
-    """
     try:
         import pandas as pd
         
-        # 【修复】安全处理传入的非字符串路径（如 Gradio 对象），彻底避免红字报错
         if not isinstance(file_path, str):
             if hasattr(file_path, 'name'):
                 file_path = file_path.name
@@ -53,28 +44,24 @@ def index_document(file_path: str, session_id: str, tags: str = "") -> str:
         ext = os.path.splitext(file_path)[1].lower()
         content = ""
         
-        # 1. 处理纯文本类文件
         if ext in [".txt", ".md"]:
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
                 
-        # 2. 处理 CSV / Excel 文件（转成 Markdown 表格形式存入，便于AI检索且不出错）
         elif ext in [".csv", ".xlsx", ".xls"]:
             if ext == ".csv":
                 df = pd.read_csv(file_path)
             else:
                 df = pd.read_excel(file_path)
-            # 转换为干净的Markdown表格，如果 tabulate 缺失则自动回退
+            # 【优化2】仅保留前300行，防止数据过大，并转为整齐的Markdown表格
+            df = df.head(300)
             try:
                 content = df.to_markdown(index=False)
             except ImportError:
-                # 防止因依赖缺失导致系统崩溃，自动降级为纯文本格式
                 content = df.to_string(index=False)
             except Exception:
-                # 任何其他格式转换错误，也确保可以正常存入知识库
                 content = df.to_string(index=False)
             
-        # 3. 处理 PDF 文件
         elif ext == ".pdf":
             try:
                 from pypdf import PdfReader
@@ -82,9 +69,8 @@ def index_document(file_path: str, session_id: str, tags: str = "") -> str:
                 for page in reader.pages:
                     content += page.extract_text() + "\n"
             except ImportError:
-                return "❌ 缺少 pypdf 库，请先运行: pip install pypdf"
+                return "❌ 缺少 pypdf 库"
                 
-        # 4. 处理 Word 文档 (.docx)
         elif ext == ".docx":
             try:
                 from docx import Document
@@ -96,10 +82,9 @@ def index_document(file_path: str, session_id: str, tags: str = "") -> str:
                         row_text = [cell.text for cell in row.cells]
                         content += " | ".join(row_text) + "\n"
             except ImportError:
-                return "❌ 缺少 python-docx 库，请先运行: pip install python-docx"
-        
+                return "❌ 缺少 python-docx 库"
         else:
-            return f"❌ 不支持的文件格式: {ext}。目前支持: .txt, .md, .csv, .xlsx, .pdf, .docx"
+            return f"❌ 不支持的文件格式: {ext}"
 
         if not content.strip():
             return "❌ 文件内容为空或无法解析。"
@@ -126,30 +111,21 @@ def index_document(file_path: str, session_id: str, tags: str = "") -> str:
     except Exception as e:
         return f"❌ 文档处理失败: {e}"
 
-
 def search_knowledge(query: str, session_id: str, tags: str = "") -> str:
-    """检索知识库：
-    - 优先检索当前项目自己的标签区（如果 tags 指定）。
-    - 然后检索全局共享区（GLOBAL_KEY）。
-    - 返回最相关的内容。
-    """
     store = _load_store()
     combined_docs = []
 
-    # 1. 如果用户指定了标签，先检索对应隔离区（精确匹配）
     if tags and tags.strip():
         target_key = f"tag_{tags.strip()}"
         if target_key in store:
             combined_docs.extend(store[target_key])
 
-    # 2. 检索全局共享区（所有项目都可访问）
     if GLOBAL_KEY in store:
         combined_docs.extend(store[GLOBAL_KEY])
 
     if not combined_docs:
         return ""
 
-    # 提取年份月份用于精确计算
     import re as _re
     _year_match = _re.search(r'(20\d{2})年', query)
     _month_match = _re.search(r'(\d{1,2})月份', query)
@@ -158,31 +134,29 @@ def search_knowledge(query: str, session_id: str, tags: str = "") -> str:
     if _year_match and _month_match:
         target_prefix = f"{_year_match.group(1)}/{int(_month_match.group(1))}/"
 
+    matched_texts = []
     if target_prefix:
-        matched_texts = []
         for doc in combined_docs:
             if target_prefix in doc.get("text", ""):
                 matched_texts.append(doc.get("text", ""))
-        if matched_texts:
-            return "\n\n".join(matched_texts)
+    else:
+        clean_query = query.replace("，", " ").replace("。", " ").replace("？", " ").replace("?", " ").replace(" ", "")
+        grams = set()
+        for i in range(len(clean_query)):
+            for j in range(i + 2, min(i + 6, len(clean_query) + 1)):
+                grams.add(clean_query[i:j])
+        for doc in combined_docs:
+            text = doc.get("text", "")
+            score = 0
+            for gram in grams:
+                if gram in text:
+                    score += 1
+            if score >= 3:
+                matched_texts.append(text)
 
-    # 回退到关键词模糊匹配
-    clean_query = query.replace("，", " ").replace("。", " ").replace("？", " ").replace("?", " ").replace(" ", "")
-    grams = set()
-    for i in range(len(clean_query)):
-        for j in range(i + 2, min(i + 6, len(clean_query) + 1)):
-            grams.add(clean_query[i:j])
-
-    matched = []
-    for doc in combined_docs:
-        text = doc.get("text", "")
-        score = 0
-        for gram in grams:
-            if gram in text:
-                score += 1
-        if score >= 3:
-            matched.append(text)
-
-    if matched:
-        return "\n\n".join(list(dict.fromkeys(matched))[:5])
+    # 【优化3】严格限制返回给大模型的文本量，防止卡顿
+    if matched_texts:
+        # 只截取前几个，总长限制在 2500 字符以内
+        result = "\n\n".join(matched_texts[:5])[:2500]
+        return result
     return ""

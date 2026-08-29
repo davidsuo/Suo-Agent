@@ -608,16 +608,10 @@ with gr.Blocks(title="AI 智能体") as demo:
                 tenants = get_available_tenants()
                 user_full = f"{user['display_name']} ({user['department']} - {user['position']})"
                 
-                # 【核心修复】从 Memory 中扫描并恢复该用户的全部项目列表
-                new_project_names = ["主对话"]
-                for key in memory.memory_store.keys():
-                    if key.startswith(f"{user['username']}_") and key.split("_", 1)[1] != "主对话":
-                        new_project_names.append(key.split("_", 1)[1])
-                # 若前端存在项目列表则合并去重
-                if "project_names" in locals() and project_names.value:
-                    for p in project_names.value:
-                        if p not in new_project_names:
-                            new_project_names.append(p)
+                # 【核心修复】通过新增的安全方法获取项目列表，彻底解决 memory_store 报错
+                new_project_names = memory.get_all_projects(user['username'])
+                if session_project not in new_project_names:
+                    new_project_names.append(session_project)
 
                 return (
                     user,
