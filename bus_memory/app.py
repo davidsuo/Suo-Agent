@@ -420,11 +420,11 @@ with gr.Blocks(title="AI 智能体") as demo:
                 # ================= 知识库 Tab =================
                 with gr.Tab("知识库"):
                     gr.Markdown("## 📚 企业垂直知识库（RAG）")
-                    gr.Markdown("上传文档（txt/md/csv），可添加标签以便检索时精准过滤。")
+                    gr.Markdown("上传文档（txt/md/csv/pdf/docx），可添加标签以便检索时精准过滤。")
                     with gr.Row():
                         kb_upload = gr.File(
                             label="上传知识文档",
-                            file_types=[".txt", ".md", ".csv", ".pdf", ".docx"],  # 【修复】支持 PDF 和 Word
+                            file_types=[".txt", ".md", ".csv", ".pdf", ".docx"],
                             type="filepath"
                         )
                         kb_tags_input = gr.Textbox(
@@ -433,6 +433,8 @@ with gr.Blocks(title="AI 智能体") as demo:
                         )
                         kb_index_btn = gr.Button("🚀 提交索引", variant="primary")
                     kb_status = gr.Markdown("")
+
+                    # ========== 新增：已上传文档列表 ==========
                     gr.Markdown("### 📂 已上传文档列表")
                     kb_doc_table = gr.Dataframe(
                         headers=["文档名称", "索引时间"],
@@ -679,43 +681,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     )
 
 
-    # ================= 知识库事件绑定 =================
-    def load_kb_docs():
-        try:
-            from common.rag import list_indexed_files
-            docs = list_indexed_files()
-            if not docs:
-                return []
-            return [[d["file_name"], d["created_at"]] for d in docs]
-        except Exception:
-            return []
-            
-    # 上传后自动刷新列表
-    def handle_kb_index(file, kb_tags, user, current_project):
-        if not user:
-            return "❌ 请先登录！", gr.update()
-        if not file:
-            return "❌ 请先上传文件！", gr.update()
-        
-        file_path = file if isinstance(file, str) else (file.name if hasattr(file, 'name') else str(file))
-        session_id = f"{user['username']}_{current_project}"
-        msg = index_document(file_path, session_id, kb_tags)
-        simple_log_tool(session_id, f"上传知识库文件:{os.path.basename(file_path)}", "knowledge_index", {"file_path": file_path, "tags": kb_tags}, msg)
-        
-        # 上传后自动刷新列表
-        try:
-            new_list = load_kb_docs()
-        except Exception:
-            new_list = []
-        return msg, gr.update(value=new_list)
-
-    kb_index_btn.click(
-        fn=handle_kb_index,
-        inputs=[kb_upload, kb_tags_input, user_state, current_project],
-        outputs=[kb_status, kb_doc_table],
-        show_progress="hidden"
-    )
-
+    # ================= 知识库事件绑定 =================          
     # 增加一个刷新按钮（可选，或者绑定在 demo.load 中）
     # 由于 load_history 输出太多，我们直接在 demo.load 中调用刷新
     demo.load(
@@ -1058,16 +1024,24 @@ with gr.Blocks(title="AI 智能体") as demo:
         outputs=[health_summary_md, health_tool_table]
     )
 
-    # 知识库列表加载与刷新（必须放在UI定义之后）
-    refresh_kb_docs_btn.click(fn=load_kb_docs, inputs=[], outputs=[kb_doc_table])
-    
-    # 上传后自动刷新列表
+    # ================= 知识库列表加载与刷新（唯一版本） =================
+    def load_kb_docs():
+        try:
+            from common.rag import list_indexed_files
+            docs = list_indexed_files()
+            if not docs:
+                return []
+            return [[d["file_name"], d["created_at"]] for d in docs]
+        except Exception:
+            return []
+
     def handle_kb_index(file, kb_tags, user, current_project):
         if not user:
             return "❌ 请先登录！", gr.update()
         if not file:
             return "❌ 请先上传文件！", gr.update()
         
+        # 兼容 Gradio 文件对象
         file_path = file if isinstance(file, str) else (file.name if hasattr(file, 'name') else str(file))
         session_id = f"{user['username']}_{current_project}"
         msg = index_document(file_path, session_id, kb_tags)
@@ -1079,6 +1053,16 @@ with gr.Blocks(title="AI 智能体") as demo:
         except Exception:
             new_list = []
         return msg, gr.update(value=new_list)
+
+    # 事件绑定（只写一次！绝对不要再加 demo.load！）
+    refresh_kb_docs_btn.click(fn=load_kb_docs, inputs=[], outputs=[kb_doc_table])
+    kb_index_btn.click(
+        fn=handle_kb_index,
+        inputs=[kb_upload, kb_tags_input, user_state, current_project],
+        outputs=[kb_status, kb_doc_table],
+        show_progress="hidden"
+    )
+
 
 # ================= 启动入口 =================  
 if __name__ == "__main__":
