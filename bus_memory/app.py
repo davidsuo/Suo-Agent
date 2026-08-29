@@ -238,7 +238,7 @@ with gr.Blocks(title="AI 智能体") as demo:
             login_msg = gr.Markdown("")
 
     # ---------- 主聊天界面 ----------
-    with gr.Column(visible=False) as chat_column:
+    with gr.Column(visible=False, elem_id="chat-column") as chat_column:
         # ================= 顶部品牌栏 =================
         with gr.Row(elem_id="top-brand-bar"):
             gr.HTML("""
@@ -608,9 +608,9 @@ with gr.Blocks(title="AI 智能体") as demo:
                 tenants = get_available_tenants()
                 user_full = f"{user['display_name']} ({user['department']} - {user['position']})"
                 
-                # 【核心修复】通过新增的安全方法获取项目列表，彻底解决 memory_store 报错
+                # 【核心调用】调用 common/memory.py 中定义的方法
                 new_project_names = memory.get_all_projects(user['username'])
-                if session_project not in new_project_names:
+                if session_project and session_project not in new_project_names:
                     new_project_names.append(session_project)
 
                 return (
@@ -653,8 +653,19 @@ with gr.Blocks(title="AI 智能体") as demo:
             const urlParams = new URLSearchParams(window.location.search);
             const user = urlParams.get('user') || sessionStorage.getItem('suo_user') || '';
             const project = urlParams.get('project') || '主对话';
-            if (user) sessionStorage.setItem('suo_user', user);
-            // 修复刷新后白屏卡顿：直接通过 URL 同步返回用户和项目
+            if (user) {
+                sessionStorage.setItem('suo_user', user);
+                // 【核心修复】页面加载瞬间，立即用JS隐藏登录框、显示聊天框，避免白屏和飞镖闪烁
+                setTimeout(() => {
+                    const loginEl = document.getElementById('login-wrapper');
+                    const chatEl = document.getElementById('chat-column');
+                    if (loginEl) loginEl.style.display = 'none';
+                    if (chatEl) chatEl.style.display = 'block';
+                    // 强制隐藏 Gradio 所有加载动画层（防止飞镖出现）
+                    const allLoaders = document.querySelectorAll('.loading, .spinner, .progress-bar, .status-tracker');
+                    allLoaders.forEach(el => el.style.display = 'none');
+                }, 10);
+            }
             return [user, project];
         }""",
         show_progress="hidden"

@@ -83,8 +83,9 @@ class ConversationMemory:
             return self.memory_store[session_id].get("files", {}).get(filename, "")
         return ""
 
+    # 【核心方法】这里就是 memory.get_all_projects() 的定义处！
     def get_all_projects(self, username: str) -> List[str]:
-        """安全获取某用户的所有项目名（不依赖内部属性）"""
+        """安全获取某用户的所有项目名"""
         projects = ["主对话"]
         for key in self.memory_store.keys():
             if key.startswith(f"{username}_"):
