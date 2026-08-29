@@ -58,13 +58,21 @@ def index_document(file_path: str, session_id: str, tags: str = "") -> str:
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
                 
-        # 2. 处理 CSV / Excel 文件
+        # 2. 处理 CSV / Excel 文件（转成 Markdown 表格形式存入，便于AI检索且不出错）
         elif ext in [".csv", ".xlsx", ".xls"]:
             if ext == ".csv":
                 df = pd.read_csv(file_path)
             else:
                 df = pd.read_excel(file_path)
-            content = df.to_markdown(index=False)
+            # 转换为干净的Markdown表格，如果 tabulate 缺失则自动回退
+            try:
+                content = df.to_markdown(index=False)
+            except ImportError:
+                # 防止因依赖缺失导致系统崩溃，自动降级为纯文本格式
+                content = df.to_string(index=False)
+            except Exception:
+                # 任何其他格式转换错误，也确保可以正常存入知识库
+                content = df.to_string(index=False)
             
         # 3. 处理 PDF 文件
         elif ext == ".pdf":
