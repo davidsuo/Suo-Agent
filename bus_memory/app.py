@@ -360,9 +360,11 @@ with gr.Blocks(title="AI 智能体") as demo:
                         kb_tags_input = gr.Textbox(label="元数据标签（可选，用逗号分隔）", placeholder="例如：财务报表, 产品文档")
                         kb_index_btn = gr.Button("🚀 提交索引", variant="primary")
                     kb_status = gr.Markdown("")
-                    gr.Markdown("### 📂 已上传文档列表")
-                    kb_doc_table = gr.Dataframe(headers=["文档名称", "索引时间"], interactive=False, wrap=True)
-                    refresh_kb_docs_btn = gr.Button("🔄 刷新文档列表")
+
+                    # 【布局修复】将刷新按钮放在标题上方，并缩小标题与表格的间距
+                    refresh_kb_docs_btn = gr.Button("🔄 刷新文档列表", elem_id="refresh-kb-docs-btn")
+                    gr.Markdown("### 📂 已上传文档列表", elem_id="kb-doc-list-header")
+                    kb_doc_table = gr.Dataframe(headers=["文档名称", "索引时间"], interactive=False, wrap=True, elem_id="kb-doc-table")
 
         user_display = gr.Markdown("", visible=False)
 
@@ -994,6 +996,20 @@ if __name__ == "__main__":
             #create-project-btn {
                 min-width: 60px !important;
                 flex-shrink: 0 !important;
+            }
+            /* 【布局优化】缩小知识库列表间距 */
+            #refresh-kb-docs-btn {
+                margin-top: 0 !important;
+                margin-bottom: 0 !important;
+            }
+            #kb-doc-list-header {
+                margin-top: 0 !important;
+                margin-bottom: 0 !important;
+                padding-top: 0 !important;
+                padding-bottom: 0 !important;
+            }
+            #kb-doc-table {
+                margin-top: 0 !important;
             }
         """
     )
