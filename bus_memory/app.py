@@ -1024,47 +1024,46 @@ with gr.Blocks(title="AI 智能体") as demo:
         outputs=[health_summary_md, health_tool_table]
     )
 
-    # ================= 知识库列表加载与刷新（唯一版本） =================
-    def load_kb_docs():
-        try:
-            from common.rag import list_indexed_files
-            docs = list_indexed_files()
-            if not docs:
-                return []
-            return [[d["file_name"], d["created_at"]] for d in docs]
-        except Exception:
+# ================= 知识库列表加载与刷新（唯一版本，全局作用域） =================
+def load_kb_docs():
+    try:
+        from common.rag import list_indexed_files
+        docs = list_indexed_files()
+        if not docs:
             return []
+        return [[d["file_name"], d["created_at"]] for d in docs]
+    except Exception:
+        return []
 
-    def handle_kb_index(file, kb_tags, user, current_project):
-        if not user:
-            return "❌ 请先登录！", gr.update()
-        if not file:
-            return "❌ 请先上传文件！", gr.update()
-        
-        # 兼容 Gradio 文件对象
-        file_path = file if isinstance(file, str) else (file.name if hasattr(file, 'name') else str(file))
-        session_id = f"{user['username']}_{current_project}"
-        msg = index_document(file_path, session_id, kb_tags)
-        simple_log_tool(session_id, f"上传知识库文件:{os.path.basename(file_path)}", "knowledge_index", {"file_path": file_path, "tags": kb_tags}, msg)
-        
-        # 上传后自动刷新列表
-        try:
-            new_list = load_kb_docs()
-        except Exception:
-            new_list = []
-        return msg, gr.update(value=new_list)
+def handle_kb_index(file, kb_tags, user, current_project):
+    if not user:
+        return "❌ 请先登录！", gr.update()
+    if not file:
+        return "❌ 请先上传文件！", gr.update()
+    
+    # 兼容 Gradio 文件对象
+    file_path = file if isinstance(file, str) else (file.name if hasattr(file, 'name') else str(file))
+    session_id = f"{user['username']}_{current_project}"
+    msg = index_document(file_path, session_id, kb_tags)
+    simple_log_tool(session_id, f"上传知识库文件:{os.path.basename(file_path)}", "knowledge_index", {"file_path": file_path, "tags": kb_tags}, msg)
+    
+    # 上传后自动刷新列表
+    try:
+        new_list = load_kb_docs()
+    except Exception:
+        new_list = []
+    return msg, gr.update(value=new_list)
 
-    # 事件绑定（只写一次！绝对不要再加 demo.load！）
-    refresh_kb_docs_btn.click(fn=load_kb_docs, inputs=[], outputs=[kb_doc_table])
-    kb_index_btn.click(
-        fn=handle_kb_index,
-        inputs=[kb_upload, kb_tags_input, user_state, current_project],
-        outputs=[kb_status, kb_doc_table],
-        show_progress="hidden"
-    )
+# ================= 事件绑定（绝对不要加 demo.load！） =================
+refresh_kb_docs_btn.click(fn=load_kb_docs, inputs=[], outputs=[kb_doc_table])
+kb_index_btn.click(
+    fn=handle_kb_index,
+    inputs=[kb_upload, kb_tags_input, user_state, current_project],
+    outputs=[kb_status, kb_doc_table],
+    show_progress="hidden"
+)
 
-
-# ================= 启动入口 =================  
+# ================= 启动入口 =================
 if __name__ == "__main__":
     init_users_db()
     init_db()
