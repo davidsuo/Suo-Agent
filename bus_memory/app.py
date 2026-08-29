@@ -432,7 +432,15 @@ with gr.Blocks(title="AI 智能体") as demo:
                             placeholder="例如：财务报表, 产品文档"
                         )
                         kb_index_btn = gr.Button("🚀 提交索引", variant="primary")
+                        refresh_kb_docs_btn = gr.Button("🔄 刷新文档列表")
+                        refresh_kb_docs_btn.click(fn=load_kb_docs, inputs=[], outputs=[kb_doc_table])
                     kb_status = gr.Markdown("")
+                    gr.Markdown("### 📂 已上传文档列表")
+                    kb_doc_table = gr.Dataframe(
+                        headers=["文档名称", "索引时间"],
+                        interactive=False,
+                        wrap=True
+                    )
 
         # 隐藏的用户状态组件（供后端 outputs 使用，不显示在界面上）
         user_display = gr.Markdown("", visible=False)
@@ -673,24 +681,44 @@ with gr.Blocks(title="AI 智能体") as demo:
 
 
     # ================= 知识库事件绑定 =================
+    def load_kb_docs():
+        try:
+            from common.rag import list_indexed_files
+            docs = list_indexed_files()
+            if not docs:
+                return []
+            return [[d["file_name"], d["created_at"]] for d in docs]
+        except Exception:
+            return []
+            
     def handle_kb_index(file, kb_tags, user, current_project):
         if not user:
-            return "❌ 请先登录！"
+            return "❌ 请先登录！", gr.update()
         if not file:
-            return "❌ 请先上传文件！"
+            return "❌ 请先上传文件！", gr.update()
         
-        # 【修复】安全处理 Gradio 文件对象，确保一定是字符串路径
         file_path = file if isinstance(file, str) else (file.name if hasattr(file, 'name') else str(file))
-        
         session_id = f"{user['username']}_{current_project}"
         msg = index_document(file_path, session_id, kb_tags)
-        simple_log_tool(session_id, f"上传知识库文件:{file_path}", "knowledge_index", {"file_path": file_path, "tags": kb_tags}, msg)
-        return msg
+        
+        simple_log_tool(session_id, f"上传知识库文件:{os.path.basename(file_path)}", "knowledge_index", {"file_path": file_path, "tags": kb_tags}, msg)
+        
+        # 【新逻辑】上传完成后立即刷新列表
+        return msg, gr.update(value=load_kb_docs())
 
     kb_index_btn.click(
         fn=handle_kb_index,
         inputs=[kb_upload, kb_tags_input, user_state, current_project],
-        outputs=[kb_status],
+        outputs=[kb_status, kb_doc_table],
+        show_progress="hidden"
+    )
+
+    # 增加一个刷新按钮（可选，或者绑定在 demo.load 中）
+    # 由于 load_history 输出太多，我们直接在 demo.load 中调用刷新
+    demo.load(
+        fn=load_kb_docs,
+        inputs=[],
+        outputs=[kb_doc_table],
         show_progress="hidden"
     )
 

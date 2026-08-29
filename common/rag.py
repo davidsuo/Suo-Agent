@@ -19,6 +19,12 @@ def _get_conn():
         tags TEXT,
         created_at TEXT
     )''')
+    # 【新增】创建文件列表存储表
+    conn.execute('''CREATE TABLE IF NOT EXISTS rag_files (
+        file_name TEXT,
+        tags TEXT,
+        created_at TEXT
+    )''')
     return conn
 
 def _load_store() -> dict:
@@ -40,7 +46,7 @@ def _save_store(store: dict):
     try:
         conn = _get_conn()
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM rag_items") # 每次全量覆盖，确保一致性
+        cursor.execute("DELETE FROM rag_items")
         for key, items in store.items():
             for item in items:
                 cursor.execute("INSERT INTO rag_items (id, store_key, text) VALUES (?, ?, ?)",
@@ -50,7 +56,19 @@ def _save_store(store: dict):
     except Exception:
         pass
 
-# 【核心修复1】切片变小且按行切分，保证每个月的数据独立，不被切散
+# 【新增】获取已上传文档列表的函数
+def list_indexed_files():
+    conn = _get_conn()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT file_name, created_at FROM rag_files ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        return [{"file_name": r[0], "created_at": r[1]} for r in rows]
+    except Exception:
+        return []
+    finally:
+        conn.close()
+
 def _chunk_text(text: str, chunk_size=1500) -> List[str]:
     if len(text) <= chunk_size:
         return [text]
@@ -89,9 +107,8 @@ def index_document(file_path: str, session_id: str, tags: str = "") -> str:
                 df = pd.read_csv(file_path)
             else:
                 df = pd.read_excel(file_path)
-            # 转成紧凑的文本格式，每行是一条数据
             df = df.fillna("")
-            content = df.to_csv(index=False) # 用CSV格式，AI能看懂，且每行独立
+            content = df.to_csv(index=False)
         elif ext == ".pdf":
             try:
                 from pypdf import PdfReader
@@ -136,6 +153,17 @@ def index_document(file_path: str, session_id: str, tags: str = "") -> str:
                 "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             })
         _save_store(store)
+        
+        # 【新增】将文件名写入列表数据库
+        conn = _get_conn()
+        cursor = conn.cursor()
+        # 只取文件名，不带路径
+        file_name = os.path.basename(file_path)
+        cursor.execute("INSERT INTO rag_files (file_name, tags, created_at) VALUES (?, ?, ?)",
+                       (file_name, tags, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        conn.commit()
+        conn.close()
+        
         return f"✅ 文档已成功索引（共 {len(chunks)} 个片段，支持 PDF/Word/表格）。"
     except Exception as e:
         return f"❌ 文档处理失败: {e}"
@@ -166,7 +194,6 @@ def search_knowledge(query: str, session_id: str, tags: str = "") -> str:
     matched_texts = []
     if target_prefix:
         for doc in combined_docs:
-            # 【核心修复2】如果用户问具体月份，直接返回包含该月份的数据（放宽字符限制到8000，确保数据完整）
             if target_prefix in doc.get("text", ""):
                 matched_texts.append(doc.get("text", ""))
     else:
@@ -185,6 +212,5 @@ def search_knowledge(query: str, session_id: str, tags: str = "") -> str:
                 matched_texts.append(text)
 
     if matched_texts:
-        # 拼接并返回足够长度，让预计算逻辑能算出结果
         return "\n\n".join(matched_texts[:10])[:8000]
     return ""
