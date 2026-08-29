@@ -40,6 +40,37 @@ def check_and_repair_log_file():
 
 check_and_repair_log_file()
 
+# =======================================================
+# 【核心修复】将函数定义移到这里，确保在 UI 构建前已经被识别
+# =======================================================
+def load_kb_docs():
+    try:
+        from common.rag import list_indexed_files
+        docs = list_indexed_files()
+        if not docs:
+            return []
+        return [[d["file_name"], d["created_at"]] for d in docs]
+    except Exception:
+        return []
+
+def handle_kb_index(file, kb_tags, user, current_project):
+    if not user:
+        return "❌ 请先登录！", gr.update()
+    if not file:
+        return "❌ 请先上传文件！", gr.update()
+    
+    file_path = file if isinstance(file, str) else (file.name if hasattr(file, 'name') else str(file))
+    session_id = f"{user['username']}_{current_project}"
+    msg = index_document(file_path, session_id, kb_tags)
+    simple_log_tool(session_id, f"上传知识库文件:{os.path.basename(file_path)}", "knowledge_index", {"file_path": file_path, "tags": kb_tags}, msg)
+    
+    try:
+        new_list = load_kb_docs()
+    except Exception:
+        new_list = []
+    return msg, gr.update(value=new_list)
+# =======================================================
+
 # ================= 全局资源初始化 =================
 bus = EventBus()
 
@@ -99,7 +130,6 @@ def init_db():
         print("✅ 数据库 sample.db 已自动创建并插入示例数据。")
 
 def get_available_tenants():
-    """返回所有已知租户列表"""
     return sorted(list(memory.all_tenants))
 
 # ================= 自定义 JavaScript（按住空格录音，长按300ms防误触） =================
@@ -167,10 +197,9 @@ voice_script = """
         if (isInput) {
             originalInputValue = active.value;
         } else {
-            e.preventDefault(); // 页面防滚动
+            e.preventDefault();
         }
 
-        // 长按300ms才触发录音
         spacePressTimer = setTimeout(() => {
             spacePressTimer = null;
             startRecording();
@@ -487,7 +516,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                   return [user, project];
               }""", show_progress="hidden")
 
-    # ================= 知识库事件绑定（正确的上下文内） =================
+    # ================= 知识库事件绑定（函数已在顶部定义，此处直接调用） =================
     refresh_kb_docs_btn.click(fn=load_kb_docs, inputs=[], outputs=[kb_doc_table])
     kb_index_btn.click(fn=handle_kb_index, inputs=[kb_upload, kb_tags_input, user_state, current_project],
                        outputs=[kb_status, kb_doc_table], show_progress="hidden")
@@ -703,34 +732,6 @@ with gr.Blocks(title="AI 智能体") as demo:
         return summary, tool_df
 
     health_refresh_btn.click(fn=update_health_dashboard, inputs=[], outputs=[health_summary_md, health_tool_table])
-
-# ================= 知识库列表加载与刷新（全局作用域） =================
-def load_kb_docs():
-    try:
-        from common.rag import list_indexed_files
-        docs = list_indexed_files()
-        if not docs:
-            return []
-        return [[d["file_name"], d["created_at"]] for d in docs]
-    except Exception:
-        return []
-
-def handle_kb_index(file, kb_tags, user, current_project):
-    if not user:
-        return "❌ 请先登录！", gr.update()
-    if not file:
-        return "❌ 请先上传文件！", gr.update()
-    
-    file_path = file if isinstance(file, str) else (file.name if hasattr(file, 'name') else str(file))
-    session_id = f"{user['username']}_{current_project}"
-    msg = index_document(file_path, session_id, kb_tags)
-    simple_log_tool(session_id, f"上传知识库文件:{os.path.basename(file_path)}", "knowledge_index", {"file_path": file_path, "tags": kb_tags}, msg)
-    
-    try:
-        new_list = load_kb_docs()
-    except Exception:
-        new_list = []
-    return msg, gr.update(value=new_list)
 
 # ================= 启动入口 =================
 if __name__ == "__main__":
