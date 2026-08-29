@@ -215,7 +215,7 @@ def set_workers(query_worker, command_worker, tool_router):
     _tool_router = tool_router
 
 # ==================== 核心聊天逻辑 ====================
-async def chat_core(session_id: str, query: str, query_worker, command_worker, TOOL_ROUTER, image_base64: str = None):original_query = quer
+async def chat_core(session_id: str, query: str, query_worker, command_worker, TOOL_ROUTER, image_base64: str = None):
     original_query = query
     print(f"[DEBUG] 收到请求: session_id={session_id}, query={query[:50]}...")
     print(f"[DEBUG] 当前 pending keys: {list(pending.keys())}")
