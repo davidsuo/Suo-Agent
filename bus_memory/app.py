@@ -372,7 +372,7 @@ with gr.Blocks(title="AI 智能体") as demo:
     def load_logs(user=None):
         import os
         if not os.path.exists("plan_log.json"):
-            return []
+            return gr.update(value=[])
         logs_data = []
         try:
             with open("plan_log.json", "rb") as f:
@@ -425,8 +425,10 @@ with gr.Blocks(title="AI 智能体") as demo:
                     continue
         except Exception as e:
             print(f"[日志] 加载日志异常，已阻止崩溃: {e}")
-            return []
-        return logs_data if logs_data else []
+            return gr.update(value=[])
+        
+        # 【核心修复】强制 UI 更新，哪怕内容一样也重新渲染
+        return gr.update(value=logs_data if logs_data else [])
 
     def clear_logs():
         import os
@@ -438,7 +440,13 @@ with gr.Blocks(title="AI 智能体") as demo:
             print(f"[日志] 清空日志异常: {e}")
             return []
 
-    refresh_logs_btn.click(fn=load_logs, inputs=[], outputs=[logs_table], show_progress="hidden")
+    refresh_logs_btn.click(
+        fn=load_logs,
+        inputs=[],
+        outputs=[logs_table],
+        show_progress="hidden",
+        queue=False
+    )
     clear_logs_btn.click(fn=clear_logs, inputs=[], outputs=[logs_table], show_progress="hidden")
 
     def login(username, pin):

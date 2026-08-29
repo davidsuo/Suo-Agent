@@ -93,17 +93,26 @@ def _is_error_result(result) -> bool:
 
 def enhanced_log_plan(session_id, user_query, plan, results, step_times, final_status, total_time, completed_steps=None):
     """记录规划模式执行日志（含用户、角色、状态等）"""
+    from zoneinfo import ZoneInfo
+    import re as _re
+
     real_username = session_id.split('_')[0] if '_' in session_id else session_id
     user_info = get_user_info(real_username) if real_username else None
     username = user_info.get("username", "unknown") if user_info else "unknown"
     role = user_info.get("role", "unknown") if user_info else "unknown"
 
+    # 【核心修复1：统一清洗日志】过滤掉被污染的系统Prompt
+    if user_query and "请严格按照以下" in user_query:
+        match = _re.search(r"【用户问题】\s*(.*)", user_query)
+        user_query = match.group(1) if match else "复杂系统操作"
+
     entry = {
-        "timestamp": datetime.datetime.now().isoformat(),
+        # 【核心修复2：统一北京时间，精确到秒】
+        "timestamp": datetime.datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S"),
         "session_id": session_id,
         "username": username,
         "role": role,
-        "user_query": user_query,
+        "user_query": (user_query[:100] + "...") if user_query and len(user_query) > 100 else user_query,
         "plan": plan,
         "results": {str(k): str(v)[:300] for k, v in results.items()},
         "step_times": step_times,
