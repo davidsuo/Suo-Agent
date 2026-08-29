@@ -550,16 +550,19 @@ with gr.Blocks(title="AI 智能体") as demo:
             )
             conn.commit()
             conn.close()
-            # 【修复3：添加用户管理日志】
+            # 【关键】写入用户管理日志
             if user:
-                simple_log_tool(user['username'], f"创建新用户 {username}", "create_user", {"username": username, "role": role}, "用户创建成功")
+                simple_log_tool(user['username'], f"在用户管理中创建了用户 {username}", "create_user", {"username": username, "role": role}, "用户创建成功")
             return f"✅ 用户 {username} 创建成功！", gr.update(value=list(load_users().value))
         except Exception as e:
             return f"❌ 创建失败：{e}", gr.update(value=[])
 
     refresh_users_btn.click(fn=load_users, inputs=[], outputs=[users_table])
-    create_user_btn.click(fn=create_user, inputs=[new_username, new_pin, new_display_name, new_department, new_position, new_role],
-                          outputs=[create_user_msg, users_table])
+    create_user_btn.click(
+        fn=create_user,
+        inputs=[new_username, new_pin, new_display_name, new_department, new_position, new_role, user_state],
+        outputs=[create_user_msg, users_table]
+    )
 
     # ================= 主处理函数（文本、文件、音频） =================
     async def unified_handler(message, history, file, user, current_project):
