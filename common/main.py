@@ -215,7 +215,8 @@ def set_workers(query_worker, command_worker, tool_router):
     _tool_router = tool_router
 
 # ==================== 核心聊天逻辑 ====================
-async def chat_core(session_id: str, query: str, query_worker, command_worker, TOOL_ROUTER, image_base64: str = None):
+async def chat_core(session_id: str, query: str, query_worker, command_worker, TOOL_ROUTER, image_base64: str = None):original_query = quer
+    original_query = query
     print(f"[DEBUG] 收到请求: session_id={session_id}, query={query[:50]}...")
     print(f"[DEBUG] 当前 pending keys: {list(pending.keys())}")
 
@@ -263,7 +264,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
             print(f"[时间查询] 直接获取工具真实时间: {time_result}")
             
             # 【核心修复】确保时间查询必写日志！
-            simple_log_tool(session_id, query, "get_current_time", {}, time_result)
+            simple_log_tool(session_id, original_query, "get_current_time", {}, time_result)
             
             time_answer = f"现在是 {time_result}（北京时间）。"
             memory.append(session_id, query, time_answer)
@@ -301,7 +302,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
 
         if final_quick_answer:
             # 补全日志：知识库检索和计算
-            simple_log_tool(session_id, query, "knowledge_search", {"query": query}, final_quick_answer)
+            simple_log_tool(session_id, original_query, "knowledge_search", {"query": original_query}, final_quick_answer)
             
             # 【核心优化】不再直接输出死板的预计算数字，而是将结果交给模型做“拟人化”润色
             query = (
@@ -487,7 +488,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                         step_times[step_id] = round(time.monotonic() - step_start, 3)
                         total_time = round(time.monotonic() - start_total, 3)
                         enhanced_log_plan(session_id, query, plan, results, step_times, "failed_with_compensation", total_time, completed_steps)
-                        memory.append(session_id, query, answer)
+                        memory.append(session_id, original_query, answer)
                         return output_guard(answer)
 
                     results[step_id] = str(raw_result)
@@ -511,7 +512,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                     step_times[step_id] = round(time.monotonic() - step_start, 3)
                     total_time = round(time.monotonic() - start_total, 3)
                     enhanced_log_plan(session_id, query, plan, results, step_times, "timeout", total_time, completed_steps)
-                    memory.append(session_id, query, answer)
+                    memory.append(session_id, original_query, answer)
                     return output_guard(answer)
 
                 except Exception as e:
@@ -528,7 +529,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                     step_times[step_id] = round(time.monotonic() - step_start, 3)
                     total_time = round(time.monotonic() - start_total, 3)
                     enhanced_log_plan(session_id, query, plan, results, step_times, "error", total_time, completed_steps)
-                    memory.append(session_id, query, answer)
+                    memory.append(session_id, original_query, answer)
                     return output_guard(answer)
             else:
                 results[step_id] = f"工具 {tool_name} 未配置"
@@ -570,7 +571,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                 answer = answer + "\n\n" + image_output
             total_time = round(time.monotonic() - start_total, 3)
             enhanced_log_plan(session_id, query, plan, results, step_times, "success", total_time, completed_steps)
-            memory.append(session_id, query, answer)
+            memory.append(session_id, original_query, answer)
             return answer
     else:
         # ========== 常规单步/多工具调用模式 ==========
@@ -584,7 +585,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                 )
             except Exception as e:
                 answer = f"模型调用失败: {e}"
-                memory.append(session_id, query, answer)
+                memory.append(session_id, original_query, answer)
                 return output_guard(answer)
 
             msg = response.choices[0].message
@@ -680,7 +681,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                             result = "图片已生成，将在最终回答中展示。"
                         else:
                             result = raw_result
-                        simple_log_tool(session_id, query, func_name, arguments, result)
+                        simple_log_tool(session_id, original_query, func_name, arguments, result)
                     else:
                         result = f"未找到工具 {func_name}"
 
@@ -695,7 +696,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
         answer = output_guard(answer)
         if image_output:
             answer = answer + "\n\n" + image_output
-        memory.append(session_id, query, answer)
+        memory.append(session_id, original_query, answer)
         return answer
 
 # ==================== 规划生成函数 ====================
