@@ -679,17 +679,10 @@ with gr.Blocks(title="AI 智能体") as demo:
         }""",
         show_progress="hidden"
     )
-
-
-    # ================= 知识库事件绑定 =================          
-    # 增加一个刷新按钮（可选，或者绑定在 demo.load 中）
-    # 由于 load_history 输出太多，我们直接在 demo.load 中调用刷新
-    demo.load(
-        fn=load_kb_docs,
-        inputs=[],
-        outputs=[kb_doc_table],
-        show_progress="hidden"
-    )
+         
+    # ================= 知识库事件绑定 =================
+    # 知识库列表的加载与绑定已统一放在文件底部（if __name__ 之前）处理
+    # 此处不执行 demo.load，避免调用尚未定义的 load_kb_docs 引发 NameError
 
 
     # ================= 用户管理逻辑 =================
