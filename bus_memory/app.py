@@ -577,15 +577,15 @@ with gr.Blocks(title="AI 智能体") as demo:
         memory.set_current_user(None)
         return (
             None,
-            gr.update(visible=True),
-            gr.update(visible=False),
-            gr.update(),
-            gr.update(),
-            "",
-            "",
-            gr.update(visible=False),
-            "**当前用户：** 未登录",
-            gr.update(visible=False)
+            gr.update(visible=True),   # 登录框显示
+            gr.update(visible=False),  # 聊天框隐藏
+            [],                        # 清空聊天记录
+            gr.Dropdown(choices=get_available_tenants(), value="default"),
+            "",                        # 登录消息
+            "",                        # 用户显示
+            gr.update(visible=False),  # 工作流隐藏
+            "**当前用户：** 未登录",   # 当前用户显示
+            gr.update(visible=False)   # 用户管理隐藏
         )
 
     # 退出登录事件绑定
@@ -593,7 +593,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         fn=logout,
         inputs=[],
         outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab, current_user_display, user_management_tab],
-        js="() => { sessionStorage.removeItem('suo_user'); window.history.replaceState({}, '', '/'); return true; }",
+        js="() => { sessionStorage.removeItem('suo_user'); window.history.replaceState({}, '', '/'); return []; }",
         show_progress="hidden"
     )
 
@@ -608,7 +608,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                 tenants = get_available_tenants()
                 user_full = f"{user['display_name']} ({user['department']} - {user['position']})"
                 
-                # 【核心调用】调用 common/memory.py 中定义的方法
+                # 【核心调用】正确调用 common/memory.py 里定义的方法
                 new_project_names = memory.get_all_projects(user['username'])
                 if session_project and session_project not in new_project_names:
                     new_project_names.append(session_project)
@@ -1043,6 +1043,25 @@ if __name__ == "__main__":
         theme=gr.themes.Soft(),
         head=voice_script,
         css="""
+            /* 【BUG 1修复】强制隐藏所有 Gradio 加载进度条、飞镖、水波纹 */
+            .gradio-container .loading,
+            .gradio-container .progress-container,
+            .gradio-container .spinner,
+            .gradio-container .status-tracker,
+            .gradio-container .queued,
+            .gradio-container [class*="progress"],
+            .gradio-container .progress-bar,
+            #component-0 {
+                display: none !important;
+                opacity: 0 !important;
+                width: 0 !important;
+                height: 0 !important;
+                pointer-events: none !important;
+                position: absolute !important;
+                left: -9999px !important;
+                visibility: hidden !important;
+            }
+            
             /* 隐藏语音输入组件 */
             #voice-file-input { display: none !important; }
 
