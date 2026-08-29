@@ -331,7 +331,11 @@ with gr.Blocks(title="AI 智能体") as demo:
                     with gr.Row():
                         refresh_logs_btn = gr.Button("🔄 刷新日志", elem_id="refresh-logs-btn")
                         clear_logs_btn = gr.Button("🗑️ 清空日志", variant="secondary", elem_id="clear-logs-btn")
-                    logs_table = gr.Dataframe(headers=["时间", "用户", "角色", "动作", "详情", "状态"], interactive=False, wrap=True, elem_id="logs-table")
+                    logs_table = gr.Dataframe(
+                        headers=["时间", "用户", "角色", "动作", "详情", "状态"],
+                        interactive=False,
+                        elem_id="logs-table"
+                    )
 
                 # ================= 用户管理 Tab =================
                 with gr.Tab("用户管理", visible=False) as user_management_tab:
@@ -371,8 +375,9 @@ with gr.Blocks(title="AI 智能体") as demo:
     # ================= 底层逻辑与事件绑定 =================
     def load_logs(user=None):
         import os
+        import pandas as pd
         if not os.path.exists("plan_log.json"):
-            return gr.update(value=[])
+            return gr.update(value=pd.DataFrame())
         logs_data = []
         try:
             with open("plan_log.json", "rb") as f:
@@ -425,10 +430,11 @@ with gr.Blocks(title="AI 智能体") as demo:
                     continue
         except Exception as e:
             print(f"[日志] 加载日志异常，已阻止崩溃: {e}")
-            return gr.update(value=[])
+            return gr.update(value=pd.DataFrame())
         
-        # 【核心修复】强制 UI 更新，哪怕内容一样也重新渲染
-        return gr.update(value=logs_data if logs_data else [])
+        # 【终极修复】强制转 Pandas DataFrame 返回，前端必重新渲染全部行
+        logs_df = pd.DataFrame(logs_data, columns=["时间", "用户", "角色", "动作", "详情", "状态"])
+        return gr.update(value=logs_df)
 
     def clear_logs():
         import os
