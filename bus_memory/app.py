@@ -439,6 +439,7 @@ with gr.Blocks(title="AI 智能体") as demo:
                         interactive=False,
                         wrap=True
                     )
+                    refresh_kb_docs_btn = gr.Button("🔄 刷新文档列表")
 
         # 隐藏的用户状态组件（供后端 outputs 使用，不显示在界面上）
         user_display = gr.Markdown("", visible=False)
@@ -689,6 +690,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         except Exception:
             return []
             
+    # 上传后自动刷新列表
     def handle_kb_index(file, kb_tags, user, current_project):
         if not user:
             return "❌ 请先登录！", gr.update()
@@ -1056,12 +1058,29 @@ with gr.Blocks(title="AI 智能体") as demo:
         outputs=[health_summary_md, health_tool_table]
     )
 
-
-# ================= 启动入口 =================
-    # 知识库列表加载与刷新
-    refresh_kb_docs_btn = gr.Button("🔄 刷新文档列表")
+    # 知识库列表加载与刷新（必须放在UI定义之后）
     refresh_kb_docs_btn.click(fn=load_kb_docs, inputs=[], outputs=[kb_doc_table])
     
+    # 上传后自动刷新列表
+    def handle_kb_index(file, kb_tags, user, current_project):
+        if not user:
+            return "❌ 请先登录！", gr.update()
+        if not file:
+            return "❌ 请先上传文件！", gr.update()
+        
+        file_path = file if isinstance(file, str) else (file.name if hasattr(file, 'name') else str(file))
+        session_id = f"{user['username']}_{current_project}"
+        msg = index_document(file_path, session_id, kb_tags)
+        simple_log_tool(session_id, f"上传知识库文件:{os.path.basename(file_path)}", "knowledge_index", {"file_path": file_path, "tags": kb_tags}, msg)
+        
+        # 上传后自动刷新列表
+        try:
+            new_list = load_kb_docs()
+        except Exception:
+            new_list = []
+        return msg, gr.update(value=new_list)
+
+# ================= 启动入口 =================  
 if __name__ == "__main__":
     init_users_db()
     init_db()
