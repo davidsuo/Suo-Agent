@@ -681,8 +681,15 @@ with gr.Blocks(title="AI 智能体") as demo:
     )
          
     # ================= 知识库事件绑定 =================
-    # 知识库列表的加载与绑定已统一放在文件底部（if __name__ 之前）处理
-    # 此处不执行 demo.load，避免调用尚未定义的 load_kb_docs 引发 NameError
+    # 必须在 with gr.Blocks() 上下文中绑定 click 事件！
+    # 函数定义在文件末尾（全局作用域），这里可以直接调用
+    refresh_kb_docs_btn.click(fn=load_kb_docs, inputs=[], outputs=[kb_doc_table])
+    kb_index_btn.click(
+        fn=handle_kb_index,
+        inputs=[kb_upload, kb_tags_input, user_state, current_project],
+        outputs=[kb_status, kb_doc_table],
+        show_progress="hidden"
+    )
 
 
     # ================= 用户管理逻辑 =================
@@ -1047,14 +1054,6 @@ def handle_kb_index(file, kb_tags, user, current_project):
         new_list = []
     return msg, gr.update(value=new_list)
 
-# ================= 事件绑定（绝对不要加 demo.load！） =================
-refresh_kb_docs_btn.click(fn=load_kb_docs, inputs=[], outputs=[kb_doc_table])
-kb_index_btn.click(
-    fn=handle_kb_index,
-    inputs=[kb_upload, kb_tags_input, user_state, current_project],
-    outputs=[kb_status, kb_doc_table],
-    show_progress="hidden"
-)
 
 # ================= 启动入口 =================
 if __name__ == "__main__":
