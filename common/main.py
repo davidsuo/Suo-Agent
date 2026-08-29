@@ -134,12 +134,18 @@ def simple_log_tool(session_id, user_query, tool_name, arguments, result):
     role = user_info.get("role", "unknown") if user_info else "unknown"
     status = "success" if not _is_error_result(result) else "failed"
 
+    # 【核心修复】过滤掉系统注入的Prompt（以“请严格按照以下”开头的），只保留用户原始意图
+    if user_query and "请严格按照以下" in user_query:
+        user_query = user_query.split("\n")[0]  # 只取第一行真实意图
+    # 限制长度，防止过长的CSV数据撑爆日志
+    clean_query = (user_query[:100] + "...") if user_query and len(user_query) > 100 else user_query
+
     entry = {
         "timestamp": datetime.datetime.now().isoformat(),
         "session_id": session_id,
         "username": username,
         "role": role,
-        "user_query": user_query,
+        "user_query": clean_query,
         "tool": tool_name,
         "arguments": {k: v for k, v in arguments.items() if k != "_tenant"},
         "result": str(result)[:300],
@@ -147,10 +153,8 @@ def simple_log_tool(session_id, user_query, tool_name, arguments, result):
         "mode": "regular"
     }
     try:
-        # 【核心修复】加锁写入，防止多线程同时写导致文件乱码！
-        with log_lock:
-            with open("plan_log.json", "a", encoding="utf-8") as f:
-                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        with open("plan_log.json", "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
         print(f"[审计] 工具调用已记录: user={username}, role={role}, tool={tool_name}, status={status}", flush=True)
     except Exception as e:
         print(f"[审计] 写入失败: {e}", flush=True)

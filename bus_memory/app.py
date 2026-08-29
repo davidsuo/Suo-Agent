@@ -569,7 +569,7 @@ with gr.Blocks(title="AI 智能体") as demo:
         fn=login,
         inputs=[username_input, pin_input],
         outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab, current_user_display, user_management_tab],
-        js="(username, pin) => { sessionStorage.setItem('suo_user', username); window.history.replaceState({}, '', '/?user=' + username); return [username, pin]; }",
+        js="(username, pin) => { sessionStorage.setItem('suo_user', username); window.history.replaceState({}, '', '/?user=' + username + '&project=主对话'); return [username, pin]; }",
         show_progress="hidden"
     )
 
@@ -597,22 +597,37 @@ with gr.Blocks(title="AI 智能体") as demo:
         show_progress="hidden"
     )
 
-    def load_history(session_username):
+    def load_history(session_username, session_project=None):
         if session_username:
             user = get_user_info(session_username)
             if user:
-                session_id = user["username"]
+                session_id = f"{user['username']}_{session_project or '主对话'}"
                 memory.set_tenant(session_id, user["tenant"])
                 memory.set_current_user(user)
                 hist = memory.get_history(session_id)
                 tenants = get_available_tenants()
                 user_full = f"{user['display_name']} ({user['department']} - {user['position']})"
+                
+                # 【核心修复】从 Memory 中扫描并恢复该用户的全部项目列表
+                new_project_names = ["主对话"]
+                for key in memory.memory_store.keys():
+                    if key.startswith(f"{user['username']}_") and key.split("_", 1)[1] != "主对话":
+                        new_project_names.append(key.split("_", 1)[1])
+                # 若前端存在项目列表则合并去重
+                if "project_names" in locals() and project_names.value:
+                    for p in project_names.value:
+                        if p not in new_project_names:
+                            new_project_names.append(p)
+
                 return (
                     user,
                     gr.update(visible=False),
                     gr.update(visible=True),
                     hist if hist else [],
                     gr.Dropdown(choices=tenants, value=user["tenant"]),
+                    gr.update(choices=new_project_names, value=session_project or "主对话"),
+                    session_project or "主对话",
+                    new_project_names,
                     "",
                     f"**当前用户：{user_full}**",
                     gr.update(visible=(user.get("role") == "admin")),
@@ -625,6 +640,9 @@ with gr.Blocks(title="AI 智能体") as demo:
             gr.update(visible=False),
             [],
             gr.Dropdown(choices=get_available_tenants(), value="default"),
+            gr.update(choices=["主对话"], value="主对话"),
+            "主对话",
+            ["主对话"],
             "",
             "",
             gr.update(visible=False),
@@ -636,8 +654,15 @@ with gr.Blocks(title="AI 智能体") as demo:
     demo.load(
         fn=load_history,
         inputs=[session_user_input],
-        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab, current_user_display, user_management_tab],
-        js="() => { const urlParams = new URLSearchParams(window.location.search); const user = urlParams.get('user') || sessionStorage.getItem('suo_user') || ''; if (user) sessionStorage.setItem('suo_user', user); return user; }",
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, project_list, current_project, project_names, login_msg, user_display, workflow_tab, current_user_display, user_management_tab],
+        js="""() => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const user = urlParams.get('user') || sessionStorage.getItem('suo_user') || '';
+            const project = urlParams.get('project') || '主对话';
+            if (user) sessionStorage.setItem('suo_user', user);
+            // 修复刷新后白屏卡顿：直接通过 URL 同步返回用户和项目
+            return [user, project];
+        }""",
         show_progress="hidden"
     )
 
