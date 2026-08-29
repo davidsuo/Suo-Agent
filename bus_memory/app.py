@@ -537,16 +537,22 @@ with gr.Blocks(title="AI 智能体") as demo:
         except Exception as e:
             return [["读取失败", str(e), "", "", "", ""]]
 
-    def create_user(username, pin, display_name, department, position, role):
+    def create_user(username, pin, display_name, department, position, role, user):
         import sqlite3, os
         try:
             db_path = os.path.join(os.getcwd(), "users.db")
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
-            cursor.execute("INSERT INTO users (username, display_name, pin, department, position, role, tenant) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                           (username.strip().lower(), display_name, pin, department, position, role, username.strip().lower()))
+            cursor.execute(
+                "INSERT INTO users (username, display_name, pin, department, position, role, tenant) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (username.strip().lower(), display_name, pin, department, position, role, username.strip().lower())
+            )
             conn.commit()
             conn.close()
+            # 【修复3：添加用户管理日志】
+            if user:
+                simple_log_tool(user['username'], f"创建新用户 {username}", "create_user", {"username": username, "role": role}, "用户创建成功")
             return f"✅ 用户 {username} 创建成功！", gr.update(value=list(load_users().value))
         except Exception as e:
             return f"❌ 创建失败：{e}", gr.update(value=[])

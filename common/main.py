@@ -128,20 +128,27 @@ log_lock = threading.Lock()
 
 def simple_log_tool(session_id, user_query, tool_name, arguments, result):
     """记录常规模式下的单个工具调用"""
+    from zoneinfo import ZoneInfo
+    import re as _re
+    
     real_username = session_id.split('_')[0] if '_' in session_id else session_id
     user_info = get_user_info(real_username) if real_username else None
     username = user_info.get("username", "unknown") if user_info else "unknown"
     role = user_info.get("role", "unknown") if user_info else "unknown"
     status = "success" if not _is_error_result(result) else "failed"
 
-    # 【核心修复】过滤掉系统注入的Prompt（以“请严格按照以下”开头的），只保留用户原始意图
+    # 【修复2：清洗乱码】如果是系统Prompt或超大文本，提取真实用户问题
     if user_query and "请严格按照以下" in user_query:
-        user_query = user_query.split("\n")[0]  # 只取第一行真实意图
-    # 限制长度，防止过长的CSV数据撑爆日志
-    clean_query = (user_query[:100] + "...") if user_query and len(user_query) > 100 else user_query
+        match = _re.search(r"【用户问题】\s*(.*)", user_query)
+        if match:
+            user_query = match.group(1)
+        else:
+            user_query = "复杂系统操作/知识库检索"
+    # 清洗后限制长度，防止过长的数据撑爆日志
+    clean_query = (user_query[:80] + "...") if user_query and len(user_query) > 80 else user_query
 
     entry = {
-        "timestamp": datetime.datetime.now().isoformat(),
+        "timestamp": datetime.datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S"),  # 【修复1：北京时间精确到秒】
         "session_id": session_id,
         "username": username,
         "role": role,
@@ -529,8 +536,13 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                     step_times[step_id] = round(time.monotonic() - step_start, 3)
                     total_time = round(time.monotonic() - start_total, 3)
                     enhanced_log_plan(session_id, query, plan, results, step_times, "error", total_time, completed_steps)
-                    memory.append(session_id, original_query, answer)
-                    return output_guard(answer)
+                    # 【修复4：优化图片切换延迟】避免将超长 Base64 图片存入 Memory
+                    if image_output:
+                        # 只存对话文字部分，不存Base64图片数据
+                        memory.append(session_id, original_query, answer.split("\n\n")[0] if "\n\n" in answer else answer)
+                    else:
+                        memory.append(session_id, original_query, answer)
+                    return answer
             else:
                 results[step_id] = f"工具 {tool_name} 未配置"
 
