@@ -3,32 +3,69 @@ import os
 import json
 import uuid
 import datetime
+import sqlite3
 import re
 from typing import List
 
-RAG_DATA_FILE = os.path.join(os.getcwd(), "rag_data.json")
+RAG_DB_FILE = os.path.join(os.getcwd(), "rag_data.db")
 GLOBAL_KEY = "__global__"
 
+def _get_conn():
+    conn = sqlite3.connect(RAG_DB_FILE)
+    conn.execute('''CREATE TABLE IF NOT EXISTS rag_items (
+        id TEXT PRIMARY KEY,
+        store_key TEXT,
+        text TEXT,
+        tags TEXT,
+        created_at TEXT
+    )''')
+    return conn
+
 def _load_store() -> dict:
-    if os.path.exists(RAG_DATA_FILE):
-        try:
-            with open(RAG_DATA_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
+    store = {}
+    try:
+        conn = _get_conn()
+        cursor = conn.cursor()
+        cursor.execute("SELECT store_key, text FROM rag_items")
+        for key, text in cursor.fetchall():
+            if key not in store:
+                store[key] = []
+            store[key].append({"text": text})
+        conn.close()
+    except Exception:
+        pass
+    return store
 
 def _save_store(store: dict):
-    with open(RAG_DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(store, f, ensure_ascii=False, indent=2)
+    try:
+        conn = _get_conn()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM rag_items") # 每次全量覆盖，确保一致性
+        for key, items in store.items():
+            for item in items:
+                cursor.execute("INSERT INTO rag_items (id, store_key, text) VALUES (?, ?, ?)",
+                               (str(uuid.uuid4()), key, item["text"]))
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
 
-# 【优化1】切分增大，减少切片数量至约75个，提升性能
-def _chunk_text(text: str, chunk_size=3000) -> List[str]:
+# 【核心修复1】切片变小且按行切分，保证每个月的数据独立，不被切散
+def _chunk_text(text: str, chunk_size=1500) -> List[str]:
     if len(text) <= chunk_size:
         return [text]
+    lines = text.split("\n")
     chunks = []
-    for i in range(0, len(text), chunk_size):
-        chunks.append(text[i:i + chunk_size])
+    current_chunk = ""
+    for line in lines:
+        if len(current_chunk) + len(line) > chunk_size:
+            if current_chunk:
+                chunks.append(current_chunk)
+            current_chunk = line + "\n"
+        else:
+            current_chunk += line + "\n"
+    if current_chunk:
+        chunks.append(current_chunk)
     return chunks
 
 def index_document(file_path: str, session_id: str, tags: str = "") -> str:
@@ -47,21 +84,14 @@ def index_document(file_path: str, session_id: str, tags: str = "") -> str:
         if ext in [".txt", ".md"]:
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
-                
         elif ext in [".csv", ".xlsx", ".xls"]:
             if ext == ".csv":
                 df = pd.read_csv(file_path)
             else:
                 df = pd.read_excel(file_path)
-            # 【优化2】仅保留前300行，防止数据过大，并转为整齐的Markdown表格
-            df = df.head(300)
-            try:
-                content = df.to_markdown(index=False)
-            except ImportError:
-                content = df.to_string(index=False)
-            except Exception:
-                content = df.to_string(index=False)
-            
+            # 转成紧凑的文本格式，每行是一条数据
+            df = df.fillna("")
+            content = df.to_csv(index=False) # 用CSV格式，AI能看懂，且每行独立
         elif ext == ".pdf":
             try:
                 from pypdf import PdfReader
@@ -70,7 +100,6 @@ def index_document(file_path: str, session_id: str, tags: str = "") -> str:
                     content += page.extract_text() + "\n"
             except ImportError:
                 return "❌ 缺少 pypdf 库"
-                
         elif ext == ".docx":
             try:
                 from docx import Document
@@ -137,6 +166,7 @@ def search_knowledge(query: str, session_id: str, tags: str = "") -> str:
     matched_texts = []
     if target_prefix:
         for doc in combined_docs:
+            # 【核心修复2】如果用户问具体月份，直接返回包含该月份的数据（放宽字符限制到8000，确保数据完整）
             if target_prefix in doc.get("text", ""):
                 matched_texts.append(doc.get("text", ""))
     else:
@@ -154,9 +184,7 @@ def search_knowledge(query: str, session_id: str, tags: str = "") -> str:
             if score >= 3:
                 matched_texts.append(text)
 
-    # 【优化3】严格限制返回给大模型的文本量，防止卡顿
     if matched_texts:
-        # 只截取前几个，总长限制在 2500 字符以内
-        result = "\n\n".join(matched_texts[:5])[:2500]
-        return result
+        # 拼接并返回足够长度，让预计算逻辑能算出结果
+        return "\n\n".join(matched_texts[:10])[:8000]
     return ""

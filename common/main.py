@@ -318,7 +318,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
                 f"【用户问题】\n{query}"
             )
         # 如果有知识库，context 就设为知识库内容（限制长度，防止卡顿）
-        context = kb_context[:2500] if kb_context else ""
+        context = kb_context[:8000] if kb_context else ""
 
     # ================= 获取用户角色（强化容错，防止权限误判） =================
     real_username = session_id.split('_')[0] if '_' in session_id else session_id
