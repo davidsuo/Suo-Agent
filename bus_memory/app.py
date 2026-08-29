@@ -432,8 +432,6 @@ with gr.Blocks(title="AI 智能体") as demo:
                             placeholder="例如：财务报表, 产品文档"
                         )
                         kb_index_btn = gr.Button("🚀 提交索引", variant="primary")
-                        refresh_kb_docs_btn = gr.Button("🔄 刷新文档列表")
-                        refresh_kb_docs_btn.click(fn=load_kb_docs, inputs=[], outputs=[kb_doc_table])
                     kb_status = gr.Markdown("")
                     gr.Markdown("### 📂 已上传文档列表")
                     kb_doc_table = gr.Dataframe(
@@ -700,11 +698,14 @@ with gr.Blocks(title="AI 智能体") as demo:
         file_path = file if isinstance(file, str) else (file.name if hasattr(file, 'name') else str(file))
         session_id = f"{user['username']}_{current_project}"
         msg = index_document(file_path, session_id, kb_tags)
-        
         simple_log_tool(session_id, f"上传知识库文件:{os.path.basename(file_path)}", "knowledge_index", {"file_path": file_path, "tags": kb_tags}, msg)
         
-        # 【新逻辑】上传完成后立即刷新列表
-        return msg, gr.update(value=load_kb_docs())
+        # 上传后自动刷新列表
+        try:
+            new_list = load_kb_docs()
+        except Exception:
+            new_list = []
+        return msg, gr.update(value=new_list)
 
     kb_index_btn.click(
         fn=handle_kb_index,
@@ -1057,6 +1058,10 @@ with gr.Blocks(title="AI 智能体") as demo:
 
 
 # ================= 启动入口 =================
+    # 知识库列表加载与刷新
+    refresh_kb_docs_btn = gr.Button("🔄 刷新文档列表")
+    refresh_kb_docs_btn.click(fn=load_kb_docs, inputs=[], outputs=[kb_doc_table])
+    
 if __name__ == "__main__":
     init_users_db()
     init_db()
