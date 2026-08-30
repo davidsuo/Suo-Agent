@@ -315,13 +315,13 @@ with gr.Blocks(title="AI 智能体") as demo:
                             with gr.Row(elem_id="current-user-row"):
                                 current_user_display = gr.Markdown(value="**当前用户：** 未登录", elem_id="current-user-display")
                             with gr.Row(elem_id="project-actions-row"):
-                                add_project_btn = gr.Button("项目 +", elem_id="add-project-btn", scale=0, visible=True)
-                                delete_project_btn = gr.Button("🗑️ 删除当前项目", visible=True, scale=0, elem_id="delete-project-btn")
+                                add_project_btn = gr.Button("新建对话窗 +", elem_id="add-project-btn", scale=0, visible=True)
+                                delete_project_btn = gr.Button("🗑️ 删除对话窗", visible=True, scale=0, elem_id="delete-project-btn")
                             with gr.Row(elem_id="project-creation-row", visible=False) as project_creation_row:
-                                project_input = gr.Textbox(placeholder="输入项目名称...", scale=3, show_label=False, elem_id="project-input-box")
+                                project_input = gr.Textbox(placeholder="输入对话窗名称...", scale=3, show_label=False, elem_id="project-input-box")
                                 create_project_btn = gr.Button("创建", scale=1, min_width=60, elem_id="create-project-btn")
                                 cancel_project_btn = gr.Button("×", scale=1, min_width=40, elem_id="cancel-project-btn")
-                            project_list = gr.Radio(choices=["主对话"], value="主对话", label="项目列表", interactive=True, visible=True, elem_id="project-list")
+                            project_list = gr.Radio(choices=["主对话"], value="主对话", label="对话窗列表", interactive=True, visible=True, elem_id="project-list")
 
                         with gr.Column(scale=3, elem_id="chat-main-area"):
                             chatbot = gr.Chatbot(label="对话", height=500, value=[], show_label=False)
