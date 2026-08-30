@@ -503,25 +503,56 @@ with gr.Blocks(title="AI 智能体") as demo:
     def login(username, pin):
         user = authenticate(username.strip().lower(), pin)
         if user:
-            session_id = user["username"]
+            # 【修复1】登录时强制进入"主对话"项目
+            session_id = f"{user['username']}_主对话"
             memory.set_tenant(session_id, user["tenant"])
             memory.set_current_user(user)
             hist = memory.get_history(session_id)
             tenants = get_available_tenants()
+            
+            # 【修复2】动态恢复该用户的全部项目列表（如产品部、财务部）
+            new_project_names = memory.get_all_projects(user['username'])
+            
             user_full = f"{user['display_name']} ({user['department']} - {user['position']})"
-            return (user, gr.update(visible=False), gr.update(visible=True), hist if hist else [],
-                    gr.Dropdown(choices=tenants, value=user["tenant"]), f"✅ 登录成功，欢迎 {user['display_name']}！",
-                    f"**当前用户：{user_full}**", gr.update(visible=(user.get("role") == "admin")),
-                    f"**当前用户：** {user_full}", gr.update(visible=(user.get("role") == "admin")))
+            return (
+                user,
+                gr.update(visible=False),
+                gr.update(visible=True),
+                hist if hist else [],
+                gr.Dropdown(choices=tenants, value=user["tenant"]),
+                gr.update(choices=new_project_names, value="主对话"), # 恢复项目列表
+                "主对话",                 # 设置当前项目
+                new_project_names,       # 恢复项目列表状态
+                f"✅ 登录成功，欢迎 {user['display_name']}！",
+                f"**当前用户：{user_full}**",
+                gr.update(visible=(user.get("role") == "admin")),
+                f"**当前用户：** {user_full}",
+                gr.update(visible=(user.get("role") == "admin"))
+            )
         else:
-            return (None, gr.update(visible=True), gr.update(visible=False), [],
-                    gr.Dropdown(choices=get_available_tenants(), value="default"), "❌ 用户名或 PIN 码错误",
-                    "", gr.update(visible=False), "**当前用户：** 未登录", gr.update(visible=False))
+            return (
+                None,
+                gr.update(visible=True),
+                gr.update(visible=False),
+                [],
+                gr.Dropdown(choices=get_available_tenants(), value="default"),
+                gr.update(choices=["主对话"], value="主对话"),
+                "主对话",
+                ["主对话"],
+                "❌ 用户名或 PIN 码错误",
+                "",
+                gr.update(visible=False),
+                "**当前用户：** 未登录",
+                gr.update(visible=False)
+            )
 
-    login_btn.click(fn=login, inputs=[username_input, pin_input],
-                    outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab, current_user_display, user_management_tab],
-                    js="(username, pin) => { sessionStorage.setItem('suo_user', username); window.history.replaceState({}, '', '/?user=' + username + '&project=主对话'); return [username, pin]; }",
-                    show_progress="hidden")
+    login_btn.click(
+        fn=login,
+        inputs=[username_input, pin_input],
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, project_list, current_project, project_names, login_msg, user_display, workflow_tab, current_user_display, user_management_tab],
+        js="(username, pin) => { sessionStorage.setItem('suo_user', username); window.history.replaceState({}, '', '/?user=' + username + '&project=主对话'); return [username, pin]; }",
+        show_progress="hidden"
+    )
 
     def logout():
         memory.set_current_user(None)
