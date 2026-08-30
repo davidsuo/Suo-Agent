@@ -786,7 +786,6 @@ if __name__ == "__main__":
         server_port=port,
         theme=gr.themes.Soft(),
         head=voice_script,
-        footer="遨游AI星空，享受AI快乐",
         css="""
             /* 强制隐藏所有 Gradio 加载进度条、飞镖、水波纹 */
             .gradio-container .loading,
