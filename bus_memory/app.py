@@ -229,7 +229,18 @@ voice_script = """
             mediaRecorder.stop();
         }
     });
-})();
+    
+    // 【页脚替换修复】隐藏 Gradio 默认页脚，并插入我们自己的定制标语
+    window.addEventListener('load', function() {
+        var oldFooters = document.querySelectorAll('footer, .gradio-container footer');
+        oldFooters.forEach(function(el) {
+            el.style.display = 'none';
+        });
+        var newFooter = document.createElement('div');
+        newFooter.style.cssText = 'text-align: center; padding: 15px; color: #888; font-size: 14px; width: 100%;';
+        newFooter.innerHTML = '遨游AI星空，享受AI快乐';
+        document.body.appendChild(newFooter);
+    });
 </script>
 """
 
