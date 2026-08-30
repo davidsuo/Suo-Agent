@@ -284,11 +284,6 @@ with gr.Blocks(title="AI 智能体") as demo:
     project_names = gr.State(["主对话"])
 
     # ---------- 登录界面 ----------
-    # ================= 自定义底部标语（全局显示） =================
-    gr.Markdown(
-        "遨游AI星空，享受AI快乐",
-        elem_id="custom-footer-md"
-    )
 
     with gr.Row(elem_id="login-wrapper"):
         with gr.Column(scale=1, elem_id="login-box") as login_column:
@@ -415,6 +410,12 @@ with gr.Blocks(title="AI 智能体") as demo:
                     kb_doc_table = gr.Dataframe(headers=["文档名称", "索引时间"], interactive=False, wrap=True, elem_id="kb-doc-table")
 
         user_display = gr.Markdown("", visible=False)
+        
+    # ================= 自定义底部标语（全局显示，放在最后以固定在最底部） =================
+    gr.Markdown(
+        "遨游AI星空，享受AI快乐",
+        elem_id="custom-footer-md"
+    )
 
     # ================= 底层逻辑与事件绑定 =================
     def load_logs(user=None):
