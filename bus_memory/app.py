@@ -483,10 +483,13 @@ with gr.Blocks(title="AI 智能体") as demo:
         return (None, gr.update(visible=True), gr.update(visible=False), [], gr.Dropdown(choices=get_available_tenants(), value="default"),
                 "", "", gr.update(visible=False), "**当前用户：** 未登录", gr.update(visible=False))
 
-    logout_btn.click(fn=logout, inputs=[],
-                     outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab, current_user_display, user_management_tab],
-                     js="() => { sessionStorage.removeItem('suo_user'); window.history.replaceState({}, '', '/'); return []; }",
-                     show_progress="hidden")
+    logout_btn.click(
+        fn=logout,
+        inputs=[],
+        outputs=[user_state, login_column, chat_column, chatbot, tenant_dropdown, login_msg, user_display, workflow_tab, current_user_display, user_management_tab],
+        js="() => { sessionStorage.removeItem('suo_user'); window.location.href = '/'; return []; }",
+        show_progress="hidden"
+    )
 
     def load_history(session_username, session_project=None):
         if session_username:
