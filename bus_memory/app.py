@@ -246,6 +246,22 @@ voice_script = """
     });
     // 监听整个 body 的子节点变化
     observer.observe(document.body, { childList: true, subtree: true });
+    
+    /* 【终极方案】纯CSS实现自定义页脚，完美绕过Gradio动态DOM干扰 */
+    body::after {
+        content: "遨游AI星空，享受AI快乐";
+        display: block;
+        text-align: center;
+        padding: 12px 0;
+        color: #888;
+        font-size: 14px;
+    }
+            
+    /* 确保隐藏原本的英文footer，不冲突 */
+    .gradio-container footer,
+    footer {
+        display: none !important;
+    }
 </script>
 """
 
