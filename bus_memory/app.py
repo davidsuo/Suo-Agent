@@ -730,7 +730,6 @@ with gr.Blocks(title="AI 智能体") as demo:
         fn=create_project,
         inputs=[project_input, project_names, current_project],
         outputs=[project_list, project_input, add_project_btn, project_creation_row, current_project, project_names],
-        js="(project) => { const urlParams = new URLSearchParams(window.location.search); const user = urlParams.get('user') || sessionStorage.getItem('suo_user'); if(user) window.history.replaceState({}, '', '/?user=' + encodeURIComponent(user) + '&project=' + encodeURIComponent(project)); return project; }",
         show_progress="hidden"
     )
 
@@ -747,7 +746,6 @@ with gr.Blocks(title="AI 智能体") as demo:
         fn=switch_project,
         inputs=[project_list, user_state],
         outputs=[chatbot, text_input, current_project],
-        js="(project) => { const urlParams = new URLSearchParams(window.location.search); const user = urlParams.get('user') || sessionStorage.getItem('suo_user'); if(user) window.history.replaceState({}, '', '/?user=' + encodeURIComponent(user) + '&project=' + encodeURIComponent(project)); return project; }",
         show_progress="hidden"
     )
 
