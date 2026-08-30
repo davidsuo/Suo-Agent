@@ -503,14 +503,14 @@ with gr.Blocks(title="AI 智能体") as demo:
     def login(username, pin):
         user = authenticate(username.strip().lower(), pin)
         if user:
-            # 【修复1】登录时强制进入"主对话"项目
+            # 登录时强制进入"主对话"项目，并加载历史
             session_id = f"{user['username']}_主对话"
             memory.set_tenant(session_id, user["tenant"])
             memory.set_current_user(user)
             hist = memory.get_history(session_id)
             tenants = get_available_tenants()
             
-            # 【修复2】动态恢复该用户的全部项目列表（如产品部、财务部）
+            # 动态恢复该用户的全部项目列表（如产品部、财务部）
             new_project_names = memory.get_all_projects(user['username'])
             
             user_full = f"{user['display_name']} ({user['department']} - {user['position']})"
