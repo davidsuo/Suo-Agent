@@ -726,8 +726,13 @@ with gr.Blocks(title="AI 智能体") as demo:
         new_project_names = new_choices.copy()
         return (gr.update(choices=new_choices, value=new_name), "", gr.update(visible=True), gr.update(visible=False), new_name, new_project_names)
 
-    create_project_btn.click(fn=create_project, inputs=[project_input, project_names, current_project],
-                             outputs=[project_list, project_input, add_project_btn, project_creation_row, current_project, project_names], show_progress="hidden")
+    create_project_btn.click(
+        fn=create_project,
+        inputs=[project_input, project_names, current_project],
+        outputs=[project_list, project_input, add_project_btn, project_creation_row, current_project, project_names],
+        js="(project) => { const urlParams = new URLSearchParams(window.location.search); const user = urlParams.get('user') || sessionStorage.getItem('suo_user'); if(user) window.history.replaceState({}, '', '/?user=' + encodeURIComponent(user) + '&project=' + encodeURIComponent(project)); return project; }",
+        show_progress="hidden"
+    )
 
     def switch_project(new_project, user):
         if not user:
@@ -738,7 +743,13 @@ with gr.Blocks(title="AI 智能体") as demo:
         new_history = memory.get_history(session_id)
         return new_history, "", new_project
 
-    project_list.change(fn=switch_project, inputs=[project_list, user_state], outputs=[chatbot, text_input, current_project], show_progress="hidden")
+    project_list.change(
+        fn=switch_project,
+        inputs=[project_list, user_state],
+        outputs=[chatbot, text_input, current_project],
+        js="(project) => { const urlParams = new URLSearchParams(window.location.search); const user = urlParams.get('user') || sessionStorage.getItem('suo_user'); if(user) window.history.replaceState({}, '', '/?user=' + encodeURIComponent(user) + '&project=' + encodeURIComponent(project)); return project; }",
+        show_progress="hidden"
+    )
 
     def delete_project(current_project, project_names):
         if not current_project or current_project not in project_names:
