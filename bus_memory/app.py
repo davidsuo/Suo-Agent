@@ -722,10 +722,21 @@ with gr.Blocks(title="AI 智能体") as demo:
         new_history, clear_text, _, user_msg, assistant_msg = await unified_handler(message, history, pending_file_val, user_state, current_project)
         return new_history, clear_text, None, "", gr.update(visible=False), user_msg, assistant_msg
 
-    text_input.submit(fn=submit_text_with_file, inputs=[text_input, chatbot, user_state, pending_file, current_project],
-                      outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn, last_user_message, last_assistant_message], show_progress="hidden")
-    send_btn.click(fn=submit_text_with_file, inputs=[text_input, chatbot, user_state, pending_file, current_project],
-                   outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn, last_user_message, last_assistant_message], show_progress="hidden")
+    text_input.submit(
+        fn=submit_text_with_file,
+        inputs=[text_input, chatbot, user_state, pending_file, current_project],
+        outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn, last_user_message, last_assistant_message],
+        js="(text) => { const inputEl = document.querySelector('#input-row-final input, #input-row-final textarea'); if (inputEl) { setTimeout(() => { inputEl.value = ''; }, 0); } return text; }",
+        show_progress="hidden"
+    )
+                      
+    send_btn.click(
+        fn=submit_text_with_file,
+        inputs=[text_input, chatbot, user_state, pending_file, current_project],
+        outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn, last_user_message, last_assistant_message],
+        js="(text) => { const inputEl = document.querySelector('#input-row-final input, #input-row-final textarea'); if (inputEl) { setTimeout(() => { inputEl.value = ''; }, 0); } return text; }",
+        show_progress="hidden"
+    )
 
     def handle_file_upload(file):
         if file is None:
