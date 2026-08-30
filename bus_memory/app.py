@@ -730,7 +730,6 @@ with gr.Blocks(title="AI 智能体") as demo:
     )
                       
     send_btn.click(
-    send_btn.click(
         fn=submit_text_with_file,
         inputs=[text_input, chatbot, user_state, pending_file, current_project],
         outputs=[chatbot, text_input, pending_file, attachment_html, clear_file_btn, last_user_message, last_assistant_message],
