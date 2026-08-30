@@ -262,6 +262,12 @@ voice_script = """
     footer {
         display: none !important;
     }
+    
+    // 强制隐藏 Gradio 原生页脚（延迟执行，防止被覆盖）
+    setTimeout(() => {
+        const allFooters = document.querySelectorAll('footer, .gradio-container footer');
+        allFooters.forEach(el => el.remove());
+    }, 500);
 </script>
 """
 
@@ -278,6 +284,12 @@ with gr.Blocks(title="AI 智能体") as demo:
     project_names = gr.State(["主对话"])
 
     # ---------- 登录界面 ----------
+    # ================= 自定义底部标语（全局显示） =================
+    gr.Markdown(
+        "遨游AI星空，享受AI快乐",
+        elem_id="custom-footer-md"
+    )
+
     with gr.Row(elem_id="login-wrapper"):
         with gr.Column(scale=1, elem_id="login-box") as login_column:
             gr.Markdown("## 🚀 企业AI原生系统")
@@ -1057,6 +1069,15 @@ if __name__ == "__main__":
                 border-radius: 6px !important;
                 font-size: 18px !important;
                 font-weight: bold !important;
+            }
+            
+            /* 自定义底部标语样式 */
+            #custom-footer-md p {
+                text-align: center;
+                color: #888;
+                font-size: 14px;
+                padding-bottom: 20px;
+                margin: 0 !important;
             }
             #create-project-btn {
                 min-width: 60px !important;
