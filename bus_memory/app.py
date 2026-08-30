@@ -230,17 +230,22 @@ voice_script = """
         }
     });
     
-    // 【页脚替换修复】隐藏 Gradio 默认页脚，并插入我们自己的定制标语
-    window.addEventListener('load', function() {
-        var oldFooters = document.querySelectorAll('footer, .gradio-container footer');
-        oldFooters.forEach(function(el) {
-            el.style.display = 'none';
-        });
-        var newFooter = document.createElement('div');
-        newFooter.style.cssText = 'text-align: center; padding: 15px; color: #888; font-size: 14px; width: 100%;';
-        newFooter.innerHTML = '遨游AI星空，享受AI快乐';
-        document.body.appendChild(newFooter);
+    // 【终极修复】监听 DOM 变化，确保一旦 Gradio 注入默认页脚就立即替换掉
+    const observer = new MutationObserver(() => {
+        const oldFooters = document.querySelectorAll('.gradio-container footer, footer');
+        oldFooters.forEach(footer => footer.remove());
+
+        // 确保我们的标语只添加一次
+        if (!document.getElementById('custom-footer')) {
+            const newFooter = document.createElement('div');
+            newFooter.id = 'custom-footer';
+            newFooter.style.cssText = 'text-align: center; padding: 15px; color: #888; font-size: 14px; width: 100%;';
+            newFooter.innerHTML = '遨游AI星空，享受AI快乐';
+            document.body.appendChild(newFooter);
+        }
     });
+    // 监听整个 body 的子节点变化
+    observer.observe(document.body, { childList: true, subtree: true });
 </script>
 """
 
@@ -787,6 +792,13 @@ if __name__ == "__main__":
         theme=gr.themes.Soft(),
         head=voice_script,
         css="""
+            /* 强制隐藏 Gradio 默认页脚 */
+            .gradio-container footer,
+            .gradio-container .footer,
+            footer {
+                display: none !important;
+            }
+            
             /* 强制隐藏所有 Gradio 加载进度条、飞镖、水波纹 */
             .gradio-container .loading,
             .gradio-container .progress-container,
