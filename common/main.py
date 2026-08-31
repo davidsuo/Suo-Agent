@@ -1,23 +1,26 @@
 # common/main.py
-import sys, os
+import sys, os, json, asyncio, traceback, re, datetime, time
+import threading
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-import json, asyncio, traceback, re, datetime, time
-import threading
+# 环境变量加载（在文件最开头执行）
 from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 
-from fastapi import FastAPI, Request
+# 核心框架和库导入
+from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from openai import OpenAI
 
-from common.memory import memory
-try:
-    from common import rag
-except ImportError:
-    rag = None
+# 全局客户端初始化（必须在这里，不能在文件末尾！）
+client = OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY"),
+    base_url="https://api.deepseek.com"
+)
 
+# 导入系统内部模块
 from common.tools import (
     TOOLS_METADATA, AVAILABLE_TOOLS,
     get_current_time, calculator,
@@ -28,19 +31,35 @@ from common.tools import (
     add_event, list_events, delete_event,
     recognize_table,
     send_email,
-    execute_workflow_tool,  # <--- 补全了缺失的导入
+    execute_workflow_tool,
     COMPENSATIONS,
 )
-
 from common.guardrails import input_guard, tool_call_guard, output_guard
 from common.pending_tools import pending, save_pending
-# ✅ 核心修复：补全导入 ROLE_PERMISSIONS，用于角色校验和容错
 from common.auth import authenticate, get_user_info, is_tool_allowed, ROLE_PERMISSIONS, init_users_db
 from common.rag import search_knowledge
-
+from common.memory import memory
 
 # ==================== 全局应用与模型客户端 ====================
 app = FastAPI()
+
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+DIST_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'frontend', 'dist')
+
+if os.path.exists(DIST_DIR):
+    app.mount("/assets", StaticFiles(directory=os.path.join(DIST_DIR, "assets")), name="assets")
+    
+    @app.get("/")
+    async def serve_react():
+        return FileResponse(os.path.join(DIST_DIR, "index.html"))
+    
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        if full_path.startswith("api"):
+            return {"detail": "Not Found"}
+        return FileResponse(os.path.join(DIST_DIR, "index.html"))
 
 # ================= CORS 跨域配置 =================
 from fastapi.middleware.cors import CORSMiddleware
@@ -128,10 +147,6 @@ async def api_chat(request: ChatRequest):
     except Exception as e:
         return {"answer": f"系统处理异常: {e}"}
 
-client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    base_url="https://api.deepseek.com"
-)
 
 SYSTEM_PROMPT = """
 你是一个全能的AI助手，可以使用记忆、知识库和多种工具来回答用户问题。
@@ -271,36 +286,6 @@ def simple_log_tool(session_id, user_query, tool_name, arguments, result):
 class ChatRequest(BaseModel):
     session_id: str = "default"
     query: str
-
-@app.get("/", response_class=HTMLResponse)
-def home():
-    return """
-    <!DOCTYPE html>
-    <html>
-    <head><title>AI Agent with Tools</title></head>
-    <body>
-        <h2>AI 智能体（记忆 + 知识库 + 工具）</h2>
-        <label>会话ID: <input type="text" id="session_id" value="default"></label>
-        <br><br>
-        <input type="text" id="query" placeholder="试试问：现在几点？或计算(123+456)*7" size="50">
-        <button onclick="ask()">发送</button>
-        <pre id="answer"></pre>
-        <script>
-            async function ask() {
-                const sid = document.getElementById("session_id").value;
-                const q = document.getElementById("query").value;
-                const res = await fetch("/chat", {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json"},
-                    body: JSON.stringify({session_id: sid, query: q})
-                });
-                const data = await res.json();
-                document.getElementById("answer").innerText = data.answer;
-            }
-        </script>
-    </body>
-    </html>
-    """
 
 @app.post("/chat")
 async def chat(request: ChatRequest):
