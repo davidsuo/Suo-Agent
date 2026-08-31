@@ -111,9 +111,18 @@ code {
 }
 
 /* Markdown 渲染美化（极简无边框版） */
+.markdown-body {
+  text-align: left; /* 【核心修复】强制 Markdown 内容左对齐！ */
+}
+
 .markdown-body h1, .markdown-body h2, .markdown-body h3 {
   margin-top: 0.5em;
   margin-bottom: 0.5em;
+  text-align: left;
+}
+
+.markdown-body p {
+  text-align: left;
 }
 
 .markdown-body table {
@@ -126,7 +135,7 @@ code {
 /* 去掉了所有边框，只保留对齐和留白 */
 .markdown-body th, .markdown-body td {
   padding: 8px 12px;
-  text-align: left;
+  text-align: left; /* 强制表格内容也左对齐 */
   border: none;
 }
 
@@ -138,4 +147,5 @@ code {
 
 .markdown-body ul, .markdown-body ol {
   padding-left: 20px;
+  text-align: left;
 }
