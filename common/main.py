@@ -43,6 +43,32 @@ from common.memory import memory
 # ==================== 全局应用与模型客户端 ====================
 app = FastAPI()
 
+def init_db():
+    """初始化员工数据库（类似 Gradio 的 init_db）"""
+    db_path = "sample.db"
+    if not os.path.exists(db_path):
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS employees (
+                id INTEGER PRIMARY KEY,
+                name TEXT,
+                position TEXT,
+                salary INTEGER
+            )
+        ''')
+        sample_data = [
+            (1, "张三", "工程师", 60000),
+            (2, "李四", "产品经理", 75000),
+            (3, "王五", "设计师", 55000),
+            (4, "赵六", "数据分析师", 68000),
+        ]
+        cursor.executemany("INSERT OR REPLACE INTO employees VALUES (?,?,?,?)", sample_data)
+        conn.commit()
+        conn.close()
+        print("✅ 数据库 sample.db 已自动创建并插入示例数据。")
+
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
@@ -97,7 +123,8 @@ _tool_router = None
 @app.on_event("startup")
 async def startup_event():
     global _query_worker, _command_worker, _tool_router
-    init_users_db()  # 启动时自动初始化数据库
+    init_users_db()  # 初始化用户表
+    init_db()        # 【核心修复】初始化员工表 sample.db
     
     if _query_worker is None:
         bus = EventBus()
