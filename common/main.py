@@ -5,7 +5,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 import json, asyncio, traceback, re, datetime, time
 import threading
 from dotenv import load_dotenv
-load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
@@ -28,17 +28,106 @@ from common.tools import (
     add_event, list_events, delete_event,
     recognize_table,
     send_email,
+    execute_workflow_tool,  # <--- 补全了缺失的导入
     COMPENSATIONS,
 )
+
 from common.guardrails import input_guard, tool_call_guard, output_guard
 from common.pending_tools import pending, save_pending
 # ✅ 核心修复：补全导入 ROLE_PERMISSIONS，用于角色校验和容错
-from common.auth import get_user_info, is_tool_allowed, ROLE_PERMISSIONS
+from common.auth import authenticate, get_user_info, is_tool_allowed, ROLE_PERMISSIONS, init_users_db
 from common.rag import search_knowledge
 
 
 # ==================== 全局应用与模型客户端 ====================
 app = FastAPI()
+
+# ================= CORS 跨域配置 =================
+from fastapi.middleware.cors import CORSMiddleware
+
+# 允许 React 开发服务器跨域访问
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "https://suo-agent.onrender.com"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ================= Pydantic 模型 =================
+from pydantic import BaseModel
+
+class LoginRequest(BaseModel):
+    username: str
+    pin: str
+
+class ChatRequest(BaseModel):
+    session_id: str
+    query: str
+
+# ================= 初始化 Workers（供 API 工具链使用） =================
+from bus_memory.event_bus import EventBus
+from common.agents_memory import WorkerAgent, QueryWorker
+from common.auth import init_users_db
+
+_query_worker = None
+_command_worker = None
+_tool_router = None
+
+# 只保留一个统一的 startup 事件
+@app.on_event("startup")
+async def startup_event():
+    global _query_worker, _command_worker, _tool_router
+    init_users_db()  # 启动时自动初始化数据库
+    
+    if _query_worker is None:
+        bus = EventBus()
+        query_worker_tools = {
+            "get_current_time": get_current_time, "calculator": calculator,
+            "query_database": query_database, "list_events": list_events,
+            "web_search": web_search, "fetch_webpage": fetch_webpage,
+            "ocr_image": ocr_image, "recognize_table": recognize_table,
+            "analyze_file": analyze_file, "speech_to_text": speech_to_text,
+        }
+        command_worker_tools = {
+            "send_email": send_email, "add_event": add_event,
+            "delete_event": delete_event, "execute_python": execute_python,
+            "generate_image": generate_image, "execute_workflow": execute_workflow_tool,
+        }
+        _query_worker = QueryWorker("QueryWorker", query_worker_tools, bus)
+        _command_worker = WorkerAgent("CommandWorker", command_worker_tools, bus)
+        _tool_router = {}
+        for name in _query_worker.tools:
+            _tool_router[name] = _query_worker
+        for name in _command_worker.tools:
+            _tool_router[name] = _command_worker
+        set_workers(_query_worker, _command_worker, _tool_router)
+    print("✅ FastAPI 初始化完成")
+
+# ================= 登录接口 =================
+@app.post("/api/login")
+async def api_login(request: LoginRequest):
+    user = authenticate(request.username.strip().lower(), request.pin)
+    if user:
+        return {"status": "success", "user": user}
+    return {"status": "error", "message": "用户名或密码错误"}
+
+# ================= 完整的 API 聊天接口（支持全部工具链） =================
+@app.post("/api/chat")
+async def api_chat(request: ChatRequest):
+    # 调用原有的完整 chat_core 逻辑（包含Worker工具调用、RAG、时间查询等）
+    try:
+        answer = await chat_core(
+            request.session_id, 
+            request.query, 
+            _query_worker, 
+            _command_worker, 
+            _tool_router
+        )
+        return {"answer": answer}
+    except Exception as e:
+        return {"answer": f"系统处理异常: {e}"}
+
 client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
     base_url="https://api.deepseek.com"
