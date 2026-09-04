@@ -182,5 +182,5 @@ def search_knowledge(query: str, session_id: str, tags: str = "") -> str:
                 matched_texts.append(text)
 
     if matched_texts:
-        return "\n\n".join(matched_texts[:10])[:8000]
+        return "\n\n".join(matched_texts[:10])[:20000]
     return ""

@@ -1,7 +1,6 @@
 # common/rag_v2.py
-# 新的RAG模块，使用ChromaDB，不影响原有rag.py的功能
-
 import os
+import json
 import uuid
 import datetime
 from typing import List
@@ -14,16 +13,16 @@ except ImportError:
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHROMA_DIR = os.path.join(BASE_DIR, "chroma_db")
+RAG_DATA_FILE = os.path.join(BASE_DIR, "rag_data.json")
 
 # 初始化 ChromaDB 客户端（持久化模式）
 _client = chromadb.PersistentClient(path=CHROMA_DIR)
 _collection = _client.get_or_create_collection(name="enterprise_kb")
 
-# 简单的文档感知分块（基于段落和标题）
-def smart_chunk_text(text: str, max_chunk_size: int = 800) -> List[str]:
+# 简单的文档感知分块
+def smart_chunk_text(text: str, max_chunk_size: int = 1500) -> List[str]:
     if len(text) <= max_chunk_size:
         return [text]
-    # 优先按换行符分割，保留段落完整性
     paragraphs = text.split("\n")
     chunks = []
     current_chunk = ""
@@ -39,7 +38,7 @@ def smart_chunk_text(text: str, max_chunk_size: int = 800) -> List[str]:
     return chunks
 
 def index_document_v2(file_path: str, tags: str = ""):
-    """新的索引入库逻辑：读取 -> 智能分块 -> 向量化入库"""
+    """新的索引入库逻辑：读取 -> 智能分块 -> 向量化入库 -> 同步Json列表与内容"""
     try:
         import pandas as pd
         ext = os.path.splitext(file_path)[1].lower()
@@ -68,7 +67,6 @@ def index_document_v2(file_path: str, tags: str = ""):
                 doc = Document(file_path)
                 for para in doc.paragraphs:
                     content += para.text + "\n"
-                # 提取表格内容（RAG中极其重要）
                 for table in doc.tables:
                     for row in table.rows:
                         row_text = [cell.text for cell in row.cells]
@@ -81,7 +79,6 @@ def index_document_v2(file_path: str, tags: str = ""):
         if not content.strip():
             return "❌ 文件内容为空。"
 
-        # 智能分块
         chunks = smart_chunk_text(content)
         file_name = os.path.basename(file_path)
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -94,6 +91,38 @@ def index_document_v2(file_path: str, tags: str = ""):
             metadatas=metadatas,
             ids=ids
         )
+
+        # 【核心修复】同步更新 rag_data.json，不仅更新files，还要更新store，保证V1模式也能完美检索！
+        store = {"files": [], "store": {}}
+        if os.path.exists(RAG_DATA_FILE):
+            try:
+                with open(RAG_DATA_FILE, "r", encoding="utf-8") as f:
+                    store = json.load(f)
+            except Exception:
+                store = {"files": [], "store": {}}
+
+        if not any(f.get("file_name") == file_name for f in store.get("files", [])):
+            store.setdefault("files", []).append({
+                "file_name": file_name,
+                "tags": tags if tags else "(无)",
+                "created_at": current_time,
+                "chunks": len(chunks)
+            })
+
+        target_key = f"tag_{tags.strip()}" if tags and tags.strip() else "__global__"
+        if target_key not in store["store"]:
+            store["store"][target_key] = []
+        for chunk in chunks:
+            store["store"][target_key].append({
+                "id": str(uuid.uuid4()),
+                "text": chunk,
+                "tags": tags,
+                "file_name": file_name,
+                "time": current_time
+            })
+
+        with open(RAG_DATA_FILE, "w", encoding="utf-8") as f:
+            json.dump(store, f, ensure_ascii=False, indent=2)
 
         return f"✅ [V2] 文档已成功入库到ChromaDB（共 {len(chunks)} 个智能分块）。"
     except Exception as e:
@@ -109,24 +138,23 @@ def search_knowledge_v2(query: str, tags: str = ""):
         if _year_match and _month_match:
             target_prefix = f"{_year_match.group(1)}/{int(_month_match.group(1))}/"
 
-        # 1. 如果传了标签，先用标签过滤，避免全量拉取，提高检索效率
         where_filter = None
         if tags and tags.strip():
             where_filter = {"tags": tags.strip()}
 
-        # 2. 元数据过滤 + 精确匹配模式（解决表格数据的痛点）
+        # 元数据过滤 + 精确匹配模式
         all_data = _collection.get(
             include=["documents", "metadatas"],
-            where=where_filter  # 添加元数据过滤条件
+            where=where_filter
         )
         
         matched_texts = []
         if target_prefix:
-            for doc_text, doc_meta in zip(all_data['documents'], all_data['metadatas']):
+            for doc_text in all_data['documents']:
                 if target_prefix in doc_text:
                     matched_texts.append(doc_text)
         else:
-            # 语义匹配模式：走向量检索（同样支持元数据过滤）
+            # 语义匹配模式
             results = _collection.query(
                 query_texts=[query],
                 n_results=5,
@@ -135,9 +163,8 @@ def search_knowledge_v2(query: str, tags: str = ""):
             if results and results['documents']:
                 matched_texts = results['documents'][0][:5]
 
-        # 3. 合并返回
         if matched_texts:
-            return "\n\n".join(matched_texts[:10])[:8000]
+            return "\n\n".join(matched_texts[:10])[:20000]
         return ""
     except Exception as e:
         print(f"###DEBUG### V2混合检索失败: {e}")
