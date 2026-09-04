@@ -1,3 +1,10 @@
+/* 清除浏览器默认边距 */
+html, body, #root {
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 100% !important;
+}
+
 :root {
   --text: #6b6375;
   --text-h: #08060d;
@@ -148,4 +155,11 @@ code {
 .markdown-body ul, .markdown-body ol {
   padding-left: 20px;
   text-align: left;
+}
+
+/* 强制设置输入框字体大小 */
+.ant-input,
+.ant-input-textarea textarea {
+    font-size: 16px !important;
+    line-height: 1.5;
 }

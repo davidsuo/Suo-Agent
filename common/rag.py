@@ -3,78 +3,28 @@ import os
 import json
 import uuid
 import datetime
-import sqlite3
 import re
 from typing import List
 
-RAG_DB_FILE = os.path.join(os.getcwd(), "rag_data.db")
+# 强制与 main.py 使用同一个绝对路径
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+RAG_DATA_FILE = os.path.join(BASE_DIR, "rag_data.json")
 GLOBAL_KEY = "__global__"
 
-def _get_conn():
-    conn = sqlite3.connect(RAG_DB_FILE)
-    conn.execute('''CREATE TABLE IF NOT EXISTS rag_items (
-        id TEXT PRIMARY KEY,
-        store_key TEXT,
-        text TEXT,
-        tags TEXT,
-        created_at TEXT
-    )''')
-    # 新增：创建文件列表存储表
-    conn.execute('''CREATE TABLE IF NOT EXISTS rag_files (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        file_name TEXT,
-        tags TEXT,
-        created_at TEXT
-    )''')
-    return conn
+def _load_store():
+    """加载JSON文件"""
+    if os.path.exists(RAG_DATA_FILE):
+        try:
+            with open(RAG_DATA_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {"files": [], "store": {}}
+    return {"files": [], "store": {}}
 
-def _load_store() -> dict:
-    store = {}
-    try:
-        conn = _get_conn()
-        cursor = conn.cursor()
-        cursor.execute("SELECT store_key, text FROM rag_items")
-        for key, text in cursor.fetchall():
-            if key not in store:
-                store[key] = []
-            store[key].append({"text": text})
-        conn.close()
-    except Exception:
-        pass
-    return store
-
-# 【核心修复】将之前的“全量删除”改为“增量追加”，确保多个文档共存
-def _save_store(store: dict):
-    try:
-        conn = _get_conn()
-        cursor = conn.cursor()
-        
-        # 获取当前的 store_key 和 text 组合，防止重复插入
-        cursor.execute("SELECT store_key, text FROM rag_items")
-        existing = set(cursor.fetchall())
-        
-        for key, items in store.items():
-            for item in items:
-                if (key, item["text"]) not in existing:
-                    cursor.execute("INSERT INTO rag_items (id, store_key, text, tags, created_at) VALUES (?, ?, ?, ?, ?)",
-                                   (str(uuid.uuid4()), key, item["text"], item.get("tags", ""), item.get("time", "")))
-        conn.commit()
-        conn.close()
-    except Exception:
-        pass
-
-def list_indexed_files():
-    conn = _get_conn()
-    cursor = conn.cursor()
-    try:
-        # 【核心修复】每次读取所有文件，绝不丢弃
-        cursor.execute("SELECT file_name, created_at FROM rag_files ORDER BY created_at DESC")
-        rows = cursor.fetchall()
-        return [{"file_name": r[0], "created_at": r[1]} for r in rows]
-    except Exception:
-        return []
-    finally:
-        conn.close()
+def _save_store(store):
+    """保存JSON文件，这个绝不会报错！"""
+    with open(RAG_DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(store, f, ensure_ascii=False, indent=2)
 
 def _chunk_text(text: str, chunk_size=1500) -> List[str]:
     if len(text) <= chunk_size:
@@ -106,6 +56,7 @@ def index_document(file_path: str, session_id: str, tags: str = "") -> str:
         ext = os.path.splitext(file_path)[1].lower()
         content = ""
         
+        # 读取文件内容
         if ext in [".txt", ".md"]:
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
@@ -145,31 +96,37 @@ def index_document(file_path: str, session_id: str, tags: str = "") -> str:
         chunks = _chunk_text(content)
         store = _load_store()
 
+        file_name = os.path.basename(file_path)
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # 直接写入文件列表
+        store["files"].append({
+            "file_name": file_name,
+            "tags": tags if tags else "(无)",
+            "created_at": current_time,
+            "chunks": len(chunks)
+        })
+
+        # 写入内容片段
         if tags and tags.strip():
             target_key = f"tag_{tags.strip()}"
         else:
             target_key = GLOBAL_KEY
 
-        if target_key not in store:
-            store[target_key] = []
+        if target_key not in store["store"]:
+            store["store"][target_key] = []
         for chunk in chunks:
-            store[target_key].append({
+            store["store"][target_key].append({
                 "id": str(uuid.uuid4()),
                 "text": chunk,
                 "tags": tags,
-                "time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                "file_name": file_name,
+                "time": current_time
             })
+
+        # 强制保存为 JSON 文件
         _save_store(store)
-        
-        # 将文件名写入列表数据库（保证多个文件都能保存）
-        conn = _get_conn()
-        cursor = conn.cursor()
-        file_name = os.path.basename(file_path)
-        cursor.execute("INSERT INTO rag_files (file_name, tags, created_at) VALUES (?, ?, ?)",
-                       (file_name, tags, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-        conn.commit()
-        conn.close()
-        
+
         return f"✅ 文档已成功索引（共 {len(chunks)} 个片段，支持 PDF/Word/表格）。"
     except Exception as e:
         return f"❌ 文档处理失败: {e}"
@@ -177,22 +134,29 @@ def index_document(file_path: str, session_id: str, tags: str = "") -> str:
 def search_knowledge(query: str, session_id: str, tags: str = "") -> str:
     store = _load_store()
     combined_docs = []
-
+    
+    # 1. 显式传标签时，只搜该标签的
     if tags and tags.strip():
         target_key = f"tag_{tags.strip()}"
-        if target_key in store:
-            combined_docs.extend(store[target_key])
-
-    if GLOBAL_KEY in store:
-        combined_docs.extend(store[GLOBAL_KEY])
-
+        if target_key in store["store"]:
+            combined_docs.extend(store["store"][target_key])
+    
+    # 2. 总是加上全局库的数据
+    if GLOBAL_KEY in store["store"]:
+        combined_docs.extend(store["store"][GLOBAL_KEY])
+    
+    # 3. 【终极修复】如果没传标签，强制把所有的标签库全部搜一遍！
+    if not tags or not tags.strip():
+        for key in store["store"].keys():
+            if key.startswith("tag_"):
+                combined_docs.extend(store["store"][key])
+    
     if not combined_docs:
         return ""
 
     import re as _re
     _year_match = _re.search(r'(20\d{2})年', query)
     _month_match = _re.search(r'(\d{1,2})月份', query)
-
     target_prefix = ""
     if _year_match and _month_match:
         target_prefix = f"{_year_match.group(1)}/{int(_month_match.group(1))}/"

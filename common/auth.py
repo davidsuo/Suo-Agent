@@ -60,92 +60,89 @@ def _row_to_user_dict(row: tuple) -> Dict[str, str]:
     }
 
 
-def init_users_db() -> None:
-    """初始化用户数据库，创建 users 表并插入示例用户（幂等操作）"""
-    with _get_db_connection() as conn:
-        c = conn.cursor()
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                display_name TEXT,
-                pin TEXT NOT NULL,
-                department TEXT,
-                position TEXT,
-                role TEXT DEFAULT 'viewer',
-                tenant TEXT
-            )
-        ''')
-
-        sample_users = [
-            ("alice", "Alice Wang", "1234", "产品部", "产品经理", "manager", "alice"),
-            ("bob", "Bob Zhang", "1234", "研发一部", "高级工程师", "developer", "bob"),
-            ("carol", "Carol Li", "1234", "营运部", "运营总监", "admin", "carol"),
-            ("david", "David Chen", "1234", "财务部", "财务经理", "manager", "david"),
-            ("emma", "Emma Liu", "1234", "市场营销部", "市场专员", "viewer", "emma"),
-            ("frank", "Frank Xu", "1234", "客服部", "客服主管", "viewer", "frank"),
-            ("grace", "Grace Zhao", "1234", "研发二部", "架构师", "developer", "grace"),
-        ]
-        for user in sample_users:
-            try:
-                c.execute(
-                    "INSERT INTO users (username, display_name, pin, department, position, role, tenant) "
-                    "VALUES (?,?,?,?,?,?,?)",
-                    user
-                )
-            except sqlite3.IntegrityError:
-                # 用户名已存在，跳过
-                pass
-        conn.commit()
-        print("✅ 用户数据库已初始化")
-
-
-def authenticate(username: str, pin: str) -> Optional[Dict[str, str]]:
-    """
-    验证用户凭证。
-
-    参数:
-        username: 用户名（小写）
-        pin: 用户 PIN 码
-
-    返回:
-        成功时返回用户信息字典；失败返回 None。
-    """
-    with _get_db_connection() as conn:
-        c = conn.cursor()
-        c.execute(
-            "SELECT username, display_name, department, position, role, tenant "
-            "FROM users WHERE username=? AND pin=?",
-            (username, pin)
+def init_users_db():
+    import sqlite3
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE,
+            pin TEXT,
+            real_name TEXT DEFAULT '',
+            role TEXT DEFAULT 'viewer',
+            department TEXT DEFAULT '',
+            contact TEXT DEFAULT '',
+            status TEXT DEFAULT '正常'
         )
-        row = c.fetchone()
+    ''')
+    # 插入默认用户
+    default_users = [
+        ("alice", "1234", "Alice Wang", "manager", "产品部", "13800138000", "正常"),
+        ("bob", "1234", "Bob Zhang", "developer", "研发部", "13900139000", "禁用"),
+        ("carol", "1234", "Carol Li", "admin", "市场部", "13700137000", "正常"),
+    ]
+    for u in default_users:
+        try:
+            cursor.execute("INSERT INTO users (username, pin, real_name, role, department, contact, status) VALUES (?, ?, ?, ?, ?, ?, ?)", u)
+        except:
+            pass
+    conn.commit()
+    conn.close()
+    print("✅ 用户数据库初始化完成")
 
-    if row:
-        return _row_to_user_dict(row)
+
+def get_user_info(username: str):
+    import sqlite3
+    try:
+        conn = sqlite3.connect("users.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT username, pin, real_name, role, department, contact, status FROM users WHERE username = ?", (username,))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            # 如果用户状态为“禁用”，直接拒绝登录
+            if row[6] == '禁用':
+                print(f"###DEBUG### 用户 {username} 已被禁用，拒绝登录")
+                return None
+            return {
+                "username": row[0],
+                "pin": row[1],
+                "real_name": row[2],
+                "display_name": row[2],
+                "role": row[3],
+                "department": row[4],
+                "contact": row[5],
+                "status": row[6]
+            }
+    except Exception as e:
+        print(f"###DEBUG### 获取用户失败: {e}")
     return None
 
-
-def get_user_info(username: str) -> Optional[Dict[str, str]]:
-    """
-    根据用户名查询用户信息（不验证 PIN）。
-
-    参数:
-        username: 用户名
-
-    返回:
-        用户信息字典；如果用户不存在，返回 None。
-    """
-    with _get_db_connection() as conn:
-        c = conn.cursor()
-        c.execute(
-            "SELECT username, display_name, department, position, role, tenant "
-            "FROM users WHERE username=?",
-            (username,)
-        )
-        row = c.fetchone()
-
-    if row:
-        return _row_to_user_dict(row)
+def authenticate(username: str, pin: str):
+    import sqlite3
+    try:
+        conn = sqlite3.connect("users.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT username, pin, real_name, role, department, contact, status FROM users WHERE username = ? AND pin = ?", (username, pin))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            # 如果用户状态为“禁用”，返回特定的标志让主程序处理
+            if row[6] == '禁用':
+                return {"status": "disabled"}
+            return {
+                "username": row[0],
+                "pin": row[1],
+                "real_name": row[2],
+                "display_name": row[2],
+                "role": row[3],
+                "department": row[4],
+                "contact": row[5],
+                "status": row[6]
+            }
+    except Exception as e:
+        print(f"###DEBUG### 登录验证失败: {e}")
     return None
 
 

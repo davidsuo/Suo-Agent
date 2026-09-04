@@ -5,6 +5,17 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>frontend</title>
+	<style>
+      /* 强制全屏，彻底清除 Vite 默认的居中限制 */
+      html, body, #root {
+        width: 100vw !important;
+        max-width: 100vw !important;
+        height: 100vh !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        display: block !important;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

@@ -1,13 +1,12 @@
 # common/main.py
 import sys, os, json, asyncio, traceback, re, datetime, time
 import threading
+from typing import Optional   # 必须添加
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# 环境变量加载（在文件最开头执行）
 from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 
-# 核心框架和库导入
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -69,23 +68,60 @@ def init_db():
         conn.close()
         print("✅ 数据库 sample.db 已自动创建并插入示例数据。")
 
+import sqlite3
+
+# 初始化健康数据库
+def init_health_db():
+    conn = sqlite3.connect("health.db")
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT,
+            session_id TEXT,
+            username TEXT,
+            role TEXT,
+            tool TEXT,
+            query TEXT,
+            result TEXT,
+            status TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+    print("✅ 健康数据库 health.db 已准备就绪")
+
+# 写入日志到SQLite（保留原有 JSON 写入以防兼容问题，但重点记录到SQLite）
+def write_log_to_db(entry):
+    try:
+        conn = sqlite3.connect("health.db")
+        cursor = conn.cursor()
+        # 修改 write_log_to_db 内部，兼容 status 和 final_status 两个不同的键名
+        status = entry.get("status") or entry.get("final_status") or ""
+
+        # 确保插入 SQL 时使用上面计算好的 status 变量
+        cursor.execute("""
+            INSERT INTO logs (timestamp, session_id, username, role, tool, query, result, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            entry.get("timestamp", ""),
+            entry.get("session_id", ""),
+            entry.get("username", ""),
+            entry.get("role", ""),
+            entry.get("tool", ""),
+            entry.get("user_query", ""),
+            str(entry.get("result", ""))[:300],
+            status  # 这里传入修正后的 status
+        ))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"###DEBUG### SQLite写入失败: {e}")
+
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 DIST_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'frontend', 'dist')
-
-if os.path.exists(DIST_DIR):
-    app.mount("/assets", StaticFiles(directory=os.path.join(DIST_DIR, "assets")), name="assets")
-    
-    @app.get("/")
-    async def serve_react():
-        return FileResponse(os.path.join(DIST_DIR, "index.html"))
-    
-    @app.get("/{full_path:path}")
-    async def serve_spa(full_path: str):
-        if full_path.startswith("api"):
-            return {"detail": "Not Found"}
-        return FileResponse(os.path.join(DIST_DIR, "index.html"))
 
 # ================= CORS 跨域配置 =================
 from fastapi.middleware.cors import CORSMiddleware
@@ -109,6 +145,7 @@ class LoginRequest(BaseModel):
 class ChatRequest(BaseModel):
     session_id: str
     query: str
+    user_text: Optional[str] = None
 
 # ================= 初始化 Workers（供 API 工具链使用） =================
 from bus_memory.event_bus import EventBus
@@ -125,6 +162,7 @@ async def startup_event():
     global _query_worker, _command_worker, _tool_router
     init_users_db()  # 初始化用户表
     init_db()        # 【核心修复】初始化员工表 sample.db
+    init_health_db() # 新增
     
     if _query_worker is None:
         bus = EventBus()
@@ -154,6 +192,9 @@ async def startup_event():
 @app.post("/api/login")
 async def api_login(request: LoginRequest):
     user = authenticate(request.username.strip().lower(), request.pin)
+    # 如果是被禁用
+    if user and isinstance(user, dict) and user.get("status") == "disabled":
+        return {"status": "error", "message": "该账号已被禁用，请联系管理员"}
     if user:
         return {"status": "success", "user": user}
     return {"status": "error", "message": "用户名或密码错误"}
@@ -161,18 +202,57 @@ async def api_login(request: LoginRequest):
 # ================= 完整的 API 聊天接口（支持全部工具链） =================
 @app.post("/api/chat")
 async def api_chat(request: ChatRequest):
-    # 调用原有的完整 chat_core 逻辑（包含Worker工具调用、RAG、时间查询等）
     try:
+        # 【核心修复】动态校验用户是否被禁用
+        real_username = request.session_id.split('_')[0] if '_' in request.session_id else request.session_id
+        user_info = get_user_info(real_username)
+        if user_info and user_info.get("status") == "禁用":
+            return {"answer": "【系统提示】您的账号已被禁用，请联系管理员。您已被强制下线。"}
+        
         answer = await chat_core(
-            request.session_id, 
-            request.query, 
-            _query_worker, 
-            _command_worker, 
+            request.session_id,
+            request.query,
+            request.user_text,
+            _query_worker,
+            _command_worker,
             _tool_router
         )
         return {"answer": answer}
     except Exception as e:
         return {"answer": f"系统处理异常: {e}"}
+        
+from fastapi import UploadFile, File, Form
+import shutil
+
+# ================= 文件上传与知识库接口 =================
+@app.post("/api/upload")
+async def api_upload(file: UploadFile = File(...)):
+    """上传文件并分析（支持图片/CSV/Excel/音频）"""
+    file_path = os.path.join(os.getcwd(), file.filename)
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext in ['.png', '.jpg', '.jpeg', '.bmp', '.gif']:
+            from common.tools import ocr_image
+            result = ocr_image(file_path)
+        elif ext in ['.csv', '.xlsx', '.xls']:
+            from common.tools import analyze_file
+            result = analyze_file(file_path)
+        elif ext in ['.wav', '.mp3', '.m4a', '.ogg', '.webm']:
+            # 【音频文件处理】
+            from common.tools import speech_to_text
+            result = speech_to_text(file_path)
+            # 如果百度密钥读取失败，降级提示用户用“按住说话”
+            if "未配置" in result or "凭证无效" in result or "无效" in result:
+                result = "已接收语音文件。但当前系统后端未成功读取百度API密钥，建议直接使用聊天框下方的【按住说话】按钮，体验更快更精准的语音输入！"
+        else:
+            result = f"已接收文件：{file.filename}（当前仅支持图片/CSV/Excel/音频格式分析）"
+        
+        return {"status": "success", "message": result, "file_path": file_path}
+    except Exception as e:
+        return {"status": "error", "message": f"上传失败: {e}"}
 
 
 SYSTEM_PROMPT = """
@@ -229,7 +309,7 @@ def enhanced_log_plan(session_id, user_query, plan, results, step_times, final_s
 
     real_username = session_id.split('_')[0] if '_' in session_id else session_id
     user_info = get_user_info(real_username) if real_username else None
-    username = user_info.get("username", "unknown") if user_info else "unknown"
+    username = user_info.get("real_name") or user_info.get("display_name") or "unknown" if user_info else "unknown"
     role = user_info.get("role", "unknown") if user_info else "unknown"
 
     # 【核心修复1：统一清洗日志】过滤掉被污染的系统Prompt
@@ -249,6 +329,7 @@ def enhanced_log_plan(session_id, user_query, plan, results, step_times, final_s
         "step_times": step_times,
         "final_status": final_status,
         "total_time": round(total_time, 3),
+        "tool": "规划执行", 
     }
     if completed_steps is not None:
         entry["completed_steps"] = [
@@ -259,6 +340,7 @@ def enhanced_log_plan(session_id, user_query, plan, results, step_times, final_s
     try:
         with open("plan_log.json", "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            write_log_to_db(entry)
         print(f"[规划审计] 计划执行已记录: user={username}, role={role}, status={final_status}", flush=True)
     except Exception as e:
         print(f"[规划审计] 写入失败: {e}", flush=True)
@@ -273,7 +355,7 @@ def simple_log_tool(session_id, user_query, tool_name, arguments, result):
 
     real_username = session_id.split('_')[0] if '_' in session_id else session_id
     user_info = get_user_info(real_username) if real_username else None
-    username = user_info.get("username", "unknown") if user_info else "unknown"
+    username = user_info.get("real_name") or user_info.get("display_name") or "unknown" if user_info else "unknown"
     role = user_info.get("role", "unknown") if user_info else "unknown"
     status = "success" if not _is_error_result(result) else "failed"
 
@@ -311,8 +393,9 @@ def simple_log_tool(session_id, user_query, tool_name, arguments, result):
 
 # ==================== FastAPI 路由（备用） ====================
 class ChatRequest(BaseModel):
-    session_id: str = "default"
+    session_id: str
     query: str
+    user_text: Optional[str] = None
 
 @app.post("/chat")
 async def chat(request: ChatRequest):
@@ -335,10 +418,25 @@ def set_workers(query_worker, command_worker, tool_router):
     _tool_router = tool_router
 
 # ==================== 核心聊天逻辑 ====================
-async def chat_core(session_id: str, query: str, query_worker, command_worker, TOOL_ROUTER, image_base64: str = None):
+async def chat_core(session_id: str, query: str, user_text: str = None, query_worker=None, command_worker=None, TOOL_ROUTER=None, image_base64: str = None):
+    # 【核心终极拦截】无论前端怎么刷新，只要发消息查后端，就检查账号状态！
+    real_username = session_id.split('_')[0] if '_' in session_id else session_id
+    user_info = get_user_info(real_username)
+    if user_info and user_info.get("status") == "禁用":
+        print(f"###安全拦截### 用户 {real_username} 试图操作，已被强制拦截！")
+        return "【系统安全提示】您的账号已被管理员禁用，您已被强制下线，请联系管理员！"
+    
     original_query = query
-    print(f"[DEBUG] 收到请求: session_id={session_id}, query={query[:50]}...")
-    print(f"[DEBUG] 当前 pending keys: {list(pending.keys())}")
+    # 构建历史存储的消息（合并文件引用和问题）
+    import re
+    history_text = user_text if user_text else original_query
+    if query and query.startswith("文件"):
+        # 尝试提取文件名
+        match = re.search(r"文件 (.+?) 的内容如下：", query)
+        if match:
+            filename = match.group(1)
+            history_text = f"📎 上传文件：{filename}\n\n{user_text}" if user_text else f"📎 上传文件：{filename}"
+    # 注意：如果user_text为空（只有文件），则只存文件引用
 
     # 输入护栏
     is_safe, err_msg = input_guard(query)
@@ -489,7 +587,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
             if file_content:
                 messages.append({
                     "role": "system",
-                    "content": f"【指定文件内容：{mentioned_file}】\n{file_content[:2000]}"
+                    "content": f"【指定文件内容：{mentioned_file}】\n{file_content[:8000]}"
                 })
         else:
             # 用户未指定文件，默认使用最新上传的文件
@@ -497,7 +595,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
             if latest_content:
                 messages.append({
                     "role": "system",
-                    "content": f"【最新上传文件：{latest_file}】\n{latest_content[:2000]}"
+                    "content": f"【最新上传文件：{latest_file}】\n{latest_content[:8000]}"
                 })
 
         # 同时提供所有文件名列表，以便用户询问旧文件时模型知道有哪些文件
@@ -688,7 +786,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
             summary_prompt = f"用户需求：{query}\n\n以下是执行结果：\n{raw_info}\n\n请根据用户需求，从以上结果中提取或总结出用户想要的信息，用简洁清晰的格式回答。"
             messages.append({"role": "user", "content": summary_prompt})
             try:
-                summary_resp = client.chat.completions.create(model="deepseek-chat", messages=messages, temperature=0.3, max_tokens=2000)
+                summary_resp = client.chat.completions.create(model="deepseek-chat", messages=messages, temperature=0.3, max_tokens=8000)
                 answer = summary_resp.choices[0].message.content
             except Exception as e:
                 answer = f"结果整合失败: {e}"
@@ -822,7 +920,7 @@ async def chat_core(session_id: str, query: str, query_worker, command_worker, T
         answer = output_guard(answer)
         if image_output:
             answer = answer + "\n\n" + image_output
-        memory.append(session_id, original_query, answer)
+        memory.append(session_id, history_text, answer)
         return answer
 
 # ==================== 规划生成函数 ====================
@@ -884,3 +982,422 @@ async def generate_plan(user_query, history, client):
     except Exception as e:
         print(f"[规划引擎] 生成计划失败: {e}")
         return None
+        
+# ================= 语音识别接口 =================
+@app.post("/api/voice")
+async def api_voice(file: UploadFile = File(...)):
+    """上传语音文件并转写为文本"""
+    import tempfile
+    import os
+    
+    # 保存临时音频文件
+    suffix = os.path.splitext(file.filename)[1] if file.filename else '.webm'
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        shutil.copyfileobj(file.file, tmp)
+        temp_path = tmp.name
+        
+    try:
+        # 调用工具库中的语音识别函数（自动处理webm转wav）
+        from common.tools import speech_to_text
+        text_result = speech_to_text(temp_path)
+        return {"status": "success", "text": text_result}
+    except Exception as e:
+        return {"status": "error", "message": f"语音识别失败: {e}"}
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+            
+# ================= 系统健康检查接口 =================
+try:
+    from common.health import get_system_health
+except ImportError:
+    # 兜底：防止模块不存在导致崩溃
+    def get_system_health():
+        return {"total_tasks": 0, "success_tasks": 0, "failed_tasks": 0, "success_rate": 0, "active_users": 0, "total_users": 0, "total_feedback": 0, "up_feedback": 0, "down_feedback": 0, "sorted_tools": []}
+
+@app.get("/api/health")
+async def api_health():
+    import sqlite3
+    import datetime
+    import os
+
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
+    total_tasks = 0
+    success_tasks = 0
+    failed_tasks = 0
+    total_users = 0
+    active_users = 0
+    sorted_tools = {}
+
+    # 1. 查询总用户数（users.db）
+    try:
+        users_db_path = os.path.join(BASE_DIR, "users.db")
+        if os.path.exists(users_db_path):
+            conn = sqlite3.connect(users_db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM users")
+            total_users = cursor.fetchone()[0]
+            conn.close()
+    except Exception as e:
+        print(f"###DEBUG### 用户查询失败: {e}")
+
+    # 2. 查询活跃用户数（health.db的logs表，最近24小时有记录的去重用户）
+    # 计算24小时前的北京时间字符串
+    from zoneinfo import ZoneInfo
+    cutoff_time = (datetime.datetime.now(ZoneInfo("Asia/Shanghai")) - datetime.timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+
+    try:
+        health_db_path = os.path.join(BASE_DIR, "health.db")
+        if os.path.exists(health_db_path):
+            conn = sqlite3.connect(health_db_path)
+            cursor = conn.cursor()
+            
+            # 统计任务总数和成功/失败数
+            cursor.execute("SELECT COUNT(*) FROM logs")
+            total_tasks = cursor.fetchone()[0]
+            cursor.execute("SELECT status, COUNT(*) FROM logs GROUP BY status")
+            status_counts = cursor.fetchall()
+            for status, count in status_counts:
+                if status == 'success':
+                    success_tasks += count
+                else:
+                    failed_tasks += count
+            
+            # 统计最近24小时活跃用户数
+            cursor.execute("SELECT COUNT(DISTINCT username) FROM logs WHERE timestamp >= ?", (cutoff_time,))
+            active_users = cursor.fetchone()[0]
+
+            # 统计工具调用分布
+            cursor.execute("SELECT tool, COUNT(*) FROM logs GROUP BY tool")
+            tool_counts = cursor.fetchall()
+            # 替换为：
+            for tool, count in tool_counts:
+                # 如果工具名为空，统一显示为"系统操作"
+                tool_name = tool if tool else "系统操作"
+                sorted_tools[tool_name] = count
+            
+            conn.close()
+    except Exception as e:
+        print(f"###DEBUG### 健康日志查询失败: {e}")
+
+    success_rate = round((success_tasks / total_tasks) * 100, 2) if total_tasks > 0 else 0
+    tool_list = [{"tool": k, "count": v} for k, v in sorted_tools.items()]
+
+    return {
+        "status": "success",
+        "data": {
+            "total_tasks": total_tasks,
+            "success_tasks": success_tasks,
+            "failed_tasks": failed_tasks,
+            "success_rate": success_rate,
+            "active_users": active_users,  # ✅ 独立计算
+            "total_users": total_users,    # ✅ 独立计算
+            "total_feedback": 0,
+            "up_feedback": 0,
+            "down_feedback": 0,
+            "sorted_tools": tool_list
+        }
+    }
+    
+# ================= 日志查询接口 =================
+from zoneinfo import ZoneInfo
+import datetime
+
+@app.get("/api/logs")
+async def api_logs():
+    """读取日志文件并返回北京时间格式"""
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    plan_log_path = os.path.join(BASE_DIR, "plan_log.json")
+    
+    logs = []
+    if os.path.exists(plan_log_path):
+        with open(plan_log_path, "rb") as f:
+            raw = f.read()
+        for line in raw.decode("utf-8", errors="ignore").splitlines():
+            try:
+                entry = json.loads(line)
+                ts = entry.get('timestamp', '')
+                try:
+                    if 'T' in ts:
+                        import datetime as dt_module
+                        from zoneinfo import ZoneInfo
+                        dt = dt_module.datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                        dt = dt.astimezone(ZoneInfo("Asia/Shanghai"))
+                        ts = dt.strftime("%Y-%m-%d %H:%M:%S")
+                    else:
+                        ts = ts[:19]
+                except:
+                    pass
+                
+                # 【核心修复】提取 session_id 并拼接窗口名
+                session_id = entry.get('session_id', '')
+                if '_' in session_id:
+                    window_name = session_id.split('_', 1)[1]
+                else:
+                    window_name = '主对话'
+                
+                logs.append({
+                    "timestamp": ts,
+                    "username": f"{entry.get('username', 'unknown')}/{window_name}",
+                    "role": entry.get('role', 'unknown'),
+                    "action": entry.get('tool', '系统操作'),
+                    "detail": (entry.get('user_query') or '')[:60],
+                    "status": entry.get('status', 'success')
+                })
+            except:
+                continue
+    logs.reverse()
+    return {"status": "success", "data": logs[:100]}
+    
+
+# ================= 日志导出接口 =================  
+import csv
+from io import StringIO
+from fastapi.responses import Response
+
+@app.get("/api/logs/export")
+async def api_logs_export():
+    """导出日志为 CSV（精简列，时间戳与前端一致）"""
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    plan_log_path = os.path.join(BASE_DIR, "plan_log.json")
+    
+    if not os.path.exists(plan_log_path):
+        return {"status": "error", "message": "日志文件不存在"}
+    
+    logs = []
+    with open(plan_log_path, "rb") as f:
+        raw = f.read()
+    for line in raw.decode("utf-8", errors="ignore").splitlines():
+        try:
+            logs.append(json.loads(line))
+        except:
+            continue
+    
+    output = StringIO()
+    output.write('\uFEFF')  # BOM for Excel
+    writer = csv.writer(output)
+    
+    # 列头与前端日志表格完全对应
+    headers = ["时间戳", "操作人/窗口", "角色", "操作行为/内容", "调用工具", "状态"]
+    writer.writerow(headers)
+    
+    for entry in logs:
+        ts = entry.get('timestamp', '')
+        # 统一格式：如果已经是 "2026/9/2 13:11" 这种格式，直接使用；否则转换
+        try:
+            if 'T' in ts:
+                dt = datetime.datetime.fromisoformat(ts.replace('Z', '+00:00'))
+                dt = dt.astimezone(ZoneInfo("Asia/Shanghai"))
+                ts = dt.strftime("%Y/%m/%d %H:%M")
+            else:
+                # 假设已经是 "2026/9/2 13:11" 格式，截取前16字符
+                ts = ts[:16] if len(ts) >= 16 else ts
+        except:
+            pass
+        
+        # 构造 “操作人/窗口”：username + "/" + window_name (从session_id提取)
+        session_id = entry.get('session_id', '')
+        username = entry.get('username', '')
+        if '_' in session_id:
+            window_name = session_id.split('_', 1)[1]
+        else:
+            window_name = '主对话'
+        operator = f"{username}/{window_name}"
+        
+        # 操作行为/内容：优先使用 user_query，若为空则用 result 前60字
+        detail = entry.get('user_query', '')
+        if not detail:
+            detail = str(entry.get('result', ''))[:60]
+        else:
+            detail = detail[:60]  # 与前端显示一致
+        
+        row = [
+            ts,
+            operator,
+            entry.get('role', ''),
+            detail,
+            entry.get('tool', ''),
+            entry.get('status', '')
+        ]
+        writer.writerow(row)
+    
+    csv_content = output.getvalue()
+    output.close()
+    
+    filename = f"logs_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    return Response(
+        content=csv_content.encode('utf-8-sig'),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+   
+
+# ================= 会话历史记录接口 =================
+@app.get("/api/history/{session_id}")
+async def get_history(session_id: str):
+    """根据会话ID（如 alice_主对话）拉取后端保存的历史记录"""
+    try:
+        hist = memory.get_history(session_id)
+        return {"status": "success", "data": hist if hist else []}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+        
+        
+# ================= 知识库管理接口 (Sprint 2) =================
+@app.get("/api/kb/list")
+async def api_kb_list():
+    """读取纯JSON文件列表（加入DEBUG打印）"""
+    import json
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    rag_file = os.path.join(BASE_DIR, "rag_data.json")  
+    if os.path.exists(rag_file):
+        try:
+            with open(rag_file, "r", encoding="utf-8") as f:
+                store = json.load(f)
+                return {"status": "success", "data": store.get("files", [])}
+        except Exception as e:
+            print(f"###DEBUG### 读取异常: {e}")
+            return {"status": "error", "message": str(e)}
+    return {"status": "success", "data": []}
+
+import os
+# 确保 uploads 文件夹存在
+UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'uploads')
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+@app.post("/api/kb/index")
+async def api_kb_index(file: UploadFile = File(...), tags: str = Form("")):
+    """上传并写入JSON"""
+    import shutil
+    file_path = os.path.join(UPLOAD_DIR, file.filename)
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        from common.rag import index_document
+        msg = index_document(file_path, "default", tags)
+        if "成功" in str(msg):
+            return {"status": "success", "message": msg}
+        return {"status": "error", "message": msg}
+    except Exception as e:
+        return {"status": "error", "message": f"索引失败: {e}"}
+
+@app.post("/api/kb/delete")
+async def api_kb_delete(file_name: str = Form(...)):
+    """删除指定知识库文档（删除JSON记录）"""
+    import json
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    rag_file = os.path.join(BASE_DIR, "rag_data.json")
+    
+    if os.path.exists(rag_file):
+        try:
+            with open(rag_file, "r", encoding="utf-8") as f:
+                store = json.load(f)
+            
+            # 从文件列表和内容库中同时删除
+            store["files"] = [f for f in store.get("files", []) if f.get("file_name") != file_name]
+            for key in list(store.get("store", {}).keys()):
+                store["store"][key] = [doc for doc in store["store"][key] if doc.get("file_name") != file_name]
+            
+            with open(rag_file, "w", encoding="utf-8") as f:
+                json.dump(store, f, ensure_ascii=False, indent=2)
+                
+            return {"status": "success", "message": f"文档 {file_name} 已删除"}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+    return {"status": "error", "message": "知识库不存在"}
+    
+# ================= Worker 状态监控接口 (Sprint 2) =================
+@app.get("/api/status")
+async def api_status():
+    """获取 QueryWorker 和 CommandWorker 的运行状态"""
+    workers = []
+    try:
+        # 读取在 startup 中初始化的 Worker 状态
+        if _query_worker:
+            stats = _query_worker.get_stats()
+            workers.append(stats)
+        if _command_worker:
+            stats = _command_worker.get_stats()
+            workers.append(stats)
+        return {"status": "success", "data": workers}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+        
+from fastapi.responses import FileResponse
+import os
+
+# 新增下载接口
+@app.get("/api/kb/download")
+# ================= Admin 用户管理接口（支持完整字段） =================
+
+# 注意：由于数据库结构改变，请手动删除项目根目录下的 users.db 文件，重启后端会自动新建
+@app.get("/api/users/list")
+async def api_users_list():
+    """获取所有用户列表（包含姓名、部门、联系方式、状态）"""
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+    # 确保表存在且包含新字段，如果旧表没有则报错，建议直接删除旧库重建
+    cursor.execute("SELECT username, real_name, role, department, contact, status FROM users")
+    users = [{"username": r[0], "real_name": r[1], "role": r[2], "department": r[3], "contact": r[4], "status": r[5]} for r in cursor.fetchall()]
+    conn.close()
+    return {"status": "success", "data": users}
+
+@app.post("/api/users/add")
+async def api_users_add(username: str = Form(...), pin: str = Form(...), real_name: str = Form(""), role: str = Form("viewer"), department: str = Form(""), contact: str = Form(""), status: str = Form("正常")):
+    """添加新用户（支持完整字段）"""
+    try:
+        conn = sqlite3.connect("users.db")
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO users (username, pin, real_name, role, department, contact, status) VALUES (?, ?, ?, ?, ?, ?, ?)", 
+                       (username, pin, real_name, role, department, contact, status))
+        conn.commit()
+        conn.close()
+        return {"status": "success", "message": "用户添加成功"}
+    except Exception as e:
+        error_msg = str(e)
+        if "UNIQUE constraint failed" in error_msg:
+            return {"status": "error", "message": "用户已存在，请更换用户名"}
+        elif "database is locked" in error_msg:
+            return {"status": "error", "message": "数据库被锁定，请重启后端服务"}
+        return {"status": "error", "message": f"添加失败: {error_msg}"}
+
+@app.post("/api/users/delete")
+async def api_users_delete(username: str = Form(...)):
+    """删除指定用户"""
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM users WHERE username = ?", (username,))
+    conn.commit()
+    conn.close()
+    return {"status": "success", "message": "用户已删除"}
+
+@app.post("/api/users/update")
+async def api_users_update(username: str = Form(...), role: str = Form(...), status: str = Form("正常")):
+    """更新用户角色或状态"""
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+    cursor.execute("UPDATE users SET role = ?, status = ? WHERE username = ?", (role, status, username))
+    conn.commit()
+    conn.close()
+    return {"status": "success", "message": "用户更新成功"}
+
+# ================= SPA 兜底代码 =================
+if os.path.exists(DIST_DIR):
+    app.mount("/assets", StaticFiles(directory=os.path.join(DIST_DIR, "assets")), name="assets")
+    
+    @app.get("/")
+    async def serve_react():
+        return FileResponse(os.path.join(DIST_DIR, "index.html"))
+    
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        if full_path.startswith("api"):
+            return {"detail": "Not Found"}
+        return FileResponse(os.path.join(DIST_DIR, "index.html"))
+        
+
+        
+        
+
+        
