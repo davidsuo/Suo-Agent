@@ -278,7 +278,7 @@ async def chat_core(session_id: str, query: str, user_text: str = None, query_wo
 
     # ================= 变量初始化 =================
     context = "暂无相关文档（知识库未加载）"
-    history = memory.get(session_id)[-20:]
+    history = memory.get(session_id)[-5:]
     
     # ================= 强制时间查询处理 =================
     if any(kw in query for kw in ["现在几点", "现在时间", "几点了", "什么时间", "当前时间"]):

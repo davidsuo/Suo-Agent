@@ -38,7 +38,7 @@ def smart_chunk_text(text: str, max_chunk_size: int = 1500) -> List[str]:
     return chunks
 
 def index_document_v2(file_path: str, tags: str = ""):
-    """新的索引入库逻辑：读取 -> 智能分块 -> 向量化入库 -> 清理旧数据 -> 同步Json列表与内容"""
+    """终极稳定版：完全依赖 JSON 存储与检索，规避 Windows 下 ChromaDB HNSW 索引崩溃问题"""
     try:
         import pandas as pd
         ext = os.path.splitext(file_path)[1].lower()
@@ -83,14 +83,7 @@ def index_document_v2(file_path: str, tags: str = ""):
         file_name = os.path.basename(file_path)
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # ================= 【新增：向量刷新核心逻辑】 =================
-        # 1. 删除 ChromaDB 中同名旧向量（防止数据堆积损坏 HNSW 索引）
-        try:
-            _collection.delete(where={"file_name": file_name})
-        except Exception as e:
-            print(f"###DEBUG### 清理旧向量失败: {e}")
-
-        # 2. 清理 rag_data.json 中的旧记录
+        # 完全依赖 JSON 存储，跳过 chromadb 的 add/delete 操作以规避 HNSW 崩溃
         store = {"files": [], "store": {}}
         if os.path.exists(RAG_DATA_FILE):
             try:
@@ -98,24 +91,13 @@ def index_document_v2(file_path: str, tags: str = ""):
                     store = json.load(f)
             except Exception:
                 store = {"files": [], "store": {}}
-        
-        # 从 files 列表中移除旧文件
+
+        # 清理旧数据（模拟向量刷新）
         store["files"] = [f for f in store.get("files", []) if f.get("file_name") != file_name]
-        
-        # 从 store 字典中移除旧文件的所有内容
         for key in list(store.get("store", {}).keys()):
             store["store"][key] = [doc for doc in store["store"][key] if doc.get("file_name") != file_name]
 
-        # 3. 写入全新的索引和内容
-        ids = [str(uuid.uuid4()) for _ in chunks]
-        metadatas = [{"file_name": file_name, "tags": tags, "time": current_time} for _ in chunks]
-        _collection.add(
-            documents=chunks,
-            metadatas=metadatas,
-            ids=ids
-        )
-
-        # 4. 同步更新 rag_data.json
+        # 写入新数据
         store.setdefault("files", []).append({
             "file_name": file_name,
             "tags": tags if tags else "(无)",
@@ -138,7 +120,7 @@ def index_document_v2(file_path: str, tags: str = ""):
         with open(RAG_DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(store, f, ensure_ascii=False, indent=2)
 
-        return f"✅ [V2] 文档已成功入库到ChromaDB（共 {len(chunks)} 个智能分块）。"
+        return f"✅ [V2稳定版] 文档已成功入库（共 {len(chunks)} 个智能分块）。"
     except Exception as e:
         return f"❌ [V2] 文档处理失败: {e}"
 
