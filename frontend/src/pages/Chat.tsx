@@ -8,12 +8,8 @@ import remarkGfm from 'remark-gfm';
 const { Sider, Content } = Layout;
 interface Message { role: 'user' | 'assistant'; content: string; }
 
-// 角色中文映射
 const roleMap: Record<string, string> = {
-  admin: '管理员',
-  manager: '经理',
-  developer: '研发人员',
-  viewer: '观察者'
+  admin: '管理员', manager: '经理', developer: '研发人员', viewer: '观察者'
 };
 
 export default function Chat({ user, onLogout }: { user: any, onLogout: () => void }) {
@@ -24,7 +20,6 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
   const [loading, setLoading] = useState(false);
   const [currentProject, setCurrentProject] = useState(() => localStorage.getItem('currentProject') || '主对话');
   const [projects, setProjects] = useState(['主对话', '产品部']);
-  
   const [pendingFile, setPendingFile] = useState<{ name: string; content: string } | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const chatFileInputRef = useRef<HTMLInputElement>(null);
@@ -66,15 +61,11 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
   useEffect(() => {
     localStorage.setItem('currentProject', currentProject);
     loadHistory(currentProject);
-    if (activeView === 'kb') {
-      loadKbFiles();
-    }
+    if (activeView === 'kb') { loadKbFiles(); }
   }, [currentProject, activeView]);
 
   useEffect(() => {
-    if (activeView === 'chat') {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
-    }
+    if (activeView === 'chat') { messagesEndRef.current?.scrollIntoView({ behavior: 'auto' }); }
   }, [messages, activeView]);
 
   const loadHistory = useCallback(async (project: string) => {
@@ -91,15 +82,9 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
               const fileRef = parts[0];
               const question = parts.slice(1).join('\n\n');
               newMsgs.push({ role: 'user', content: fileRef });
-              if (question) {
-                newMsgs.push({ role: 'user', content: question });
-              }
-            } else {
-              newMsgs.push({ role: 'user', content: msg.content });
-            }
-          } else {
-            newMsgs.push(msg);
-          }
+              if (question) newMsgs.push({ role: 'user', content: question });
+            } else newMsgs.push({ role: 'user', content: msg.content });
+          } else newMsgs.push(msg);
         }
         setMessages(newMsgs);
       }
@@ -111,16 +96,13 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     try {
       const res = await api.get('/users/list');
       if (res.data && res.data.status === 'success') setUsersList(res.data.data);
-    } catch {
-      antMessage.error("用户列表加载失败");
-    } finally {
-      setUsersLoading(false);
-    }
+    } catch { antMessage.error("用户列表加载失败"); }
+    finally { setUsersLoading(false); }
   };
 
   const loadKbFiles = async () => {
     setKbLoading(true);
-    setKbSearch(''); 
+    setKbSearch('');
     try {
       const res = await api.get('/kb/list');
       if (res.data && res.data.status === 'success') setKbFiles(res.data.data);
@@ -137,9 +119,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
         if (!silent) antMessage.success(`"${fileName}" 已删除`);
         if (onSuccess) onSuccess();
         loadKbFiles();
-      } else {
-        antMessage.error(res.data.message || '删除失败');
-      }
+      } else antMessage.error(res.data.message || '删除失败');
     } catch (error) {
       antMessage.error('删除请求失败');
       console.error(error);
@@ -159,9 +139,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
         setKbFile(null);
         setKbTags('');
         loadKbFiles();
-      } else {
-        antMessage.error(res.data.message || '索引失败');
-      }
+      } else antMessage.error(res.data.message || '索引失败');
     } catch (error) {
       antMessage.error("索引请求失败");
       console.error(error);
@@ -178,9 +156,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
       antMessage.success('标签更新成功');
       setIsEditModalOpen(false);
       loadKbFiles();
-    } else {
-      antMessage.error(res.data.message || '更新失败');
-    }
+    } else antMessage.error(res.data.message || '更新失败');
   };
 
   useEffect(() => {
@@ -201,28 +177,19 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     const isAudio = pendingFileData?.name?.toLowerCase().match(/\.(wav|mp3|m4a|ogg|webm)$/);
     setInput('');
     setLoading(true);
-
     if (pendingFileData) {
       const fileDisplay = isAudio ? '🎤 语音文件' : `📎 上传文件：${pendingFileData.name}`;
       setMessages(prev => [...prev, { role: 'user', content: fileDisplay }]);
     }
-    if (msgText) {
-      setMessages(prev => [...prev, { role: 'user', content: msgText }]);
-    }
+    if (msgText) setMessages(prev => [...prev, { role: 'user', content: msgText }]);
     setMessages(prev => [...prev, { role: 'assistant', content: '🔍 正在处理...' }]);
-
     try {
       let query = msgText || '请分析该文件';
       if (pendingFileData) {
         let content = pendingFileData.content;
         query = `文件 ${pendingFileData.name} 的内容如下：\n${content}\n\n用户问题：${msgText || '请分析该文件'}`;
       }
-
-      const payload = {
-        session_id: sessionId,
-        query: query,
-        user_text: msgText || ''
-      };
+      const payload = { session_id: sessionId, query: query, user_text: msgText || '' };
       const res = await api.post('/chat', payload);
       if (res.data.answer && res.data.answer.includes('账号已被禁用')) {
         antMessage.error('您的账号已被禁用，请重新登录！');
@@ -251,19 +218,8 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
   };
 
   const handleSend = () => sendMessage(input);
-
-  const startRecording = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.start();
-      setIsListening(true);
-    }
-  };
-  const stopRecording = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-      setIsListening(false);
-    }
-  };
+  const startRecording = () => { if (recognitionRef.current) { recognitionRef.current.start(); setIsListening(true); } };
+  const stopRecording = () => { if (recognitionRef.current) { recognitionRef.current.stop(); setIsListening(false); } };
 
   const handleAddProject = () => {
     const p = prompt('请输入项目名');
@@ -273,21 +229,15 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     }
   };
   const handleDeleteProject = () => {
-    if (currentProject === '主对话') {
-      antMessage.warning('不可删除主对话');
-      return;
-    }
+    if (currentProject === '主对话') { antMessage.warning('不可删除主对话'); return; }
     setProjects(projects.filter(p => p !== currentProject));
     setCurrentProject('主对话');
   };
 
   const handleLogout = () => {
     sessionStorage.removeItem('suo_user');
-    if (onLogout) {
-      onLogout();
-    } else {
-      window.location.href = '/';
-    }
+    if (onLogout) onLogout();
+    else window.location.href = '/';
   };
 
   const loadHealth = async () => {
@@ -317,9 +267,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
       const res = await api.get('/status');
       if (res.data && res.data.status === 'success') {
         setStatusData(res.data.data);
-      } else {
-        antMessage.error("获取状态数据失败");
-      }
+      } else antMessage.error("获取状态数据失败");
     } catch { antMessage.error("后端状态接口异常"); }
     finally { setStatusLoading(false); }
   };
@@ -344,10 +292,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
   
   const downloadKbFile = async (fileName: string) => {
     try {
-      const response = await api.get('/kb/download', { 
-        params: { file_name: fileName },
-        responseType: 'blob' 
-      });
+      const response = await api.get('/kb/download', { params: { file_name: fileName }, responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -375,14 +320,12 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
           antMessage.success(`批量上传完成，共 ${uploadedCount} 个文件`);
           loadKbFiles();
         }
-      } catch (error) {
-        antMessage.error(`文件 ${file.name} 上传失败`);
-      }
+      } catch (error) { antMessage.error(`文件 ${file.name} 上传失败`); }
     });
   };
 
   const toolColumns = [
-      { title: '工具名称', dataIndex: 'tool', render: (text) => text || '系统操作' },
+      { title: '工具名称', dataIndex: 'tool', render: (text: any) => text || '系统操作' },
       { title: '调用次数', dataIndex: 'count' }
   ];
 
@@ -404,24 +347,18 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
       title: '操作',
       width: 80,
       render: (_: any, record: any) => (
-        <Button 
-          type="text" 
-          icon={<EditOutlined />} 
-          onClick={() => {
-            setEditingFile(record);
-            setEditTags(record.tags);
-            setIsEditModalOpen(true);
-          }}
-        />
+        <Button type="text" icon={<EditOutlined />} onClick={() => {
+          setEditingFile(record);
+          setEditTags(record.tags);
+          setIsEditModalOpen(true);
+        }} />
       )
     }
   ];
 
   const statusColumns = [
     { title: 'Worker 名称', dataIndex: 'name', key: 'name' },
-    { title: '运行状态', dataIndex: 'is_running', key: 'is_running', render: (running: boolean) => (
-        running ? <Tag color="green">运行中</Tag> : <Tag color="red">已停止</Tag>
-    )},
+    { title: '运行状态', dataIndex: 'is_running', key: 'is_running', render: (running: boolean) => (running ? <Tag color="green">运行中</Tag> : <Tag color="red">已停止</Tag>) },
     { title: '完成任务数', dataIndex: 'task_count', key: 'task_count' },
     { title: '失败任务数', dataIndex: 'error_count', key: 'error_count' },
     { title: '队列长度', dataIndex: 'queue_size', key: 'queue_size' },
@@ -429,18 +366,9 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     { title: '错误率', dataIndex: 'error_rate', key: 'error_rate' },
   ];
 
-  const filteredLogs = logsData.filter(log => 
-    (log.username || '').toLowerCase().includes(logSearch.toLowerCase()) ||
-    (log.detail || '').toLowerCase().includes(logSearch.toLowerCase())
-  );
-  const filteredKb = kbFiles.filter(f => 
-    (f.file_name || '').toLowerCase().includes(kbSearch.toLowerCase())
-  );
-  const filteredUsers = usersList.filter(u => 
-    (u.username || '').toLowerCase().includes(userSearch.toLowerCase()) ||
-    (u.real_name || '').toLowerCase().includes(userSearch.toLowerCase()) ||
-    (u.department || '').toLowerCase().includes(userSearch.toLowerCase())
-  );
+  const filteredLogs = logsData.filter(log => (log.username || '').toLowerCase().includes(logSearch.toLowerCase()) || (log.detail || '').toLowerCase().includes(logSearch.toLowerCase()));
+  const filteredKb = kbFiles.filter(f => (f.file_name || '').toLowerCase().includes(kbSearch.toLowerCase()));
+  const filteredUsers = usersList.filter(u => (u.username || '').toLowerCase().includes(userSearch.toLowerCase()) || (u.real_name || '').toLowerCase().includes(userSearch.toLowerCase()) || (u.department || '').toLowerCase().includes(userSearch.toLowerCase()));
 
   const documentMenuItems = [
     { key: 'upload', label: '上传文档', icon: <UploadOutlined /> },
@@ -454,40 +382,23 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
 
   return (
     <Layout style={{ height: '100vh', width: '100%', margin: 0, padding: 0, background: '#f5f5f5' }}>
-      {/* 修改点1：宽度改为 260 */}
       <Sider theme="light" width={260} style={{ background: '#fff', borderRight: '1px solid #f0f0f0' }}>
         <div style={{ padding: '16px 10px', fontWeight: 'bold', fontSize: 16 }}>🚀 某某企业AI原生系统平台</div>
-        {/* 修改点6：显示部门与角色 */}
         <div style={{ padding: '0 10px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
           <Avatar icon={<UserOutlined />} />
-          <span>
-            {user.display_name || user.real_name}
-            {user.department && ` (${user.department}：${roleMap[user.role] || user.role})`}
-          </span>
+          <span>{user.display_name || user.real_name}{user.department && ` (${user.department}：${roleMap[user.role] || user.role})`}</span>
         </div>
-        {/* 修改点5：新建和删除按钮自适应填充整行，排成一行 */}
         <div style={{ padding: '0 10px', marginBottom: 8, display: 'flex', gap: 8 }}>
           <Button style={{ flex: 1 }} icon={<PlusOutlined />} onClick={handleAddProject}>新建对话窗</Button>
           <Button style={{ flex: 1 }} icon={<DeleteOutlined />} onClick={handleDeleteProject} danger>删除</Button>
         </div>
-        {/* 修改点5：菜单项自适应框宽 */}
         <div style={{ padding: '0 10px' }}>
-          <Menu
-            mode="inline"
-            selectedKeys={[currentProject]}
-            style={{ borderInlineEnd: 'none', textAlign: 'left', width: '100%' }}
-            items={projects.map(p => ({ key: p, label: p }))}
-            onClick={({ key }) => setCurrentProject(key)}
-          />
+          <Menu mode="inline" selectedKeys={[currentProject]} style={{ borderInlineEnd: 'none', textAlign: 'left', width: '100%' }} items={projects.map(p => ({ key: p, label: p }))} onClick={({ key }) => setCurrentProject(key)} />
         </div>
       </Sider>
-
       <div style={{ flex: 1, background: '#f5f5f5' }} />
-
-      {/* 修改点2：中间内容区宽度改为 24cm */}
       <div style={{ width: '24cm', flex: '0 0 24cm', background: '#f5f5f5', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <Content style={{ flex: 1, padding: 20, overflowY: 'auto', background: '#f5f5f5' }}>
-          
           {activeView === 'kb' && (
             <Spin spinning={kbLoading}>
               <h2>📚 企业垂直知识库管理</h2>
@@ -501,11 +412,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                           Modal.confirm({
                             title: '文件已存在',
                             content: `文件 "${file.name}" 已存在，是否覆盖？`,
-                            onOk: () => {
-                              handleKbDelete(file.name, () => {
-                                setKbFile(file); setKbTags(''); setIsKbUploadOpen(true);
-                              });
-                            },
+                            onOk: () => { handleKbDelete(file.name, () => { setKbFile(file); setKbTags(''); setIsKbUploadOpen(true); }); },
                             onCancel: () => antMessage.info('已取消上传')
                           });
                         } else {
@@ -514,34 +421,21 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                       }
                       e.target.value = '';
                     }} />
-                  <input type="file" multiple ref={kbBatchFileInputRef} style={{ display: 'none' }} onChange={(e) => {
-                      handleBatchUpload(e.target.files);
-                      e.target.value = '';
-                    }} />
-                  
-                  <Dropdown menu={{
-                    items: documentMenuItems,
-                    onClick: ({ key }) => {
-                      if (key === 'upload') {
-                        kbFileInputRef.current?.click();
-                      } else if (key === 'download') {
+                  <input type="file" multiple ref={kbBatchFileInputRef} style={{ display: 'none' }} onChange={(e) => { handleBatchUpload(e.target.files); e.target.value = ''; }} />
+                  <Dropdown menu={{ items: documentMenuItems, onClick: ({ key }) => {
+                      if (key === 'upload') kbFileInputRef.current?.click();
+                      else if (key === 'download') {
                         if (selectedRowKeys.length === 0) { antMessage.warning('请先勾选要下载的文档'); return; }
                         const selectedFiles = selectedRowKeys.map(idx => filteredKb[idx as number].file_name);
                         selectedFiles.forEach(fname => downloadKbFile(fname));
                       }
-                    }
-                  }}>
+                    }}}>
                     <Button icon={<DownOutlined />}>文档操作</Button>
                   </Dropdown>
-                  
                   <Button icon={<ReloadOutlined />} onClick={loadKbFiles}>刷新</Button>
-                  
-                  <Dropdown menu={{
-                    items: batchMenuItems,
-                    onClick: ({ key }) => {
-                      if (key === 'batch_upload') {
-                        kbBatchFileInputRef.current?.click();
-                      } else if (key === 'export') {
+                  <Dropdown menu={{ items: batchMenuItems, onClick: ({ key }) => {
+                      if (key === 'batch_upload') kbBatchFileInputRef.current?.click();
+                      else if (key === 'export') {
                         if (filteredKb.length === 0) { antMessage.warning('当前无可导出的文档'); return; }
                         const header = '文档名称,标签,索引时间,切片数\n';
                         const rows = filteredKb.map(f => `${f.file_name},${f.tags},${f.created_at},${f.chunks}`).join('\n');
@@ -552,11 +446,9 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                         link.download = `知识库列表_${new Date().toISOString().slice(0,10)}.csv`;
                         link.click(); URL.revokeObjectURL(link.href); antMessage.success('导出成功');
                       }
-                    }
-                  }}>
+                    }}}>
                     <Button icon={<DownOutlined />}>批量操作</Button>
                   </Dropdown>
-
                   <Button danger icon={<DeleteOutlined />} onClick={() => {
                     if (selectedRowKeys.length === 0) { antMessage.warning('请先勾选要删除的文档'); return; }
                     const selectedFiles = selectedRowKeys.map(idx => filteredKb[idx as number].file_name);
@@ -569,26 +461,14 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                     });
                   }}>删除</Button>
                 </Space>
-                
                 <Input placeholder="搜索文档名..." prefix={<SearchOutlined />} value={kbSearch} onChange={(e) => setKbSearch(e.target.value)} style={{ width: 200 }} />
               </Space>
-
-              <Table 
-                rowSelection={{ selectedRowKeys, onChange: (selectedKeys) => setSelectedRowKeys(selectedKeys as React.Key[]) }}
-                dataSource={filteredKb.map((item, index) => ({ ...item, key: index }))}
-                columns={kbColumns} pagination={{ pageSize: 10 }} size="small" />
-
-              <Modal
-                title={`编辑标签：${editingFile?.file_name}`}
-                open={isEditModalOpen}
-                onCancel={() => setIsEditModalOpen(false)}
-                onOk={handleEditTagsSubmit}
-              >
+              <Table rowSelection={{ selectedRowKeys, onChange: (selectedKeys) => setSelectedRowKeys(selectedKeys as React.Key[]) }} dataSource={filteredKb.map((item, index) => ({ ...item, key: index }))} columns={kbColumns} pagination={{ pageSize: 10 }} size="small" />
+              <Modal title={`编辑标签：${editingFile?.file_name}`} open={isEditModalOpen} onCancel={() => setIsEditModalOpen(false)} onOk={handleEditTagsSubmit}>
                 <Input placeholder="输入新标签（用逗号分隔）" value={editTags} onChange={(e) => setEditTags(e.target.value)} />
               </Modal>
             </Spin>
           )}
-
           {activeView === 'admin' && (
             <Spin spinning={usersLoading}>
               <h2>👥 用户管理</h2>
@@ -619,9 +499,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                   });
                 }}>删除</Button>
               </Space>
-              <Table rowSelection={{ selectedRowKeys, onChange: (selectedKeys) => setSelectedRowKeys(selectedKeys as React.Key[]) }}
-                dataSource={filteredUsers.map((u, i) => ({ ...u, key: i }))}
-                columns={[
+              <Table rowSelection={{ selectedRowKeys, onChange: (selectedKeys) => setSelectedRowKeys(selectedKeys as React.Key[]) }} dataSource={filteredUsers.map((u, i) => ({ ...u, key: i }))} columns={[
                   { title: '用户名', dataIndex: 'username' },
                   { title: '姓名', dataIndex: 'real_name' },
                   { title: '角色', dataIndex: 'role', render: (text: any, record: any) => (
@@ -636,7 +514,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                   { title: '联系方式', dataIndex: 'contact' },
                   { title: '状态', dataIndex: 'status', render: (text: any, record: any) => (
                       <Select value={text} style={{ width: 100 }} onChange={(val) => {
-                          Modal.confi(text: any, record: any) =>m({
+                          Modal.confirm({
                             title: `确认将用户 "${record.username}" 设为 ${val} 吗？`,
                             content: val === '禁用' ? '禁用后该用户将无法登录系统，是否确认？' : '启用后该用户将恢复登录权限，是否确认？',
                             onOk: async () => {
@@ -672,7 +550,6 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
               </Modal>
             </Spin>
           )}
-
           {activeView === 'health' && (
             <Spin spinning={healthLoading}>
               {healthData ? (
@@ -691,7 +568,6 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
               ) : (<p>暂无健康数据</p>)}
             </Spin>
           )}
-
           {activeView === 'logs' && (
             <Spin spinning={logsLoading}>
               <h2>系统操作日志（不可删除 · 可追溯）</h2>
@@ -702,7 +578,6 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
               <Table dataSource={filteredLogs.map((item, index) => ({...item, key: index}))} columns={logColumns} pagination={{ pageSize: 20 }} size="small" scroll={{ y: 400 }} />
             </Spin>
           )}
-
           {activeView === 'status' && (
             <Spin spinning={statusLoading}>
               <h2>📊 实时 Worker 状态监控</h2>
@@ -710,7 +585,6 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
               <Table dataSource={statusData.map((item, index) => ({ ...item, key: index }))} columns={statusColumns} pagination={false} size="small" rowKey="name" />
             </Spin>
           )}
-
           {activeView === 'chat' && (
             <>
               {messages.map((msg, idx) => (
@@ -738,7 +612,6 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
             </>
           )}
         </Content>
-
         <div style={{ border: '1px solid #4ade80', borderRadius: '12px', margin: '12px 20px 0 20px', padding: '12px', background: '#f5f5f5' }}>
           <div style={{ marginBottom: 8 }}>
             <Input.TextArea value={input} onChange={(e) => setInput(e.target.value)} onPressEnter={handleSend} disabled={loading} placeholder={loading ? "AI 正在处理复杂任务..." : "发消息或按住喇叭说话，松开发送..."} autoSize={{ minRows: 1, maxRows: 4 }} style={{ borderRadius: '8px', fontSize: '16px', border: '1px solid #d9d9d9', background: '#fff' }} />
@@ -772,14 +645,10 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
             <Button type="primary" icon={<SendOutlined />} onClick={handleSend} loading={loading} style={{ marginLeft: 'auto' }}>发送</Button>
           </div>
         </div>
-
-        {/* 修改点4：标语字体大小改为16px */}
         <div style={{ textAlign: 'center', color: '#999', fontSize: '16px', marginTop: '10px', marginBottom: '12px', userSelect: 'none' }}>
           遨游AI星空，尽享AI快乐
         </div>
       </div>
-
-      {/* 修改点3：右侧栏宽度改为 7cm */}
       <div style={{ width: '7cm', flex: '0 0 7cm', background: '#f5f5f5', borderLeft: '1px solid #f0f0f0', display: 'flex', flexDirection: 'column', paddingTop: 16 }}>
         <div style={{ paddingLeft: '12px' }}>
           <div style={{ display: 'flex', justifyContent: 'flex-start', gap: '8px', marginBottom: '8px' }}>
@@ -801,7 +670,6 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
           </Tooltip>
         </div>
       </div>
-
       <Modal title="上传文档到知识库" open={isKbUploadOpen} onCancel={() => { setIsKbUploadOpen(false); setKbFile(null); setKbTags(''); }} onOk={handleKbSubmit} okText="提交索引">
         <div style={{ marginBottom: 12, padding: '10px', border: '1px dashed #d9d9d9', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span>{kbFile ? kbFile.name : '未选择文件'}</span>
