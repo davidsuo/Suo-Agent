@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Layout, Menu, Input, Button, Avatar, message as antMessage, Tooltip, Card, Row, Col, Statistic, Table, Spin, Space, Modal, Popconfirm, Tag, Select, Dropdown } from 'antd';
+import { Layout, Menu, Input, Button, Avatar, message as antMessage, Tooltip, Card, Row, Col, Statistic, Table, Spin, Space, Modal, Tag, Select, Dropdown } from 'antd';
 import { UserOutlined, SendOutlined, PlusOutlined, DeleteOutlined, PaperClipOutlined, SoundOutlined, LogoutOutlined, CloseOutlined, SearchOutlined, DownloadOutlined, UploadOutlined, LikeOutlined, DislikeOutlined, EditOutlined, FolderOpenOutlined, FileExcelOutlined, DownOutlined, ReloadOutlined } from '@ant-design/icons';
 import api from '../api/client';
 import ReactMarkdown from 'react-markdown';
@@ -403,7 +403,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     {
       title: '操作',
       width: 80,
-      render: (_, record) => (
+      render: (_: any, record: any) => (
         <Button 
           type="text" 
           icon={<EditOutlined />} 
@@ -624,7 +624,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                 columns={[
                   { title: '用户名', dataIndex: 'username' },
                   { title: '姓名', dataIndex: 'real_name' },
-                  { title: '角色', dataIndex: 'role', render: (text, record) => (
+                  { title: '角色', dataIndex: 'role', render: (text: any, record: any) => (
                       <Select value={text} style={{ width: 100 }} onChange={async (val) => {
                           const fd = new FormData(); fd.append('username', record.username); fd.append('role', val); fd.append('status', record.status);
                           await api.post('/users/update', fd); antMessage.success('角色更新成功'); loadUsers();
@@ -634,7 +634,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                     ) },
                   { title: '部门', dataIndex: 'department' },
                   { title: '联系方式', dataIndex: 'contact' },
-                  { title: '状态', dataIndex: 'status', render: (text, record) => (
+                  { title: '状态', dataIndex: 'status', render: (text: any, record: any) => (
                       <Select value={text} style={{ width: 100 }} onChange={(val) => {
                           Modal.confirm({
                             title: `确认将用户 "${record.username}" 设为 ${val} 吗？`,
