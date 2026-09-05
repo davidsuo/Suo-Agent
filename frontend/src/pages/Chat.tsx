@@ -636,7 +636,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                   { title: '联系方式', dataIndex: 'contact' },
                   { title: '状态', dataIndex: 'status', render: (text: any, record: any) => (
                       <Select value={text} style={{ width: 100 }} onChange={(val) => {
-                          Modal.confirm({
+                          Modal.confi(text: any, record: any) =>m({
                             title: `确认将用户 "${record.username}" 设为 ${val} 吗？`,
                             content: val === '禁用' ? '禁用后该用户将无法登录系统，是否确认？' : '启用后该用户将恢复登录权限，是否确认？',
                             onOk: async () => {
