@@ -1,0 +1,7 @@
+[
+  {"question": "2024年10月份的咖啡销售收入是多少？", "answer_contains": "2024/10/"},
+  {"question": "2024年4月份的咖啡销售收入是多少？", "answer_contains": "2024/4/"},
+  {"question": "2024年11月份的咖啡销售收入是多少？", "answer_contains": "2024/11/"},
+  {"question": "现在几点了？", "answer_contains": "北京时间"},
+  {"question": "2024年12月份的咖啡销售收入是多少？", "answer_contains": "2024/12/"}
+]
