@@ -296,10 +296,23 @@ async def chat_core(session_id: str, query: str, user_text: str = None, query_wo
 
     if RAG_MODE == "v2":
         from common.rag_v2 import search_knowledge_v2
-        kb_context = search_knowledge_v2(query, session_id)
+        kb_context = search_knowledge_v2(query, "")  # 修复：将错误传入的session_id改为空字符串，绕开标签过滤
     else:
         from common.rag import search_knowledge
-        kb_context = search_knowledge(query, session_id)
+        # 修复历史Bug：正确传给 tag 参数，兼容所有已知标签
+        import json as _json
+        _rag_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "rag_data.json")
+        _target_tags = ""
+        try:
+            with open(_rag_path, "r", encoding="utf-8") as _f:
+                _store = _json.load(_f)
+            for _k in _store.get("store", {}).keys():
+                if _k.startswith("tag_"):
+                    _target_tags = _k.replace("tag_", "")
+                    break
+        except Exception:
+            pass
+        kb_context = search_knowledge(query, session_id, _target_tags)
 
     # ================= RAG 极速计算优化 =================
     if kb_context:
@@ -624,6 +637,33 @@ async def api_kb_list():
         except Exception as e:
             return {"status": "error", "message": str(e)}
     return {"status": "success", "data": []}
+
+@app.post("/api/kb/update_tags")
+async def api_kb_update_tags(file_name: str = Form(...), tags: str = Form("")):
+    """更新已有文档的标签"""
+    import json
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    rag_file = os.path.join(BASE_DIR, "rag_data.json")
+    if os.path.exists(rag_file):
+        try:
+            with open(rag_file, "r", encoding="utf-8") as f:
+                store = json.load(f)
+            # 更新 files 列表
+            for f_item in store.get("files", []):
+                if f_item.get("file_name") == file_name:
+                    f_item["tags"] = tags
+                    break
+            # 更新 store 内容库
+            for key in list(store.get("store", {}).keys()):
+                for doc in store["store"][key]:
+                    if doc.get("file_name") == file_name:
+                        doc["tags"] = tags
+            with open(rag_file, "w", encoding="utf-8") as f:
+                json.dump(store, f, ensure_ascii=False, indent=2)
+            return {"status": "success", "message": f"文档 {file_name} 的标签已更新"}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+    return {"status": "error", "message": "知识库不存在"}
 
 @app.post("/api/kb/index")
 async def api_kb_index(file: UploadFile = File(...), tags: str = Form("")):

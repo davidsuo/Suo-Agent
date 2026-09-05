@@ -445,8 +445,8 @@ date,time,cash_type,card,price,coffee_name
 2024/5/10,11:29,card,ANON-0000-0000-0158,3.772,Latte
 2024/5/10,11:41,card,ANON-0000-0000-0158,3.772,Latte
 2024/5/10,15:09,cash,,3.4,Americano with Milk
-2024/5/11,8:13,card,ANON-0000-0000-0069,3.772,Latte
-2024/5/11,9:45,cash,,3.9,Latte
+2024/5/11,8:13,card,ANON-0000-0000-0069,3.772,Latte with Milk
+2024/5/11,9:45,cash,,3.9,Latte with Chocolate
 2024/5/11,9:47,card,ANON-0000-0000-0009,3.282,Americano with Milk
 2024/5/11,10:21,card,ANON-0000-0000-0026,3.772,Cocoa
 2024/5/11,10:50,card,ANON-0000-0000-0040,3.772,Cappuccino

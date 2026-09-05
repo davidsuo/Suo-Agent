@@ -38,7 +38,7 @@ def smart_chunk_text(text: str, max_chunk_size: int = 1500) -> List[str]:
     return chunks
 
 def index_document_v2(file_path: str, tags: str = ""):
-    """新的索引入库逻辑：读取 -> 智能分块 -> 向量化入库 -> 同步Json列表与内容"""
+    """新的索引入库逻辑：读取 -> 智能分块 -> 向量化入库 -> 清理旧数据 -> 同步Json列表与内容"""
     try:
         import pandas as pd
         ext = os.path.splitext(file_path)[1].lower()
@@ -83,7 +83,30 @@ def index_document_v2(file_path: str, tags: str = ""):
         file_name = os.path.basename(file_path)
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # 向ChromaDB写入向量
+        # ================= 【新增：向量刷新核心逻辑】 =================
+        # 1. 删除 ChromaDB 中同名旧向量（防止数据堆积损坏 HNSW 索引）
+        try:
+            _collection.delete(where={"file_name": file_name})
+        except Exception as e:
+            print(f"###DEBUG### 清理旧向量失败: {e}")
+
+        # 2. 清理 rag_data.json 中的旧记录
+        store = {"files": [], "store": {}}
+        if os.path.exists(RAG_DATA_FILE):
+            try:
+                with open(RAG_DATA_FILE, "r", encoding="utf-8") as f:
+                    store = json.load(f)
+            except Exception:
+                store = {"files": [], "store": {}}
+        
+        # 从 files 列表中移除旧文件
+        store["files"] = [f for f in store.get("files", []) if f.get("file_name") != file_name]
+        
+        # 从 store 字典中移除旧文件的所有内容
+        for key in list(store.get("store", {}).keys()):
+            store["store"][key] = [doc for doc in store["store"][key] if doc.get("file_name") != file_name]
+
+        # 3. 写入全新的索引和内容
         ids = [str(uuid.uuid4()) for _ in chunks]
         metadatas = [{"file_name": file_name, "tags": tags, "time": current_time} for _ in chunks]
         _collection.add(
@@ -92,22 +115,13 @@ def index_document_v2(file_path: str, tags: str = ""):
             ids=ids
         )
 
-        # 【核心修复】同步更新 rag_data.json，不仅更新files，还要更新store，保证V1模式也能完美检索！
-        store = {"files": [], "store": {}}
-        if os.path.exists(RAG_DATA_FILE):
-            try:
-                with open(RAG_DATA_FILE, "r", encoding="utf-8") as f:
-                    store = json.load(f)
-            except Exception:
-                store = {"files": [], "store": {}}
-
-        if not any(f.get("file_name") == file_name for f in store.get("files", [])):
-            store.setdefault("files", []).append({
-                "file_name": file_name,
-                "tags": tags if tags else "(无)",
-                "created_at": current_time,
-                "chunks": len(chunks)
-            })
+        # 4. 同步更新 rag_data.json
+        store.setdefault("files", []).append({
+            "file_name": file_name,
+            "tags": tags if tags else "(无)",
+            "created_at": current_time,
+            "chunks": len(chunks)
+        })
 
         target_key = f"tag_{tags.strip()}" if tags and tags.strip() else "__global__"
         if target_key not in store["store"]:
@@ -129,39 +143,64 @@ def index_document_v2(file_path: str, tags: str = ""):
         return f"❌ [V2] 文档处理失败: {e}"
 
 def search_knowledge_v2(query: str, tags: str = ""):
-    """【V2】混合检索 + 元数据过滤：精确关键词 + 向量语义 + 标签过滤"""
+    """【V2终极版】直接读取同步后的JSON数据进行混合检索（极速，规避ChromaDB拉全量慢+where=None坑）"""
     try:
         import re as _re
+        # 读取同步后的 JSON 数据
+        store = {"files": [], "store": {}}
+        if os.path.exists(RAG_DATA_FILE):
+            with open(RAG_DATA_FILE, "r", encoding="utf-8") as f:
+                store = json.load(f)
+
+        combined_docs = []
+        # 如果传了标签，仅搜索对应标签下的内容
+        if tags and tags.strip():
+            target_key = f"tag_{tags.strip()}"
+            if target_key in store["store"]:
+                combined_docs.extend(store["store"][target_key])
+        # 即使没传标签，也加上全局数据
+        if "__global__" in store["store"]:
+            combined_docs.extend(store["store"]["__global__"])
+
+        # 如果没传标签，则搜索所有标签下的内容（等同于V1的终极修复逻辑）
+        if not tags or not tags.strip():
+            for key in store["store"].keys():
+                if key.startswith("tag_"):
+                    combined_docs.extend(store["store"][key])
+            if "__global__" in store["store"]:
+                combined_docs.extend(store["store"]["__global__"])
+
+        if not combined_docs:
+            return ""
+
+        # 解析查询中的年份和月份
         _year_match = _re.search(r'(20\d{2})', query)
         _month_match = _re.search(r'(\d{1,2})月份', query)
         target_prefix = ""
         if _year_match and _month_match:
             target_prefix = f"{_year_match.group(1)}/{int(_month_match.group(1))}/"
 
-        where_filter = None
-        if tags and tags.strip():
-            where_filter = {"tags": tags.strip()}
-
-        # 元数据过滤 + 精确匹配模式
-        all_data = _collection.get(
-            include=["documents", "metadatas"],
-            where=where_filter
-        )
-        
         matched_texts = []
+        # 精准的日期/数值匹配模式
         if target_prefix:
-            for doc_text in all_data['documents']:
-                if target_prefix in doc_text:
-                    matched_texts.append(doc_text)
+            for doc in combined_docs:
+                if target_prefix in doc.get("text", ""):
+                    matched_texts.append(doc.get("text", ""))
+        # 语义匹配模式
         else:
-            # 语义匹配模式
-            results = _collection.query(
-                query_texts=[query],
-                n_results=5,
-                where=where_filter
-            )
-            if results and results['documents']:
-                matched_texts = results['documents'][0][:5]
+            clean_query = query.replace("，", " ").replace("。", " ").replace("？", " ").replace("?", " ").replace(" ", "")
+            grams = set()
+            for i in range(len(clean_query)):
+                for j in range(i + 2, min(i + 6, len(clean_query) + 1)):
+                    grams.add(clean_query[i:j])
+            for doc in combined_docs:
+                text = doc.get("text", "")
+                score = 0
+                for gram in grams:
+                    if gram in text:
+                        score += 1
+                if score >= 3:
+                    matched_texts.append(text)
 
         if matched_texts:
             return "\n\n".join(matched_texts[:10])[:20000]

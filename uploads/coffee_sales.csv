@@ -17,9 +17,9 @@ date,time,cash_type,card,price,coffee_name
 2024/3/2,13:15,card,ANON-0000-0000-0013,2.89,Americano
 2024/3/2,13:49,card,ANON-0000-0000-0014,3.38,Americano with Milk
 2024/3/2,14:16,card,ANON-0000-0000-0004,2.89,Americano
-2024/3/3,7:00,cash,,4,Latte
-2024/3/3,7:21,card,ANON-0000-0000-0015,3.87,Latte
-2024/3/3,8:14,card,ANON-0000-0000-0016,2.89,Cortado
+2024/3/3,7:00,cash,,4,Latte with Milk
+2024/3/3,7:21,card,ANON-0000-0000-0015,3.87,Latte with Chocolate
+2024/3/3,8:14,card,ANON-0000-0000-0016,2.89,Cortado with Ices
 2024/3/3,8:20,card,ANON-0000-0000-0012,2.89,Americano
 2024/3/3,9:17,card,ANON-0000-0000-0017,3.87,Hot Chocolate
 2024/3/3,10:44,card,ANON-0000-0000-0018,3.87,Cocoa

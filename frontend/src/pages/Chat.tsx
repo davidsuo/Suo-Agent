@@ -1,12 +1,20 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Layout, Menu, Input, Button, Avatar, message as antMessage, Tooltip, Card, Row, Col, Statistic, Table, Spin, Space, Modal, Popconfirm, Tag, Select } from 'antd';
-import { UserOutlined, SendOutlined, PlusOutlined, DeleteOutlined, PaperClipOutlined, SoundOutlined, LogoutOutlined, CloseOutlined, SearchOutlined, DownloadOutlined, UploadOutlined, LikeOutlined, DislikeOutlined } from '@ant-design/icons';
+import { Layout, Menu, Input, Button, Avatar, message as antMessage, Tooltip, Card, Row, Col, Statistic, Table, Spin, Space, Modal, Popconfirm, Tag, Select, Dropdown } from 'antd';
+import { UserOutlined, SendOutlined, PlusOutlined, DeleteOutlined, PaperClipOutlined, SoundOutlined, LogoutOutlined, CloseOutlined, SearchOutlined, DownloadOutlined, UploadOutlined, LikeOutlined, DislikeOutlined, EditOutlined, FolderOpenOutlined, FileExcelOutlined, DownOutlined, ReloadOutlined } from '@ant-design/icons';
 import api from '../api/client';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 const { Sider, Content } = Layout;
 interface Message { role: 'user' | 'assistant'; content: string; }
+
+// 角色中文映射
+const roleMap: Record<string, string> = {
+  admin: '管理员',
+  manager: '经理',
+  developer: '研发人员',
+  viewer: '观察者'
+};
 
 export default function Chat({ user, onLogout }: { user: any, onLogout: () => void }) {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
@@ -21,6 +29,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const chatFileInputRef = useRef<HTMLInputElement>(null);
   const kbFileInputRef = useRef<HTMLInputElement>(null);
+  const kbBatchFileInputRef = useRef<HTMLInputElement>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -38,6 +47,10 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
   const [isKbUploadOpen, setIsKbUploadOpen] = useState(false);
   const [kbFile, setKbFile] = useState<any>(null);
   const [kbTags, setKbTags] = useState('');
+
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingFile, setEditingFile] = useState<any>(null);
+  const [editTags, setEditTags] = useState('');
 
   const [usersList, setUsersList] = useState<any[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -155,6 +168,21 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     }
   };
 
+  const handleEditTagsSubmit = async () => {
+    if (!editingFile) return;
+    const fd = new FormData();
+    fd.append('file_name', editingFile.file_name);
+    fd.append('tags', editTags);
+    const res = await api.post('/kb/update_tags', fd);
+    if (res.data.status === 'success') {
+      antMessage.success('标签更新成功');
+      setIsEditModalOpen(false);
+      loadKbFiles();
+    } else {
+      antMessage.error(res.data.message || '更新失败');
+    }
+  };
+
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
@@ -187,13 +215,8 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
       let query = msgText || '请分析该文件';
       if (pendingFileData) {
         let content = pendingFileData.content;
-        // 【修复核心】移除1800字符截断，完整传递给后端！
         query = `文件 ${pendingFileData.name} 的内容如下：\n${content}\n\n用户问题：${msgText || '请分析该文件'}`;
       }
-      // 【修复核心】移除2500字符截断，完整传递给后端！
-      // if (query.length > 2500) {
-      //   query = query.slice(0, 2500) + '\n...(消息过长，已截断)';
-      // }
 
       const payload = {
         session_id: sessionId,
@@ -338,6 +361,26 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     }
   };
 
+  const handleBatchUpload = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    let uploadedCount = 0;
+    Array.from(files).forEach(async (file) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('tags', '');
+      try {
+        await api.post('/kb/index', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+        uploadedCount++;
+        if (uploadedCount === files.length) {
+          antMessage.success(`批量上传完成，共 ${uploadedCount} 个文件`);
+          loadKbFiles();
+        }
+      } catch (error) {
+        antMessage.error(`文件 ${file.name} 上传失败`);
+      }
+    });
+  };
+
   const toolColumns = [
       { title: '工具名称', dataIndex: 'tool', render: (text) => text || '系统操作' },
       { title: '调用次数', dataIndex: 'count' }
@@ -357,6 +400,21 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     { title: '标签', dataIndex: 'tags', width: 220, ellipsis: true },
     { title: '索引时间', dataIndex: 'created_at', width: 180 },
     { title: '切片数', dataIndex: 'chunks', width: 80 },
+    {
+      title: '操作',
+      width: 80,
+      render: (_, record) => (
+        <Button 
+          type="text" 
+          icon={<EditOutlined />} 
+          onClick={() => {
+            setEditingFile(record);
+            setEditTags(record.tags);
+            setIsEditModalOpen(true);
+          }}
+        />
+      )
+    }
   ];
 
   const statusColumns = [
@@ -384,23 +442,40 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     (u.department || '').toLowerCase().includes(userSearch.toLowerCase())
   );
 
+  const documentMenuItems = [
+    { key: 'upload', label: '上传文档', icon: <UploadOutlined /> },
+    { key: 'download', label: '下载选中', icon: <DownloadOutlined /> },
+  ];
+
+  const batchMenuItems = [
+    { key: 'batch_upload', label: '批量上传', icon: <FolderOpenOutlined /> },
+    { key: 'export', label: '导出列表', icon: <FileExcelOutlined /> },
+  ];
+
   return (
     <Layout style={{ height: '100vh', width: '100%', margin: 0, padding: 0, background: '#f5f5f5' }}>
-      <Sider theme="light" width={240} style={{ background: '#fff', borderRight: '1px solid #f0f0f0' }}>
+      {/* 修改点1：宽度改为 260 */}
+      <Sider theme="light" width={260} style={{ background: '#fff', borderRight: '1px solid #f0f0f0' }}>
         <div style={{ padding: '16px 10px', fontWeight: 'bold', fontSize: 16 }}>🚀 某某企业AI原生系统平台</div>
+        {/* 修改点6：显示部门与角色 */}
         <div style={{ padding: '0 10px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
           <Avatar icon={<UserOutlined />} />
-          <span>{user.display_name}</span>
+          <span>
+            {user.display_name || user.real_name}
+            {user.department && ` (${user.department}：${roleMap[user.role] || user.role})`}
+          </span>
         </div>
+        {/* 修改点5：新建和删除按钮自适应填充整行，排成一行 */}
         <div style={{ padding: '0 10px', marginBottom: 8, display: 'flex', gap: 8 }}>
-          <Button block icon={<PlusOutlined />} onClick={handleAddProject}>新建对话窗</Button>
-          <Button icon={<DeleteOutlined />} onClick={handleDeleteProject} danger>删除</Button>
+          <Button style={{ flex: 1 }} icon={<PlusOutlined />} onClick={handleAddProject}>新建对话窗</Button>
+          <Button style={{ flex: 1 }} icon={<DeleteOutlined />} onClick={handleDeleteProject} danger>删除</Button>
         </div>
+        {/* 修改点5：菜单项自适应框宽 */}
         <div style={{ padding: '0 10px' }}>
           <Menu
             mode="inline"
             selectedKeys={[currentProject]}
-            style={{ borderInlineEnd: 'none', textAlign: 'left' }}
+            style={{ borderInlineEnd: 'none', textAlign: 'left', width: '100%' }}
             items={projects.map(p => ({ key: p, label: p }))}
             onClick={({ key }) => setCurrentProject(key)}
           />
@@ -409,7 +484,8 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
 
       <div style={{ flex: 1, background: '#f5f5f5' }} />
 
-      <div style={{ width: '23cm', flex: '0 0 23cm', background: '#f5f5f5', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* 修改点2：中间内容区宽度改为 24cm */}
+      <div style={{ width: '24cm', flex: '0 0 24cm', background: '#f5f5f5', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <Content style={{ flex: 1, padding: 20, overflowY: 'auto', background: '#f5f5f5' }}>
           
           {activeView === 'kb' && (
@@ -438,19 +514,49 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                       }
                       e.target.value = '';
                     }} />
-                  <Button type="primary" icon={<UploadOutlined />} onClick={() => kbFileInputRef.current?.click()}>上传文档</Button>
-                  <Button icon={<DownloadOutlined />} onClick={loadKbFiles}>刷新</Button>
-                  <Button icon={<DownloadOutlined />} onClick={() => {
-                      if (filteredKb.length === 0) { antMessage.warning('当前无可导出的文档'); return; }
-                      const header = '文档名称,标签,索引时间,切片数\n';
-                      const rows = filteredKb.map(f => `${f.file_name},${f.tags},${f.created_at},${f.chunks}`).join('\n');
-                      const csv = header + rows;
-                      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-                      const link = document.createElement('a');
-                      link.href = URL.createObjectURL(blob);
-                      link.download = `知识库列表_${new Date().toISOString().slice(0,10)}.csv`;
-                      link.click(); URL.revokeObjectURL(link.href); antMessage.success('导出成功');
-                    }}>导出列表</Button>
+                  <input type="file" multiple ref={kbBatchFileInputRef} style={{ display: 'none' }} onChange={(e) => {
+                      handleBatchUpload(e.target.files);
+                      e.target.value = '';
+                    }} />
+                  
+                  <Dropdown menu={{
+                    items: documentMenuItems,
+                    onClick: ({ key }) => {
+                      if (key === 'upload') {
+                        kbFileInputRef.current?.click();
+                      } else if (key === 'download') {
+                        if (selectedRowKeys.length === 0) { antMessage.warning('请先勾选要下载的文档'); return; }
+                        const selectedFiles = selectedRowKeys.map(idx => filteredKb[idx as number].file_name);
+                        selectedFiles.forEach(fname => downloadKbFile(fname));
+                      }
+                    }
+                  }}>
+                    <Button icon={<DownOutlined />}>文档操作</Button>
+                  </Dropdown>
+                  
+                  <Button icon={<ReloadOutlined />} onClick={loadKbFiles}>刷新</Button>
+                  
+                  <Dropdown menu={{
+                    items: batchMenuItems,
+                    onClick: ({ key }) => {
+                      if (key === 'batch_upload') {
+                        kbBatchFileInputRef.current?.click();
+                      } else if (key === 'export') {
+                        if (filteredKb.length === 0) { antMessage.warning('当前无可导出的文档'); return; }
+                        const header = '文档名称,标签,索引时间,切片数\n';
+                        const rows = filteredKb.map(f => `${f.file_name},${f.tags},${f.created_at},${f.chunks}`).join('\n');
+                        const csv = header + rows;
+                        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+                        const link = document.createElement('a');
+                        link.href = URL.createObjectURL(blob);
+                        link.download = `知识库列表_${new Date().toISOString().slice(0,10)}.csv`;
+                        link.click(); URL.revokeObjectURL(link.href); antMessage.success('导出成功');
+                      }
+                    }
+                  }}>
+                    <Button icon={<DownOutlined />}>批量操作</Button>
+                  </Dropdown>
+
                   <Button danger icon={<DeleteOutlined />} onClick={() => {
                     if (selectedRowKeys.length === 0) { antMessage.warning('请先勾选要删除的文档'); return; }
                     const selectedFiles = selectedRowKeys.map(idx => filteredKb[idx as number].file_name);
@@ -462,17 +568,24 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                       }
                     });
                   }}>删除</Button>
-                  <Button icon={<DownloadOutlined />} onClick={() => {
-                    if (selectedRowKeys.length === 0) { antMessage.warning('请先勾选要下载的文档'); return; }
-                    const selectedFiles = selectedRowKeys.map(idx => filteredKb[idx as number].file_name);
-                    selectedFiles.forEach(fname => downloadKbFile(fname));
-                  }}>下载文档</Button>
                 </Space>
+                
                 <Input placeholder="搜索文档名..." prefix={<SearchOutlined />} value={kbSearch} onChange={(e) => setKbSearch(e.target.value)} style={{ width: 200 }} />
               </Space>
-              <Table rowSelection={{ selectedRowKeys, onChange: (selectedKeys) => setSelectedRowKeys(selectedKeys as React.Key[]) }}
+
+              <Table 
+                rowSelection={{ selectedRowKeys, onChange: (selectedKeys) => setSelectedRowKeys(selectedKeys as React.Key[]) }}
                 dataSource={filteredKb.map((item, index) => ({ ...item, key: index }))}
                 columns={kbColumns} pagination={{ pageSize: 10 }} size="small" />
+
+              <Modal
+                title={`编辑标签：${editingFile?.file_name}`}
+                open={isEditModalOpen}
+                onCancel={() => setIsEditModalOpen(false)}
+                onOk={handleEditTagsSubmit}
+              >
+                <Input placeholder="输入新标签（用逗号分隔）" value={editTags} onChange={(e) => setEditTags(e.target.value)} />
+              </Modal>
             </Spin>
           )}
 
@@ -626,7 +739,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
           )}
         </Content>
 
-        <div style={{ border: '1px solid #4ade80', borderRadius: '12px', margin: '12px 20px', padding: '12px', background: '#f5f5f5' }}>
+        <div style={{ border: '1px solid #4ade80', borderRadius: '12px', margin: '12px 20px 0 20px', padding: '12px', background: '#f5f5f5' }}>
           <div style={{ marginBottom: 8 }}>
             <Input.TextArea value={input} onChange={(e) => setInput(e.target.value)} onPressEnter={handleSend} disabled={loading} placeholder={loading ? "AI 正在处理复杂任务..." : "发消息或按住喇叭说话，松开发送..."} autoSize={{ minRows: 1, maxRows: 4 }} style={{ borderRadius: '8px', fontSize: '16px', border: '1px solid #d9d9d9', background: '#fff' }} />
           </div>
@@ -659,9 +772,15 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
             <Button type="primary" icon={<SendOutlined />} onClick={handleSend} loading={loading} style={{ marginLeft: 'auto' }}>发送</Button>
           </div>
         </div>
+
+        {/* 修改点4：标语字体大小改为16px */}
+        <div style={{ textAlign: 'center', color: '#999', fontSize: '16px', marginTop: '10px', marginBottom: '12px', userSelect: 'none' }}>
+          遨游AI星空，尽享AI快乐
+        </div>
       </div>
 
-      <div style={{ width: '6cm', flex: '0 0 6cm', background: '#f5f5f5', borderLeft: '1px solid #f0f0f0', display: 'flex', flexDirection: 'column', paddingTop: 16 }}>
+      {/* 修改点3：右侧栏宽度改为 7cm */}
+      <div style={{ width: '7cm', flex: '0 0 7cm', background: '#f5f5f5', borderLeft: '1px solid #f0f0f0', display: 'flex', flexDirection: 'column', paddingTop: 16 }}>
         <div style={{ paddingLeft: '12px' }}>
           <div style={{ display: 'flex', justifyContent: 'flex-start', gap: '8px', marginBottom: '8px' }}>
             <Button type={activeView === 'chat' ? 'primary' : 'default'} size="small" onClick={() => setActiveView('chat')}>聊天</Button>
