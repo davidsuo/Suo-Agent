@@ -179,18 +179,8 @@ def get_baidu_access_token() -> str:
         return ""
 
 def speech_to_text(audio_file_path: str) -> str:
-    if audio_file_path.endswith('.webm'):
-        try:
-            from pydub import AudioSegment
-            audio = AudioSegment.from_file(audio_file_path, format="webm")
-            wav_path = audio_file_path.replace('.webm', '.wav')
-            audio.export(wav_path, format="wav")
-            audio_file_path = wav_path
-        except Exception as e:
-            return f"音频格式转换失败: {e}"
-        
     """使用百度短语音识别，自动处理音频格式"""
-    # 新增：处理 webm 格式（浏览器录音默认）
+    # 处理 webm 格式（浏览器录音默认）
     if audio_file_path.endswith('.webm'):
         try:
             from pydub import AudioSegment
@@ -266,10 +256,7 @@ def speech_to_text(audio_file_path: str) -> str:
 
 # ==================== 文件分析 ====================
 def analyze_file(file_path: str, _tenant: str = "default") -> str:
-    """
-    分析 CSV 或 Excel 文件，返回摘要信息。
-    如果检测到日期列和价格列，自动计算按月份/季度的汇总统计。
-    """
+    """分析 CSV 或 Excel 文件，返回摘要信息"""
     if not file_path:
         return "错误：请提供文件路径。"
     try:
@@ -285,7 +272,6 @@ def analyze_file(file_path: str, _tenant: str = "default") -> str:
         info = f"文件分析结果：\n- 行数: {rows}\n- 列数: {len(df.columns)}\n"
         info += f"- 列名: {', '.join(df.columns.tolist())}\n"
 
-        # 大文件仅展示前几行
         if rows > 500:
             info += "\n⚠️ 文件较大，仅展示前3行和关键信息。\n"
             info += f"数据类型:\n{df.dtypes.to_string()}\n\n"
@@ -296,13 +282,11 @@ def analyze_file(file_path: str, _tenant: str = "default") -> str:
             info += "前5行数据:\n"
             info += df.head(5).to_string(index=False)
 
-        # 数值列统计
         num_cols = df.select_dtypes(include='number')
         if not num_cols.empty:
             info += "\n\n数值列统计:\n"
             info += num_cols.describe().to_string()
 
-        # 智能汇总：检测日期列和价格列
         date_col = None
         for col in df.columns:
             col_lower = col.lower()
@@ -315,17 +299,13 @@ def analyze_file(file_path: str, _tenant: str = "default") -> str:
                 price_col = col
                 break
         if not price_col and len(num_cols.columns) > 0:
-            # 如果没有明显的价格列，但存在数值列，选择第一个数值列作为度量
             price_col = num_cols.columns[0]
 
         if date_col and price_col:
             try:
-                # 将日期列转换为日期时间
                 df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
-                # 提取月份和季度
                 df['__month'] = df[date_col].dt.to_period('M')
                 df['__quarter'] = df[date_col].dt.to_period('Q')
-                # 按月份和季度汇总
                 monthly_sum = df.groupby('__month')[price_col].sum().to_string()
                 quarterly_sum = df.groupby('__quarter')[price_col].sum().to_string()
                 info += f"\n\n按月份汇总（{price_col}）:\n{monthly_sum}"
@@ -333,7 +313,6 @@ def analyze_file(file_path: str, _tenant: str = "default") -> str:
             except Exception as e:
                 info += f"\n\n（未能自动计算时间汇总: {e}）"
 
-        # 分组统计：检测类别列（如 coffee_name）
         category_col = None
         for col in df.columns:
             if 'name' in col.lower() or '名称' in col.lower() or 'type' in col.lower() or '类别' in col.lower():
@@ -341,7 +320,6 @@ def analyze_file(file_path: str, _tenant: str = "default") -> str:
                 break
         if category_col and price_col:
             try:
-                # 按类别统计最高价、最低价、平均价、总销售额
                 group_stats = df.groupby(category_col).agg(
                     max_price=(price_col, 'max'),
                     min_price=(price_col, 'min'),
@@ -523,7 +501,7 @@ def recognize_table(image_path: str) -> str:
 
 # ==================== 日程管理 ====================
 def init_calendar() -> None:
-    """初始化日历数据库，确保表和 tenant 列存在"""
+    """初始化日历数据库，确保表和 tenant 列存在，并清理过去遗留的脏数据"""
     with sqlite3.connect("calendar.db") as conn:
         c = conn.cursor()
         c.execute('''CREATE TABLE IF NOT EXISTS events (
@@ -537,18 +515,39 @@ def init_calendar() -> None:
         if "tenant" not in columns:
             c.execute("ALTER TABLE events ADD COLUMN tenant TEXT DEFAULT 'default'")
         c.execute("UPDATE events SET tenant = 'default' WHERE tenant IS NULL")
+        c.execute("DELETE FROM events WHERE start_time < '2025-01-01'")
         conn.commit()
 
 def add_event(title: str, start_time: str, end_time: str = "", description: str = "", _tenant: str = "default") -> str:
-    """添加日程，start_time 必须为 YYYY-MM-DD HH:MM 格式"""
-    match = re.search(r'(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})', start_time)
-    if not match:
-        return f"添加日程失败: start_time 格式错误，实际收到: {start_time}"
-    clean_start = match.group(1)
+    """添加日程，智能解析自然语言时间（如 '明天 09:00'），并检测冲突"""
+    time_match = re.search(r'(\d{1,2}):(\d{2})', start_time)
+    if not time_match:
+        return f"添加日程失败: 无法识别时间。实际收到: {start_time}"
+    
+    hour, minute = int(time_match.group(1)), int(time_match.group(2))
+    
+    if "明天" in start_time:
+        target_date = datetime.now() + timedelta(days=1)
+    elif "后天" in start_time:
+        target_date = datetime.now() + timedelta(days=2)
+    else:
+        date_match = re.search(r'(\d{4}-\d{2}-\d{2})', start_time)
+        if date_match:
+            target_date = datetime.strptime(date_match.group(1), "%Y-%m-%d")
+        else:
+            target_date = datetime.now()
+    
+    clean_start = f"{target_date.year}-{target_date.month:02d}-{target_date.day:02d} {hour:02d}:{minute:02d}"
     init_calendar()
+    
     try:
         with sqlite3.connect("calendar.db") as conn:
             c = conn.cursor()
+            c.execute("SELECT id, title FROM events WHERE start_time = ? AND tenant = ?", (clean_start, _tenant))
+            existing = c.fetchone()
+            if existing:
+                return f"⚠️ 日程冲突！{clean_start} 已存在日程【{existing[1]}】(ID:{existing[0]})。如需强行安排，请先调用 delete_event 删除旧日程。"
+            
             c.execute("INSERT INTO events (title, start_time, end_time, description, tenant) VALUES (?,?,?,?,?)",
                       (title, clean_start, end_time, description, _tenant))
             event_id = c.lastrowid
@@ -558,7 +557,7 @@ def add_event(title: str, start_time: str, end_time: str = "", description: str 
         return f"添加日程失败: {e}"
 
 def list_events(date: str = "", _tenant: str = "default") -> str:
-    """列出指定租户的日程，可按日期过滤"""
+    """列出指定租户的日程，按ID排序，可按日期过滤"""
     init_calendar()
     if date:
         match = re.match(r'(\d{4}-\d{2}-\d{2})', date)
@@ -570,17 +569,17 @@ def list_events(date: str = "", _tenant: str = "default") -> str:
         with sqlite3.connect("calendar.db") as conn:
             c = conn.cursor()
             if date:
-                c.execute("SELECT id, title, start_time, end_time, description FROM events WHERE tenant=? AND start_time LIKE ? ORDER BY start_time",
+                c.execute("SELECT id, title, start_time, end_time, description FROM events WHERE tenant=? AND start_time LIKE ? ORDER BY id ASC",
                           (_tenant, date + "%"))
             else:
-                c.execute("SELECT id, title, start_time, end_time, description FROM events WHERE tenant=? ORDER BY start_time",
+                c.execute("SELECT id, title, start_time, end_time, description FROM events WHERE tenant=? ORDER BY id ASC",
                           (_tenant,))
             rows = c.fetchall()
         print(f"[list_events] 租户:{_tenant} 查询日期:{date or '全部'} 结果数:{len(rows)}")
         if not rows and date:
             with sqlite3.connect("calendar.db") as conn2:
                 c2 = conn2.cursor()
-                c2.execute("SELECT id, title, start_time FROM events WHERE tenant=? ORDER BY start_time DESC LIMIT 5", (_tenant,))
+                c2.execute("SELECT id, title, start_time FROM events WHERE tenant=? ORDER BY id DESC LIMIT 5", (_tenant,))
                 recent = c2.fetchall()
             if recent:
                 recent_text = "\n".join([f"ID:{r[0]} {r[1]} @ {r[2]}" for r in recent])
@@ -589,6 +588,8 @@ def list_events(date: str = "", _tenant: str = "default") -> str:
                 return "暂无任何日程。"
         if not rows:
             return "暂无日程。"
+        
+        # 纯净版：仅返回文本数据，不包含 AI 指令前缀
         result = "日程列表：\n"
         for row in rows:
             result += f"ID:{row[0]} | {row[1]} | 开始:{row[2]} | 结束:{row[3]} | {row[4]}\n"
