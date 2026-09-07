@@ -287,6 +287,67 @@ async def chat_core(session_id: str, query: str, user_text: str = None, query_wo
     context = "暂无相关文档（知识库未加载）"
     history = memory.get(session_id)[-5:]
     
+    # ================= 物理级防幻觉：添加日程强制拦截 =================
+    if re.search(r'提醒我|添加日程|安排日程|设置日程', query):
+        # 提取相对日期（明天、后天）
+        rel_match = re.search(r'(明天|后天|大后天|今天)', query)
+        days = 0
+        if rel_match:
+            if rel_match.group(1) == '明天':
+                days = 1
+            elif rel_match.group(1) == '后天':
+                days = 2
+            elif rel_match.group(1) == '大后天':
+                days = 3
+
+        # 提取时间（如：上午9点、下午3点、15:30）
+        time_match = re.search(r'(上午|下午|晚上|早上|中午)?\s*(\d{1,2})[点时:：](\d{1,2})?', query)
+        if time_match:
+            meridiem = time_match.group(1) or ''
+            hour = int(time_match.group(2))
+            minute = int(time_match.group(3) or 0)
+
+            # 将12小时制转换为24小时制
+            if meridiem in ['下午', '晚上'] and hour != 12:
+                hour += 12
+            elif meridiem == '上午' and hour == 12:
+                hour = 0
+
+            # 提取日程标题（如“开周计划会”）
+            title_match = re.search(r'(?:提醒我|添加日程|安排日程|设置日程)\s*(.*)', query)
+            title = title_match.group(1).strip() if title_match else "日程提醒"
+            # 清理标题中的日期和时间词，只保留核心内容
+            title = re.sub(r'(明天|后天|今天|上午|下午|晚上|早上|中午|\d{1,2}[点时:：]\d{1,2}|点半|点|半)', '', title).strip()
+
+            if title:
+                # 直接计算好绝对时间，调用底层工具，不经过大模型
+                target_date = datetime.datetime.now() + datetime.timedelta(days=days)
+                clean_start = f"{target_date.year}-{target_date.month:02d}-{target_date.day:02d} {hour:02d}:{minute:02d}"
+                result_str = add_event(title, clean_start)
+                
+                # 如果添加失败（如冲突），直接返回给用户
+                if "⚠️" in result_str or "失败" in result_str:
+                    return output_guard(result_str)
+                
+                # 【UI优化】生成友好的 Markdown 回复，剥离“租户/default”等内部术语
+                match_id = re.search(r'ID:(\d+)', result_str)
+                friendly_id = match_id.group(1) if match_id else "?"
+                
+                day_text = "今天"
+                if days == 1:
+                    day_text = "明天"
+                elif days == 2:
+                    day_text = "后天"
+                
+                friendly_msg = f"✅ 好的，已为您设置日程提醒！\n\n"
+                friendly_msg += f"**事件**：{title}\n"
+                friendly_msg += f"**时间**：{day_text}（{clean_start}）\n"
+                friendly_msg += f"**日程ID**：{friendly_id}\n\n"
+                friendly_msg += "到时候我会准时提醒您，请放心！"
+                
+                return output_guard(friendly_msg)
+    # ================= 添加拦截结束 =================
+
     # ================= 强制时间查询处理 =================
     if any(kw in query for kw in ["现在几点", "现在时间", "几点了", "什么时间", "当前时间"]):
         try:
@@ -300,19 +361,8 @@ async def chat_core(session_id: str, query: str, user_text: str = None, query_wo
 
     # ================= RAG V1 稳定版逻辑（纯关键字精确匹配） =================
     from common.rag import search_knowledge
-    import json as _json
-    _rag_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "rag_data.json")
-    _target_tags = ""
-    try:
-        with open(_rag_path, "r", encoding="utf-8") as _f:
-            _store = _json.load(_f)
-        for _k in _store.get("store", {}).keys():
-            if _k.startswith("tag_"):
-                _target_tags = _k.replace("tag_", "")
-                break
-    except Exception:
-        pass
-    kb_context = search_knowledge(query, session_id, _target_tags)
+    # 【根因修复】传空字符串让 search_knowledge 自动搜索所有标签库，避免因取到错误标签导致漏检
+    kb_context = search_knowledge(query, session_id, "")
 
     # ================= RAG 极速计算优化 =================
     if kb_context:
