@@ -1,26 +1,31 @@
 # common/rag_v2.py
 import os
 import json
+import re
 import uuid
 import datetime
 from typing import List
-
 try:
-    import chromadb
-    from chromadb.config import Settings
+    from rank_bm25 import BM25Okapi
+    HAS_BM25 = True
 except ImportError:
-    print("❌ 请先安装依赖: pip install chromadb")
+    HAS_BM25 = False
+    print("⚠️ 未安装 rank_bm25，请先执行: pip install rank-bm25")
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CHROMA_DIR = os.path.join(BASE_DIR, "chroma_db")
 RAG_DATA_FILE = os.path.join(BASE_DIR, "rag_data.json")
 
-# 初始化 ChromaDB 客户端（持久化模式）
-_client = chromadb.PersistentClient(path=CHROMA_DIR)
-_collection = _client.get_or_create_collection(name="enterprise_kb")
+def _load_store():
+    if os.path.exists(RAG_DATA_FILE):
+        with open(RAG_DATA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {"files": [], "store": {}}
 
-# 简单的文档感知分块
-def smart_chunk_text(text: str, max_chunk_size: int = 1500) -> List[str]:
+def _tokenize(text: str) -> List[str]:
+    # 简单分词，兼容中文和英文
+    return re.findall(r'[\u4e00-\u9fa5]|[a-zA-Z0-9]+', text)
+
+def _smart_chunk_text(text: str, max_chunk_size: int = 1500) -> List[str]:
     if len(text) <= max_chunk_size:
         return [text]
     paragraphs = text.split("\n")
@@ -38,7 +43,7 @@ def smart_chunk_text(text: str, max_chunk_size: int = 1500) -> List[str]:
     return chunks
 
 def index_document_v2(file_path: str, tags: str = ""):
-    """终极稳定版：完全依赖 JSON 存储与检索，规避 Windows 下 ChromaDB HNSW 索引崩溃问题"""
+    """【V2完整版】读取文档、智能分块、写入JSON索引（避免HNSW崩溃）"""
     try:
         import pandas as pd
         ext = os.path.splitext(file_path)[1].lower()
@@ -60,7 +65,7 @@ def index_document_v2(file_path: str, tags: str = ""):
                 for page in reader.pages:
                     content += page.extract_text() + "\n"
             except ImportError:
-                return "❌ 缺少 pypdf 库"
+                return "❌ 缺少 pypdf 库，请 pip install pypdf"
         elif ext == ".docx":
             try:
                 from docx import Document
@@ -72,18 +77,18 @@ def index_document_v2(file_path: str, tags: str = ""):
                         row_text = [cell.text for cell in row.cells]
                         content += " | ".join(row_text) + "\n"
             except ImportError:
-                return "❌ 缺少 python-docx 库"
+                return "❌ 缺少 python-docx 库，请 pip install python-docx"
         else:
             return f"❌ 不支持的文件格式: {ext}"
 
         if not content.strip():
             return "❌ 文件内容为空。"
 
-        chunks = smart_chunk_text(content)
+        chunks = _smart_chunk_text(content)
         file_name = os.path.basename(file_path)
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # 完全依赖 JSON 存储，跳过 chromadb 的 add/delete 操作以规避 HNSW 崩溃
+        # 读取并清理旧数据
         store = {"files": [], "store": {}}
         if os.path.exists(RAG_DATA_FILE):
             try:
@@ -92,7 +97,6 @@ def index_document_v2(file_path: str, tags: str = ""):
             except Exception:
                 store = {"files": [], "store": {}}
 
-        # 清理旧数据（模拟向量刷新）
         store["files"] = [f for f in store.get("files", []) if f.get("file_name") != file_name]
         for key in list(store.get("store", {}).keys()):
             store["store"][key] = [doc for doc in store["store"][key] if doc.get("file_name") != file_name]
@@ -120,69 +124,58 @@ def index_document_v2(file_path: str, tags: str = ""):
         with open(RAG_DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(store, f, ensure_ascii=False, indent=2)
 
-        return f"✅ [V2稳定版] 文档已成功入库（共 {len(chunks)} 个智能分块）。"
+        return f"✅ [V2实验版] 文档已成功索引（共 {len(chunks)} 个智能分块）。"
     except Exception as e:
         return f"❌ [V2] 文档处理失败: {e}"
 
 def search_knowledge_v2(query: str, tags: str = ""):
-    """【V2终极版】直接读取同步后的JSON数据进行混合检索（极速，规避ChromaDB拉全量慢+where=None坑）"""
+    """【V2实验版】混合检索：关键词精确匹配 + BM25 语义召回"""
     try:
-        import re as _re
-        # 读取同步后的 JSON 数据
-        store = {"files": [], "store": {}}
-        if os.path.exists(RAG_DATA_FILE):
-            with open(RAG_DATA_FILE, "r", encoding="utf-8") as f:
-                store = json.load(f)
-
+        store = _load_store()
         combined_docs = []
-        # 如果传了标签，仅搜索对应标签下的内容
         if tags and tags.strip():
             target_key = f"tag_{tags.strip()}"
-            if target_key in store["store"]:
-                combined_docs.extend(store["store"][target_key])
-        # 即使没传标签，也加上全局数据
-        if "__global__" in store["store"]:
-            combined_docs.extend(store["store"]["__global__"])
-
-        # 如果没传标签，则搜索所有标签下的内容（等同于V1的终极修复逻辑）
-        if not tags or not tags.strip():
+            combined_docs.extend(store["store"].get(target_key, []))
+        # 如果没传标签，遍历所有标签库兜底
+        if not combined_docs:
+            combined_docs.extend(store["store"].get("__global__", []))
             for key in store["store"].keys():
                 if key.startswith("tag_"):
                     combined_docs.extend(store["store"][key])
-            if "__global__" in store["store"]:
-                combined_docs.extend(store["store"]["__global__"])
 
         if not combined_docs:
             return ""
 
-        # 解析查询中的年份和月份
-        _year_match = _re.search(r'(20\d{2})', query)
-        _month_match = _re.search(r'(\d{1,2})月份', query)
+        all_texts = [doc.get("text", "") for doc in combined_docs]
+
+        # 1. 日期/数值精确匹配（保底）
+        _year_match = re.search(r'(20\d{2})', query)
+        _month_match = re.search(r'(\d{1,2})月份', query)
         target_prefix = ""
         if _year_match and _month_match:
             target_prefix = f"{_year_match.group(1)}/{int(_month_match.group(1))}/"
-
+        
         matched_texts = []
-        # 精准的日期/数值匹配模式
         if target_prefix:
-            for doc in combined_docs:
-                if target_prefix in doc.get("text", ""):
-                    matched_texts.append(doc.get("text", ""))
-        # 语义匹配模式
-        else:
-            clean_query = query.replace("，", " ").replace("。", " ").replace("？", " ").replace("?", " ").replace(" ", "")
-            grams = set()
-            for i in range(len(clean_query)):
-                for j in range(i + 2, min(i + 6, len(clean_query) + 1)):
-                    grams.add(clean_query[i:j])
-            for doc in combined_docs:
-                text = doc.get("text", "")
-                score = 0
-                for gram in grams:
-                    if gram in text:
-                        score += 1
-                if score >= 3:
+            for text in all_texts:
+                if target_prefix in text:
                     matched_texts.append(text)
+        else:
+            # 2. BM25 稀疏语义检索
+            if HAS_BM25:
+                tokenized_corpus = [_tokenize(text) for text in all_texts]
+                if tokenized_corpus:
+                    bm25 = BM25Okapi(tokenized_corpus)
+                    scores = bm25.get_scores(_tokenize(query))
+                    top_indices = scores.argsort()[-10:][::-1]
+                    for idx in top_indices:
+                        if scores[idx] > 0:
+                            matched_texts.append(all_texts[idx])
+            else:
+                # 降级：简单的关键词包含匹配
+                for text in all_texts:
+                    if any(word in text for word in _tokenize(query)):
+                        matched_texts.append(text)
 
         if matched_texts:
             return "\n\n".join(matched_texts[:10])[:20000]
