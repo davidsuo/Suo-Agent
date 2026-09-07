@@ -5,6 +5,8 @@ import re
 import uuid
 import datetime
 from typing import List
+from collections import Counter
+
 try:
     from rank_bm25 import BM25Okapi
     HAS_BM25 = True
@@ -22,7 +24,6 @@ def _load_store():
     return {"files": [], "store": {}}
 
 def _tokenize(text: str) -> List[str]:
-    # 简单分词，兼容中文和英文
     return re.findall(r'[\u4e00-\u9fa5]|[a-zA-Z0-9]+', text)
 
 def _smart_chunk_text(text: str, max_chunk_size: int = 1500) -> List[str]:
@@ -43,11 +44,13 @@ def _smart_chunk_text(text: str, max_chunk_size: int = 1500) -> List[str]:
     return chunks
 
 def index_document_v2(file_path: str, tags: str = ""):
-    """【V2完整版】读取文档、智能分块、写入JSON索引（避免HNSW崩溃）"""
+    """读取文档、智能分块、写入JSON索引。针对CSV自动生成‘统计块’，彻底终结‘最受欢迎’幻觉！"""
     try:
         import pandas as pd
         ext = os.path.splitext(file_path)[1].lower()
         content = ""
+        stat_block = ""  # 用于存储统计结果
+
         if ext in [".txt", ".md"]:
             with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                 content = f.read()
@@ -58,6 +61,14 @@ def index_document_v2(file_path: str, tags: str = ""):
                 df = pd.read_excel(file_path)
             df = df.fillna("")
             content = df.to_csv(index=False)
+            
+            # 【核心增强】如果是数据文件，自动提取品类排行！
+            if "coffee_name" in df.columns:
+                names = df["coffee_name"].astype(str).tolist()
+                counts = Counter(names)
+                rank_str = "\n".join([f"{name}: {count} 杯" for name, count in counts.most_common(10)])
+                stat_block = f"【系统自动生成的饮品受欢迎程度排行榜】\n{rank_str}"
+                
         elif ext == ".pdf":
             try:
                 from pypdf import PdfReader
@@ -81,14 +92,13 @@ def index_document_v2(file_path: str, tags: str = ""):
         else:
             return f"❌ 不支持的文件格式: {ext}"
 
-        if not content.strip():
+        if not content.strip() and not stat_block:
             return "❌ 文件内容为空。"
 
         chunks = _smart_chunk_text(content)
         file_name = os.path.basename(file_path)
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # 读取并清理旧数据
         store = {"files": [], "store": {}}
         if os.path.exists(RAG_DATA_FILE):
             try:
@@ -101,12 +111,11 @@ def index_document_v2(file_path: str, tags: str = ""):
         for key in list(store.get("store", {}).keys()):
             store["store"][key] = [doc for doc in store["store"][key] if doc.get("file_name") != file_name]
 
-        # 写入新数据
         store.setdefault("files", []).append({
             "file_name": file_name,
             "tags": tags if tags else "(无)",
             "created_at": current_time,
-            "chunks": len(chunks)
+            "chunks": len(chunks) + (1 if stat_block else 0)
         })
 
         target_key = f"tag_{tags.strip()}" if tags and tags.strip() else "__global__"
@@ -120,23 +129,36 @@ def index_document_v2(file_path: str, tags: str = ""):
                 "file_name": file_name,
                 "time": current_time
             })
+        
+        # 【核心增强】将统计块也写入知识库！
+        if stat_block:
+            store["store"][target_key].append({
+                "id": str(uuid.uuid4()),
+                "text": stat_block,
+                "tags": tags,
+                "file_name": file_name,
+                "time": current_time
+            })
 
         with open(RAG_DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(store, f, ensure_ascii=False, indent=2)
 
-        return f"✅ [V2实验版] 文档已成功索引（共 {len(chunks)} 个智能分块）。"
+        return f"✅ [V2增强版] 文档已成功索引（共 {len(chunks) + (1 if stat_block else 0)} 个智能分块，含自动统计）。"
     except Exception as e:
         return f"❌ [V2] 文档处理失败: {e}"
 
 def search_knowledge_v2(query: str, tags: str = ""):
-    """【V2实验版】混合检索：关键词精确匹配 + BM25 语义召回"""
+    """【V2】混合检索：精准匹配 + BM25 + 直接读取统计块"""
     try:
+        REQUIRED_TERMS = ["销售", "收入", "咖啡", "利润", "工资", "统计", "受欢迎", "哪个", "品类"]
+        if not any(term in query for term in REQUIRED_TERMS):
+            return ""
+
         store = _load_store()
         combined_docs = []
         if tags and tags.strip():
             target_key = f"tag_{tags.strip()}"
             combined_docs.extend(store["store"].get(target_key, []))
-        # 如果没传标签，遍历所有标签库兜底
         if not combined_docs:
             combined_docs.extend(store["store"].get("__global__", []))
             for key in store["store"].keys():
@@ -148,34 +170,34 @@ def search_knowledge_v2(query: str, tags: str = ""):
 
         all_texts = [doc.get("text", "") for doc in combined_docs]
 
-        # 1. 日期/数值精确匹配（保底）
+        # 1. 日期精确匹配（保底）
         _year_match = re.search(r'(20\d{2})', query)
         _month_match = re.search(r'(\d{1,2})月份', query)
         target_prefix = ""
         if _year_match and _month_match:
             target_prefix = f"{_year_match.group(1)}/{int(_month_match.group(1))}/"
-        
+
         matched_texts = []
         if target_prefix:
             for text in all_texts:
                 if target_prefix in text:
                     matched_texts.append(text)
         else:
-            # 2. BM25 稀疏语义检索
-            if HAS_BM25:
-                tokenized_corpus = [_tokenize(text) for text in all_texts]
-                if tokenized_corpus:
-                    bm25 = BM25Okapi(tokenized_corpus)
-                    scores = bm25.get_scores(_tokenize(query))
-                    top_indices = scores.argsort()[-10:][::-1]
-                    for idx in top_indices:
-                        if scores[idx] > 0:
-                            matched_texts.append(all_texts[idx])
-            else:
-                # 降级：简单的关键词包含匹配
+            # 2. 检查是否是统计块请求（比如问“哪个受欢迎”）
+            if any(term in query for term in ["哪个", "受欢迎", "品类"]):
                 for text in all_texts:
-                    if any(word in text for word in _tokenize(query)):
+                    if "饮品受欢迎程度排行榜" in text:
                         matched_texts.append(text)
+            
+            # 3. 纯本地 BM25 语义检索兜底
+            if not matched_texts and HAS_BM25:
+                tokenized_corpus = [_tokenize(text) for text in all_texts]
+                bm25 = BM25Okapi(tokenized_corpus)
+                scores = bm25.get_scores(_tokenize(query))
+                top_indices = scores.argsort()[-10:][::-1]
+                for idx in top_indices:
+                    if scores[idx] > 0:
+                        matched_texts.append(all_texts[idx])
 
         if matched_texts:
             return "\n\n".join(matched_texts[:10])[:20000]
