@@ -1,11 +1,13 @@
 # common/rag_v2.py
 import os
 import json
-import re
+import re 
+import jieba
 import uuid
 import datetime
 from typing import List
 from collections import Counter
+import numpy as np  # 【重要】必须添加这个，否则向量计算会报错
 
 try:
     from rank_bm25 import BM25Okapi
@@ -17,14 +19,28 @@ except ImportError:
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAG_DATA_FILE = os.path.join(BASE_DIR, "rag_data.json")
 
+# 尝试加载向量模型（使用 hf-mirror 成功下载后的本地路径）
+_vector_model = None
+try:
+    from sentence_transformers import SentenceTransformer
+    # 【强制离线加载】请将下面的路径替换为您第一步运行后打印的真实路径！
+    # 注意：路径中的反斜杠 \ 需要写成双反斜杠 \\，或者直接使用正斜杠 /
+    _vector_model = SentenceTransformer("C:/Users/索群/.cache/huggingface/hub/models--thenlper--gte-base-zh/snapshots/71ab7947d6fac5b64aa299e6e40e6c2b2e85976c", local_files_only=True)
+    print("✅ 向量模型(GTE)加载成功！")
+except Exception as e:
+    print(f"⚠️ 向量模型加载失败，将降级为纯 BM25 模式，不影响核心功能: {e}")
+    _vector_model = None
+
 def _load_store():
     if os.path.exists(RAG_DATA_FILE):
         with open(RAG_DATA_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     return {"files": [], "store": {}}
 
+import jieba
 def _tokenize(text: str) -> List[str]:
-    return re.findall(r'[\u4e00-\u9fa5]|[a-zA-Z0-9]+', text)
+    # 【核心优化】使用 jieba 进行词级分词，大幅提升 BM25 中文语义匹配的精准度
+    return [token for token in jieba.lcut(text) if token.strip()]
 
 def _smart_chunk_text(text: str, max_chunk_size: int = 1500) -> List[str]:
     if len(text) <= max_chunk_size:
@@ -150,7 +166,7 @@ def index_document_v2(file_path: str, tags: str = ""):
 def search_knowledge_v2(query: str, tags: str = ""):
     """【V2】混合检索：精准匹配 + BM25 + 直接读取统计块"""
     try:
-        REQUIRED_TERMS = ["销售", "收入", "咖啡", "利润", "工资", "统计", "受欢迎", "哪个", "品类"]
+        REQUIRED_TERMS = ["销售", "收入", "咖啡", "利润", "工资", "统计", "受欢迎", "哪个", "品类", "牛奶", "品种", "饮品", "拿铁", "美式"]
         if not any(term in query for term in REQUIRED_TERMS):
             return ""
 
@@ -183,8 +199,8 @@ def search_knowledge_v2(query: str, tags: str = ""):
                 if target_prefix in text:
                     matched_texts.append(text)
         else:
-            # 2. 检查是否是统计块请求（比如问“哪个受欢迎”）
-            if any(term in query for term in ["哪个", "受欢迎", "品类"]):
+            # 2. 【核心修复】只要问到了具体品类、牛奶、饮品，必须直接优先召回物理统计块！
+            if any(term in query for term in ["受欢迎", "哪个", "品类", "牛奶", "品种", "饮品", "拿铁", "美式"]):
                 for text in all_texts:
                     if "饮品受欢迎程度排行榜" in text:
                         matched_texts.append(text)

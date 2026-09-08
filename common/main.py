@@ -275,6 +275,53 @@ async def chat_core(session_id: str, query: str, user_text: str = None, query_wo
     # ================= 变量初始化 =================
     context = "暂无相关文档（知识库未加载）"
     history = memory.get(session_id)[-5:]
+
+    # ================= 物理级防幻觉：添加日程强制拦截（强制接管，模型无权传参！） =================
+    if re.search(r'提醒我|添加日程|安排日程|设置日程', query):
+        rel_match = re.search(r'(明天|后天|大后天|今天)', query)
+        days = 0
+        if rel_match:
+            if rel_match.group(1) == '明天':
+                days = 1
+            elif rel_match.group(1) == '后天':
+                days = 2
+            elif rel_match.group(1) == '大后天':
+                days = 3
+
+        # 提取时间（支持“9点”，“上午9点”，“9:00”，“下午3点”等多种格式）
+        time_match = re.search(r'(上午|下午|晚上|早上|中午)?\s*(\d{1,2})\s*[点时:：]?\s*(\d{1,2})?', query)
+        if time_match:
+            meridiem = time_match.group(1) or ''
+            hour = int(time_match.group(2))
+            minute = int(time_match.group(3) or 0)
+
+            if meridiem in ['下午', '晚上'] and hour != 12:
+                hour += 12
+            elif meridiem == '上午' and hour == 12:
+                hour = 0
+
+            title_match = re.search(r'(?:提醒我|添加日程|安排日程|设置日程)\s*(.*)', query)
+            title = title_match.group(1).strip() if title_match else "日程提醒"
+            title = re.sub(r'(明天|后天|今天|上午|下午|晚上|早上|中午|\d{1,2}\s*[点时:：]?\s*\d{1,2}?|点半|点|半)', '', title).strip()
+
+            if title:
+                # 【关键】工具内部自己计算，模型连传参的资格都没有！
+                from common.tools import add_event
+                target_date = datetime.datetime.now() + datetime.timedelta(days=days)
+                clean_start = f"{target_date.year}-{target_date.month:02d}-{target_date.day:02d} {hour:02d}:{minute:02d}"
+                result_str = add_event(title, clean_start)
+
+                # 冲突检测
+                if "⚠️" in result_str or "失败" in result_str:
+                    return output_guard(result_str)
+
+                match_id = re.search(r'ID:(\d+)', result_str)
+                friendly_id = match_id.group(1) if match_id else "?"
+                day_text = "今天" if days == 0 else ("明天" if days == 1 else ("后天" if days == 2 else "大后天"))
+
+                # 生成友好且绝对真实的回复
+                return output_guard(f"✅ 好的，已为您设置日程提醒！\n\n**事件**：{title}\n**时间**：{day_text}（{clean_start}）\n**日程ID**：{friendly_id}\n\n到时候我会准时提醒您，请放心！")
+    # ================= 添加拦截结束 =================
     
     # ================= 强制时间查询处理 =================
     if any(kw in query for kw in ["现在几点", "现在时间", "几点了", "什么时间", "当前时间"]):
