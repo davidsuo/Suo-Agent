@@ -160,13 +160,7 @@ SYSTEM_PROMPT = """
 
 【日程与时间强制规则】
 - 在回答任何与日程、时间、日期相关的问题时，必须严格逐字引用工具返回的 start_time 字段中的年份、月份和日期，严禁自行修改或推断。
-- 如果用户问“明天”，你必须先调用 get_current_time 获取当前日期，再基于该日期计算明天，并将计算后的日期作为参数传递给 list_events 或 add_event。
-- 当你调用 list_events 获得结果后，只准直接复述结果中的内容，不准添加虚构信息。
-【数据与反幻觉强制规则】
-- 严禁编造任何企业销售数据！只有当用户明确询问企业知识库中的具体数据（如某月销售、工资等），才可使用知识库数据。
-- 【绝对放权】如果用户询问的是实时信息（如天气、新闻等），严禁利用企业知识库的数据强行回答，严禁说“根据知识库数据”，而是应该直接、自主地调用 `web_search` 获取真实信息。
-- 如果 `web_search` 失败，请直接、真实地告诉用户：“抱歉，当前搜索服务暂时不可用，建议稍后再试。”
-- 严禁调用 execute_python 或 calculator 来处理知识库中的数据，必须直接基于【参考文档】内容回答。
+
 【参考文档】：
 {context}
 """
@@ -292,6 +286,17 @@ async def chat_core(session_id: str, query: str, user_text: str = None, query_wo
             return output_guard(time_answer)
         except Exception as e:
             print(f"[时间查询] 直接调用失败，回退到模型逻辑: {e}")
+
+    # ================= 物理级强制计算拦截（彻底摆脱模型限制） =================
+    if ("计算" in query or "统计" in query or "排名" in query or "汇总" in query) and ("月份" in query or "月度" in query or "销售" in query or "收入" in query or "品类" in query or "咖啡" in query):
+        try:
+            from common.tools import analyze_data
+            # 直接调用工具，由于工具内有自动寻址功能，会扫描 uploads 目录找到完整文件
+            result_str = analyze_data(query, "")
+            return output_guard(result_str)
+        except Exception as e:
+            return f"计算分析失败: {e}"
+    # ================= 拦截结束 =================
 
     # ================= RAG V2 实验版逻辑（纯 V2 混合检索） =================
     # 【纯V2修改】强制导入 V2 检索函数，移除V1逻辑和RAG_MODE开关
