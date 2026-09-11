@@ -1,16 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Layout, Menu, Input, Button, Avatar, message as antMessage, Tooltip, Card, Row, Col, Statistic, Table, Spin, Space, Modal, Tag, Select, Dropdown } from 'antd';
-import { UserOutlined, SendOutlined, PlusOutlined, DeleteOutlined, PaperClipOutlined, SoundOutlined, LogoutOutlined, CloseOutlined, SearchOutlined, DownloadOutlined, UploadOutlined, LikeOutlined, DislikeOutlined, EditOutlined, FolderOpenOutlined, FileExcelOutlined, DownOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Layout, Menu, Input, Button, Avatar, message as antMessage, Tooltip, Card, Row, Col, Statistic, Table, Spin, Space, Modal, Tag, Select } from 'antd';
+import { UserOutlined, SendOutlined, PlusOutlined, DeleteOutlined, PaperClipOutlined, SoundOutlined, LogoutOutlined, CloseOutlined, SearchOutlined, DownloadOutlined, UploadOutlined, LikeOutlined, DislikeOutlined, EditOutlined } from '@ant-design/icons';
 import api from '../api/client';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 const { Sider, Content } = Layout;
 interface Message { role: 'user' | 'assistant'; content: string; }
-
-const roleMap: Record<string, string> = {
-  admin: '管理员', manager: '经理', developer: '研发人员', viewer: '观察者'
-};
 
 export default function Chat({ user, onLogout }: { user: any, onLogout: () => void }) {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
@@ -20,16 +16,17 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
   const [loading, setLoading] = useState(false);
   const [currentProject, setCurrentProject] = useState(() => localStorage.getItem('currentProject') || '主对话');
   const [projects, setProjects] = useState(['主对话', '产品部']);
-  const [pendingFile, setPendingFile] = useState<{ name: string; content: string } | null>(null);
+
+  // 【架构级改动】临时文件只存 path，不再存 content
+  const [pendingFile, setPendingFile] = useState<{ name: string; path: string } | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const chatFileInputRef = useRef<HTMLInputElement>(null);
   const kbFileInputRef = useRef<HTMLInputElement>(null);
-  const kbBatchFileInputRef = useRef<HTMLInputElement>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const [isListening, setIsListening] = useState(false);
-  
+
   const [healthData, setHealthData] = useState<any>(null);
   const [healthLoading, setHealthLoading] = useState(false);
   const [logsData, setLogsData] = useState<any[]>([]);
@@ -43,6 +40,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
   const [kbFile, setKbFile] = useState<any>(null);
   const [kbTags, setKbTags] = useState('');
 
+  // 【P1-2 恢复】编辑标签相关状态
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingFile, setEditingFile] = useState<any>(null);
   const [editTags, setEditTags] = useState('');
@@ -61,11 +59,15 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
   useEffect(() => {
     localStorage.setItem('currentProject', currentProject);
     loadHistory(currentProject);
-    if (activeView === 'kb') { loadKbFiles(); }
+    if (activeView === 'kb') {
+      loadKbFiles();
+    }
   }, [currentProject, activeView]);
 
   useEffect(() => {
-    if (activeView === 'chat') { messagesEndRef.current?.scrollIntoView({ behavior: 'auto' }); }
+    if (activeView === 'chat') {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+    }
   }, [messages, activeView]);
 
   const loadHistory = useCallback(async (project: string) => {
@@ -77,14 +79,21 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
         const newMsgs: Message[] = [];
         for (const msg of msgs) {
           if (msg.role === 'user' && msg.content.startsWith('📎 上传文件：')) {
-            const parts = msg.content.split('\n\n');
+            // 【新架构】格式为 "📎 上传文件：xxx\n用户问题"（单换行）
+            const parts = msg.content.split('\n');
             if (parts.length >= 2) {
               const fileRef = parts[0];
-              const question = parts.slice(1).join('\n\n');
+              const question = parts.slice(1).join('\n').trim();
               newMsgs.push({ role: 'user', content: fileRef });
-              if (question) newMsgs.push({ role: 'user', content: question });
-            } else newMsgs.push({ role: 'user', content: msg.content });
-          } else newMsgs.push(msg);
+              if (question) {
+                newMsgs.push({ role: 'user', content: question });
+              }
+            } else {
+              newMsgs.push({ role: 'user', content: msg.content });
+            }
+          } else {
+            newMsgs.push(msg);
+          }
         }
         setMessages(newMsgs);
       }
@@ -96,8 +105,11 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     try {
       const res = await api.get('/users/list');
       if (res.data && res.data.status === 'success') setUsersList(res.data.data);
-    } catch { antMessage.error("用户列表加载失败"); }
-    finally { setUsersLoading(false); }
+    } catch {
+      antMessage.error("用户列表加载失败");
+    } finally {
+      setUsersLoading(false);
+    }
   };
 
   const loadKbFiles = async () => {
@@ -119,7 +131,9 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
         if (!silent) antMessage.success(`"${fileName}" 已删除`);
         if (onSuccess) onSuccess();
         loadKbFiles();
-      } else antMessage.error(res.data.message || '删除失败');
+      } else {
+        antMessage.error(res.data.message || '删除失败');
+      }
     } catch (error) {
       antMessage.error('删除请求失败');
       console.error(error);
@@ -139,13 +153,16 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
         setKbFile(null);
         setKbTags('');
         loadKbFiles();
-      } else antMessage.error(res.data.message || '索引失败');
+      } else {
+        antMessage.error(res.data.message || '索引失败');
+      }
     } catch (error) {
       antMessage.error("索引请求失败");
       console.error(error);
     }
   };
 
+  // 【P1-2 恢复】编辑标签提交函数
   const handleEditTagsSubmit = async () => {
     if (!editingFile) return;
     const fd = new FormData();
@@ -156,7 +173,9 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
       antMessage.success('标签更新成功');
       setIsEditModalOpen(false);
       loadKbFiles();
-    } else antMessage.error(res.data.message || '更新失败');
+    } else {
+      antMessage.error(res.data.message || '更新失败');
+    }
   };
 
   useEffect(() => {
@@ -177,19 +196,31 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     const isAudio = pendingFileData?.name?.toLowerCase().match(/\.(wav|mp3|m4a|ogg|webm)$/);
     setInput('');
     setLoading(true);
-    if (pendingFileData) {
-      const fileDisplay = isAudio ? '🎤 语音文件' : `📎 上传文件：${pendingFileData.name}`;
-      setMessages(prev => [...prev, { role: 'user', content: fileDisplay }]);
+
+    // 【优化】文件气泡已在选文件时显示，这里不再重复 push
+    if (msgText) {
+      setMessages(prev => [...prev, { role: 'user', content: msgText }]);
     }
-    if (msgText) setMessages(prev => [...prev, { role: 'user', content: msgText }]);
     setMessages(prev => [...prev, { role: 'assistant', content: '🔍 正在处理...' }]);
+
     try {
-      let query = msgText || '请分析该文件';
-      if (pendingFileData) {
-        let content = pendingFileData.content;
-        query = `文件 ${pendingFileData.name} 的内容如下：\n${content}\n\n用户问题：${msgText || '请分析该文件'}`;
+      // 【架构级改动】文件内容不再拼接进 query。
+      // 文件已在选文件时上传到 uploads/temp，通过 temp_file_path 传递。
+      const query = msgText || '请分析该文件';
+
+      const userTextForMemory = pendingFileData?.path
+        ? `📎 上传文件：${pendingFileData.name}\n${msgText || ''}`
+        : (msgText || '');
+
+      const payload: any = {
+        session_id: sessionId,
+        query: query,
+        user_text: userTextForMemory,
+      };
+      if (pendingFileData?.path) {
+        payload.temp_file_path = pendingFileData.path;
       }
-      const payload = { session_id: sessionId, query: query, user_text: msgText || '' };
+
       const res = await api.post('/chat', payload);
       if (res.data.answer && res.data.answer.includes('账号已被禁用')) {
         antMessage.error('您的账号已被禁用，请重新登录！');
@@ -207,19 +238,31 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
       antMessage.error('AI 响应超时或数据过长');
       setMessages(prev => {
         const newMessages = [...prev];
-        newMessages[newMessages.length - 1] = { role: 'assistant', content: '抱歉，请求处理失败，请简化问题或减少文件内容。' };
+        newMessages[newMessages.length - 1] = { role: 'assistant', content: '抱歉，请求处理失败，请简化问题。' };
         return newMessages;
       });
     } finally {
       setLoading(false);
+      // 【设计决策】每次发送后清空临时文件，符合"单次对话临时分析"语义
       setPendingFile(null);
       setSelectedFile(null);
     }
   };
 
   const handleSend = () => sendMessage(input);
-  const startRecording = () => { if (recognitionRef.current) { recognitionRef.current.start(); setIsListening(true); } };
-  const stopRecording = () => { if (recognitionRef.current) { recognitionRef.current.stop(); setIsListening(false); } };
+
+  const startRecording = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.start();
+      setIsListening(true);
+    }
+  };
+  const stopRecording = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    }
+  };
 
   const handleAddProject = () => {
     const p = prompt('请输入项目名');
@@ -229,15 +272,21 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     }
   };
   const handleDeleteProject = () => {
-    if (currentProject === '主对话') { antMessage.warning('不可删除主对话'); return; }
+    if (currentProject === '主对话') {
+      antMessage.warning('不可删除主对话');
+      return;
+    }
     setProjects(projects.filter(p => p !== currentProject));
     setCurrentProject('主对话');
   };
 
   const handleLogout = () => {
     sessionStorage.removeItem('suo_user');
-    if (onLogout) onLogout();
-    else window.location.href = '/';
+    if (onLogout) {
+      onLogout();
+    } else {
+      window.location.href = '/';
+    }
   };
 
   const loadHealth = async () => {
@@ -267,7 +316,9 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
       const res = await api.get('/status');
       if (res.data && res.data.status === 'success') {
         setStatusData(res.data.data);
-      } else antMessage.error("获取状态数据失败");
+      } else {
+        antMessage.error("获取状态数据失败");
+      }
     } catch { antMessage.error("后端状态接口异常"); }
     finally { setStatusLoading(false); }
   };
@@ -289,10 +340,13 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
       antMessage.error('日志导出失败，请稍后重试');
     }
   };
-  
+
   const downloadKbFile = async (fileName: string) => {
     try {
-      const response = await api.get('/kb/download', { params: { file_name: fileName }, responseType: 'blob' });
+      const response = await api.get('/kb/download', {
+        params: { file_name: fileName },
+        responseType: 'blob'
+      });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -306,26 +360,8 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     }
   };
 
-  const handleBatchUpload = (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    let uploadedCount = 0;
-    Array.from(files).forEach(async (file) => {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('tags', '');
-      try {
-        await api.post('/kb/index', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-        uploadedCount++;
-        if (uploadedCount === files.length) {
-          antMessage.success(`批量上传完成，共 ${uploadedCount} 个文件`);
-          loadKbFiles();
-        }
-      } catch (error) { antMessage.error(`文件 ${file.name} 上传失败`); }
-    });
-  };
-
   const toolColumns = [
-      { title: '工具名称', dataIndex: 'tool', render: (text: any) => text || '系统操作' },
+      { title: '工具名称', dataIndex: 'tool', render: (text: string | undefined) => text || '系统操作' },
       { title: '调用次数', dataIndex: 'count' }
   ];
 
@@ -338,6 +374,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     { title: '状态', dataIndex: 'status', width: 80 },
   ];
 
+  // 【P1-2 恢复】kbColumns 加"操作"列
   const kbColumns = [
     { title: '文档名称', dataIndex: 'file_name' },
     { title: '标签', dataIndex: 'tags', width: 220, ellipsis: true },
@@ -353,12 +390,14 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
           setIsEditModalOpen(true);
         }} />
       )
-    }
+    },
   ];
 
   const statusColumns = [
     { title: 'Worker 名称', dataIndex: 'name', key: 'name' },
-    { title: '运行状态', dataIndex: 'is_running', key: 'is_running', render: (running: boolean) => (running ? <Tag color="green">运行中</Tag> : <Tag color="red">已停止</Tag>) },
+    { title: '运行状态', dataIndex: 'is_running', key: 'is_running', render: (running: boolean) => (
+        running ? <Tag color="green">运行中</Tag> : <Tag color="red">已停止</Tag>
+    )},
     { title: '完成任务数', dataIndex: 'task_count', key: 'task_count' },
     { title: '失败任务数', dataIndex: 'error_count', key: 'error_count' },
     { title: '队列长度', dataIndex: 'queue_size', key: 'queue_size' },
@@ -366,42 +405,47 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     { title: '错误率', dataIndex: 'error_rate', key: 'error_rate' },
   ];
 
-  const filteredLogs = logsData.filter(log => (log.username || '').toLowerCase().includes(logSearch.toLowerCase()) || (log.detail || '').toLowerCase().includes(logSearch.toLowerCase()));
-  const filteredKb = kbFiles.filter(f => (f.file_name || '').toLowerCase().includes(kbSearch.toLowerCase()));
-  const filteredUsers = usersList.filter(u => (u.username || '').toLowerCase().includes(userSearch.toLowerCase()) || (u.real_name || '').toLowerCase().includes(userSearch.toLowerCase()) || (u.department || '').toLowerCase().includes(userSearch.toLowerCase()));
-
-  const documentMenuItems = [
-    { key: 'upload', label: '上传文档', icon: <UploadOutlined /> },
-    { key: 'download', label: '下载选中', icon: <DownloadOutlined /> },
-  ];
-
-  const batchMenuItems = [
-    { key: 'batch_upload', label: '批量上传', icon: <FolderOpenOutlined /> },
-    { key: 'export', label: '导出列表', icon: <FileExcelOutlined /> },
-  ];
+  const filteredLogs = logsData.filter(log =>
+    (log.username || '').toLowerCase().includes(logSearch.toLowerCase()) ||
+    (log.detail || '').toLowerCase().includes(logSearch.toLowerCase())
+  );
+  const filteredKb = kbFiles.filter(f =>
+    (f.file_name || '').toLowerCase().includes(kbSearch.toLowerCase())
+  );
+  const filteredUsers = usersList.filter(u =>
+    (u.username || '').toLowerCase().includes(userSearch.toLowerCase()) ||
+    (u.real_name || '').toLowerCase().includes(userSearch.toLowerCase()) ||
+    (u.department || '').toLowerCase().includes(userSearch.toLowerCase())
+  );
 
   return (
     <Layout style={{ height: '100vh', width: '100%', margin: 0, padding: 0, background: '#f5f5f5' }}>
-      <Sider theme="light" width={260} style={{ background: '#fff', borderRight: '1px solid #f0f0f0' }}>
-        <div style={{ padding: '16px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <img src="data:image/png;base64,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" alt="Logo" style={{ width: 100, height: 60, objectFit: 'contain' }} />
-          <span style={{ fontWeight: 'bold', fontSize: 16 }}>AI管理咨询</span>
-        </div>
+      <Sider theme="light" width={240} style={{ background: '#fff', borderRight: '1px solid #f0f0f0' }}>
+        <div style={{ padding: '16px 10px', fontWeight: 'bold', fontSize: 16 }}>🚀 某某企业AI原生系统平台</div>
         <div style={{ padding: '0 10px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
           <Avatar icon={<UserOutlined />} />
-          <span>{user.display_name || user.real_name}{user.department && ` (${user.department}：${roleMap[user.role] || user.role})`}</span>
+          <span>{user.display_name}</span>
         </div>
         <div style={{ padding: '0 10px', marginBottom: 8, display: 'flex', gap: 8 }}>
-          <Button style={{ flex: 1 }} icon={<PlusOutlined />} onClick={handleAddProject}>新建对话窗</Button>
-          <Button style={{ flex: 1 }} icon={<DeleteOutlined />} onClick={handleDeleteProject} danger>删除</Button>
+          <Button block icon={<PlusOutlined />} onClick={handleAddProject}>新建对话窗</Button>
+          <Button icon={<DeleteOutlined />} onClick={handleDeleteProject} danger>删除</Button>
         </div>
         <div style={{ padding: '0 10px' }}>
-          <Menu mode="inline" selectedKeys={[currentProject]} style={{ borderInlineEnd: 'none', textAlign: 'left', width: '100%' }} items={projects.map(p => ({ key: p, label: p }))} onClick={({ key }) => setCurrentProject(key)} />
+          <Menu
+            mode="inline"
+            selectedKeys={[currentProject]}
+            style={{ borderInlineEnd: 'none', textAlign: 'left' }}
+            items={projects.map(p => ({ key: p, label: p }))}
+            onClick={({ key }) => setCurrentProject(key)}
+          />
         </div>
       </Sider>
+
       <div style={{ flex: 1, background: '#f5f5f5' }} />
+
       <div style={{ width: '23cm', flex: '0 0 23cm', background: '#f5f5f5', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <Content style={{ flex: 1, padding: 20, overflowY: 'auto', background: '#f5f5f5' }}>
+
           {activeView === 'kb' && (
             <Spin spinning={kbLoading}>
               <h2>📚 企业垂直知识库管理</h2>
@@ -415,7 +459,11 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                           Modal.confirm({
                             title: '文件已存在',
                             content: `文件 "${file.name}" 已存在，是否覆盖？`,
-                            onOk: () => { handleKbDelete(file.name, () => { setKbFile(file); setKbTags(''); setIsKbUploadOpen(true); }); },
+                            onOk: () => {
+                              handleKbDelete(file.name, () => {
+                                setKbFile(file); setKbTags(''); setIsKbUploadOpen(true);
+                              });
+                            },
                             onCancel: () => antMessage.info('已取消上传')
                           });
                         } else {
@@ -424,34 +472,19 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                       }
                       e.target.value = '';
                     }} />
-                  <input type="file" multiple ref={kbBatchFileInputRef} style={{ display: 'none' }} onChange={(e) => { handleBatchUpload(e.target.files); e.target.value = ''; }} />
-                  <Dropdown menu={{ items: documentMenuItems, onClick: ({ key }) => {
-                      if (key === 'upload') kbFileInputRef.current?.click();
-                      else if (key === 'download') {
-                        if (selectedRowKeys.length === 0) { antMessage.warning('请先勾选要下载的文档'); return; }
-                        const selectedFiles = selectedRowKeys.map(idx => filteredKb[idx as number].file_name);
-                        selectedFiles.forEach(fname => downloadKbFile(fname));
-                      }
-                    }}}>
-                    <Button icon={<DownOutlined />}>文档操作</Button>
-                  </Dropdown>
-                  <Button icon={<ReloadOutlined />} onClick={loadKbFiles}>刷新</Button>
-                  <Dropdown menu={{ items: batchMenuItems, onClick: ({ key }) => {
-                      if (key === 'batch_upload') kbBatchFileInputRef.current?.click();
-                      else if (key === 'export') {
-                        if (filteredKb.length === 0) { antMessage.warning('当前无可导出的文档'); return; }
-                        const header = '文档名称,标签,索引时间,切片数\n';
-                        const rows = filteredKb.map(f => `${f.file_name},${f.tags},${f.created_at},${f.chunks}`).join('\n');
-                        const csv = header + rows;
-                        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-                        const link = document.createElement('a');
-                        link.href = URL.createObjectURL(blob);
-                        link.download = `知识库列表_${new Date().toISOString().slice(0,10)}.csv`;
-                        link.click(); URL.revokeObjectURL(link.href); antMessage.success('导出成功');
-                      }
-                    }}}>
-                    <Button icon={<DownOutlined />}>批量操作</Button>
-                  </Dropdown>
+                  <Button type="primary" icon={<UploadOutlined />} onClick={() => kbFileInputRef.current?.click()}>上传文档</Button>
+                  <Button icon={<DownloadOutlined />} onClick={loadKbFiles}>刷新</Button>
+                  <Button icon={<DownloadOutlined />} onClick={() => {
+                      if (filteredKb.length === 0) { antMessage.warning('当前无可导出的文档'); return; }
+                      const header = '文档名称,标签,索引时间,切片数\n';
+                      const rows = filteredKb.map(f => `${f.file_name},${f.tags},${f.created_at},${f.chunks}`).join('\n');
+                      const csv = header + rows;
+                      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+                      const link = document.createElement('a');
+                      link.href = URL.createObjectURL(blob);
+                      link.download = `知识库列表_${new Date().toISOString().slice(0,10)}.csv`;
+                      link.click(); URL.revokeObjectURL(link.href); antMessage.success('导出成功');
+                    }}>导出列表</Button>
                   <Button danger icon={<DeleteOutlined />} onClick={() => {
                     if (selectedRowKeys.length === 0) { antMessage.warning('请先勾选要删除的文档'); return; }
                     const selectedFiles = selectedRowKeys.map(idx => filteredKb[idx as number].file_name);
@@ -463,15 +496,20 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                       }
                     });
                   }}>删除</Button>
+                  <Button icon={<DownloadOutlined />} onClick={() => {
+                    if (selectedRowKeys.length === 0) { antMessage.warning('请先勾选要下载的文档'); return; }
+                    const selectedFiles = selectedRowKeys.map(idx => filteredKb[idx as number].file_name);
+                    selectedFiles.forEach(fname => downloadKbFile(fname));
+                  }}>下载文档</Button>
                 </Space>
                 <Input placeholder="搜索文档名..." prefix={<SearchOutlined />} value={kbSearch} onChange={(e) => setKbSearch(e.target.value)} style={{ width: 200 }} />
               </Space>
-              <Table rowSelection={{ selectedRowKeys, onChange: (selectedKeys) => setSelectedRowKeys(selectedKeys as React.Key[]) }} dataSource={filteredKb.map((item, index) => ({ ...item, key: index }))} columns={kbColumns} pagination={{ pageSize: 10 }} size="small" />
-              <Modal title={`编辑标签：${editingFile?.file_name}`} open={isEditModalOpen} onCancel={() => setIsEditModalOpen(false)} onOk={handleEditTagsSubmit}>
-                <Input placeholder="输入新标签（用逗号分隔）" value={editTags} onChange={(e) => setEditTags(e.target.value)} />
-              </Modal>
+              <Table rowSelection={{ selectedRowKeys, onChange: (selectedKeys) => setSelectedRowKeys(selectedKeys as React.Key[]) }}
+                dataSource={filteredKb.map((item, index) => ({ ...item, key: index }))}
+                columns={kbColumns} pagination={{ pageSize: 10 }} size="small" />
             </Spin>
           )}
+
           {activeView === 'admin' && (
             <Spin spinning={usersLoading}>
               <h2>👥 用户管理</h2>
@@ -502,7 +540,9 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                   });
                 }}>删除</Button>
               </Space>
-              <Table rowSelection={{ selectedRowKeys, onChange: (selectedKeys) => setSelectedRowKeys(selectedKeys as React.Key[]) }} dataSource={filteredUsers.map((u, i) => ({ ...u, key: i }))} columns={[
+              <Table rowSelection={{ selectedRowKeys, onChange: (selectedKeys) => setSelectedRowKeys(selectedKeys as React.Key[]) }}
+                dataSource={filteredUsers.map((u, i) => ({ ...u, key: i }))}
+                columns={[
                   { title: '用户名', dataIndex: 'username' },
                   { title: '姓名', dataIndex: 'real_name' },
                   { title: '角色', dataIndex: 'role', render: (text: any, record: any) => (
@@ -553,6 +593,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
               </Modal>
             </Spin>
           )}
+
           {activeView === 'health' && (
             <Spin spinning={healthLoading}>
               {healthData ? (
@@ -571,6 +612,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
               ) : (<p>暂无健康数据</p>)}
             </Spin>
           )}
+
           {activeView === 'logs' && (
             <Spin spinning={logsLoading}>
               <h2>系统操作日志（不可删除 · 可追溯）</h2>
@@ -581,6 +623,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
               <Table dataSource={filteredLogs.map((item, index) => ({...item, key: index}))} columns={logColumns} pagination={{ pageSize: 20 }} size="small" scroll={{ y: 400 }} />
             </Spin>
           )}
+
           {activeView === 'status' && (
             <Spin spinning={statusLoading}>
               <h2>📊 实时 Worker 状态监控</h2>
@@ -588,6 +631,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
               <Table dataSource={statusData.map((item, index) => ({ ...item, key: index }))} columns={statusColumns} pagination={false} size="small" rowKey="name" />
             </Spin>
           )}
+
           {activeView === 'chat' && (
             <>
               {messages.map((msg, idx) => (
@@ -615,21 +659,35 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
             </>
           )}
         </Content>
-        <div style={{ border: '1px solid #4ade80', borderRadius: '12px', margin: '12px 20px 0 20px', padding: '12px', background: '#f5f5f5' }}>
+
+        <div style={{ border: '1px solid #4ade80', borderRadius: '12px', margin: '12px 20px', padding: '12px', background: '#f5f5f5' }}>
           <div style={{ marginBottom: 8 }}>
             <Input.TextArea value={input} onChange={(e) => setInput(e.target.value)} onPressEnter={handleSend} disabled={loading} placeholder={loading ? "AI 正在处理复杂任务..." : "发消息或按住喇叭说话，松开发送..."} autoSize={{ minRows: 1, maxRows: 4 }} style={{ borderRadius: '8px', fontSize: '16px', border: '1px solid #d9d9d9', background: '#fff' }} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input type="file" ref={chatFileInputRef} style={{ display: 'none' }} onChange={(e) => {
+            {/* 【P0-2】聊天框文件上传：改为走 /upload_temp，不读全文，显示气泡 */}
+            <input type="file" ref={chatFileInputRef} style={{ display: 'none' }} onChange={async (e) => {
                 const file = e.target.files?.[0];
                 if (file) {
-                  setSelectedFile(file);
-                  const reader = new FileReader();
-                  reader.onload = (event) => {
-                    const content = event.target?.result as string;
-                    setPendingFile({ name: file.name, content });
-                  };
-                  reader.readAsText(file);
+                  const hide = antMessage.loading(`正在保存 ${file.name}...`, 0);
+                  const formData = new FormData();
+                  formData.append('file', file);
+                  formData.append('session_id', sessionId);
+                  try {
+                    const res = await api.post('/upload_temp', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+                    hide();
+                    if (res.data.status === 'success') {
+                      setPendingFile({ name: res.data.file_name, path: res.data.file_path });
+                      setSelectedFile(file);
+                      setMessages(prev => [...prev, { role: 'user', content: `📎 上传文件：${res.data.file_name}` }]);
+                      antMessage.success(`${res.data.file_name} 已就绪`);
+                    } else {
+                      antMessage.error(`上传失败: ${res.data.message}`);
+                    }
+                  } catch (err) {
+                    hide();
+                    antMessage.error('上传失败');
+                  }
                 }
                 e.target.value = '';
               }} />
@@ -648,10 +706,8 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
             <Button type="primary" icon={<SendOutlined />} onClick={handleSend} loading={loading} style={{ marginLeft: 'auto' }}>发送</Button>
           </div>
         </div>
-        <div style={{ textAlign: 'center', color: '#999', fontSize: '16px', marginTop: '10px', marginBottom: '12px', userSelect: 'none' }}>
-          遨游AI星空，尽享AI快乐
-        </div>
       </div>
+
       <div style={{ width: '6cm', flex: '0 0 6cm', background: '#f5f5f5', borderLeft: '1px solid #f0f0f0', display: 'flex', flexDirection: 'column', paddingTop: 16 }}>
         <div style={{ paddingLeft: '12px' }}>
           <div style={{ display: 'flex', justifyContent: 'flex-start', gap: '8px', marginBottom: '8px' }}>
@@ -673,12 +729,20 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
           </Tooltip>
         </div>
       </div>
+
+      {/* 知识库上传 Modal */}
       <Modal title="上传文档到知识库" open={isKbUploadOpen} onCancel={() => { setIsKbUploadOpen(false); setKbFile(null); setKbTags(''); }} onOk={handleKbSubmit} okText="提交索引">
         <div style={{ marginBottom: 12, padding: '10px', border: '1px dashed #d9d9d9', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span>{kbFile ? kbFile.name : '未选择文件'}</span>
           {kbFile && <CloseOutlined style={{ cursor: 'pointer' }} onClick={() => setKbFile(null)} />}
         </div>
         <Input placeholder="输入标签（用逗号分隔，可选）" value={kbTags} onChange={(e) => setKbTags(e.target.value)} />
+      </Modal>
+
+      {/* 【P1-2 恢复】编辑标签 Modal */}
+      <Modal title={`编辑标签：${editingFile?.file_name}`} open={isEditModalOpen}
+        onCancel={() => setIsEditModalOpen(false)} onOk={handleEditTagsSubmit}>
+        <Input placeholder="输入新标签（用逗号分隔）" value={editTags} onChange={(e) => setEditTags(e.target.value)} />
       </Modal>
     </Layout>
   );

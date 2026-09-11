@@ -1,5 +1,5 @@
 # common/main.py
-import sys, os, json, asyncio, traceback, re, datetime, time
+import sys, os, json, asyncio, re, datetime, time
 import threading
 from typing import Optional
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -11,7 +11,6 @@ from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import shutil
-from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from openai import OpenAI
@@ -50,6 +49,16 @@ DIST_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'frontend', 
 UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'uploads')
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# ==================== 临时会话文件缓存 ====================
+# 【设计原则】聊天框上传的文件是"临时文件"，与知识库文档严格隔离。
+# 用途：单次会话内 LLM 分析使用，不污染企业知识库。
+import uuid as _uuid_mod
+TEMP_UPLOAD_DIR = os.path.join(UPLOAD_DIR, "temp")
+os.makedirs(TEMP_UPLOAD_DIR, exist_ok=True)
+
+# session_id -> temp_file_path
+_session_temp_files: dict = {}
+
 # ================= CORS 跨域配置 =================
 app.add_middleware(
     CORSMiddleware,
@@ -68,10 +77,10 @@ class ChatRequest(BaseModel):
     session_id: str
     query: str
     user_text: Optional[str] = None
+    temp_file_path: Optional[str] = None
 
 # ================= 数据库初始化与辅助函数 =================
 def init_db():
-    """初始化员工数据库（备用）"""
     db_path = "sample.db"
     if not os.path.exists(db_path):
         conn = sqlite3.connect(db_path)
@@ -84,7 +93,6 @@ def init_db():
         conn.close()
 
 def init_health_db():
-    """初始化健康数据库"""
     conn = sqlite3.connect("health.db")
     cursor = conn.cursor()
     cursor.execute('''CREATE TABLE IF NOT EXISTS logs (
@@ -95,7 +103,6 @@ def init_health_db():
     conn.close()
 
 def write_log_to_db(entry):
-    """写入日志到SQLite"""
     try:
         conn = sqlite3.connect("health.db")
         cursor = conn.cursor()
@@ -126,9 +133,9 @@ def set_workers(query_worker, command_worker, tool_router):
 @app.on_event("startup")
 async def startup_event():
     global _query_worker, _command_worker, _tool_router
-    init_users_db()  # 用户
-    init_db()        # 员工
-    init_health_db() # 健康
+    init_users_db()
+    init_db()
+    init_health_db()
     
     if _query_worker is None:
         bus = EventBus()
@@ -152,52 +159,15 @@ async def startup_event():
         set_workers(_query_worker, _command_worker, _tool_router)
     print("✅ FastAPI 初始化完成")
 
-# ================= 系统提示 =================
+# ================= 纯语义 Agent 极简系统提示 =================
+# 移除任何“规划”、“步骤依赖”等词汇，完全依赖模型自主选择工具
 SYSTEM_PROMPT = """
-你是一个全能的AI助手，可以使用记忆、知识库和多种工具来回答用户问题。
-当前你可用的工具如下：
-{available_tools}
-
-【日程与时间强制规则】
-- 在回答任何与日程、时间、日期相关的问题时，必须严格逐字引用工具返回的 start_time 字段中的年份、月份和日期，严禁自行修改或推断。
-
-【参考文档】：
-{context}
+你是一个企业级AI智能助手。请根据用户意图直接调用可用的工具函数。无需制定复杂计划，直接一步到位选择最合适的一个或多个工具解决用户问题。如果知识库和工具都无法解决，请坦诚告知用户。
 """
 
 # ================= 日志辅助函数 =================
 def _is_error_result(result) -> bool:
     return ("错误" in str(result)) or ("失败" in str(result))
-
-def enhanced_log_plan(session_id, user_query, plan, results, step_times, final_status, total_time, completed_steps=None):
-    real_username = session_id.split('_')[0] if '_' in session_id else session_id
-    user_info = get_user_info(real_username) if real_username else None
-    username = user_info.get("username", "unknown") if user_info else "unknown"
-    role = user_info.get("role", "unknown") if user_info else "unknown"
-
-    if user_query and "请严格按照以下" in user_query:
-        match = re.search(r"【用户问题】\s*(.*)", user_query)
-        user_query = match.group(1) if match else "复杂系统操作"
-
-    entry = {
-        "timestamp": datetime.datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S"),
-        "session_id": session_id, "username": username, "role": role,
-        "user_query": (user_query[:100] + "...") if user_query and len(user_query) > 100 else user_query,
-        "plan": plan, "results": {str(k): str(v)[:300] for k, v in results.items()},
-        "step_times": step_times, "final_status": final_status, "total_time": round(total_time, 3),
-        "tool": "规划执行"
-    }
-    if completed_steps is not None:
-        entry["completed_steps"] = [{"tool": s[0]["tool"], "description": s[0].get("description"), "result": str(s[2])[:200]} for s in completed_steps]
-
-    try:
-        with open("plan_log.json", "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        write_log_to_db(entry)
-    except Exception as e:
-        print(f"[规划审计] 写入失败: {e}", flush=True)
-
-log_lock = threading.Lock()
 
 def simple_log_tool(session_id, user_query, tool_name, arguments, result):
     real_username = session_id.split('_')[0] if '_' in session_id else session_id
@@ -205,18 +175,13 @@ def simple_log_tool(session_id, user_query, tool_name, arguments, result):
     username = user_info.get("username", "unknown") if user_info else "unknown"
     role = user_info.get("role", "unknown") if user_info else "unknown"
     status = "success" if not _is_error_result(result) else "failed"
-
-    if user_query and "请严格按照以下" in user_query:
-        match = re.search(r"【用户问题】\s*(.*)", user_query)
-        user_query = match.group(1).strip() if match else "复杂系统操作/知识库检索"
-
     clean_query = (user_query[:100] + "...") if user_query and len(user_query) > 100 else user_query
     entry = {
         "timestamp": datetime.datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S"),
         "session_id": session_id, "username": username, "role": role,
         "user_query": clean_query, "tool": tool_name,
         "arguments": {k: v for k, v in arguments.items() if k != "_tenant"},
-        "result": str(result)[:300], "status": status, "mode": "regular"
+        "result": str(result)[:300], "status": status, "mode": "semantic_agent"
     }
     try:
         with open("plan_log.json", "a", encoding="utf-8") as f:
@@ -225,30 +190,53 @@ def simple_log_tool(session_id, user_query, tool_name, arguments, result):
     except Exception as e:
         print(f"[审计] 写入失败: {e}", flush=True)
 
-# ================= 核心聊天逻辑 =================
-async def chat_core(session_id: str, query: str, user_text: str = None, query_worker=None, command_worker=None, TOOL_ROUTER=None, image_base64: str = None):
-    # 【核心终极拦截】无论前端怎么刷新，只要发消息查后端，就检查账号状态！
+log_lock = threading.Lock()
+
+# ================= 核心聊天逻辑 (纯语义 Agent 架构，无规划引擎) =================
+def _extract_ids_from_sources(sources: list) -> list:
+    """
+    从 RAG 返回的 sources 元数据中提取文档 ID。
+    独立函数，不作为 chat_core 的嵌套函数。
+    """
+    if not sources:
+        return []
+    ids = []
+    seen = set()
+    for src in sources:
+        doc_id = src.get("doc_id")
+        if doc_id and doc_id not in seen:
+            ids.append(doc_id)
+            seen.add(doc_id)
+            if len(ids) >= 5:
+                break
+    return ids
+
+async def chat_core(session_id: str, query: str, user_text: str = None,
+                    query_worker=None, command_worker=None, TOOL_ROUTER=None,
+                    image_base64: str = None, temp_file_path: str = None):
+    """
+    纯语义 Agent 架构的对话核心。
+
+    【设计原则】
+    1. RAG 提供"语义上下文"，LLM 理解后自主决策
+    2. 临时文件只传路径，文件内容不进 query
+    3. 所有 return 都返回 (answer, ids) 元组
+    """
+    # ==================== 1. 账号状态检查 ====================
     real_username = session_id.split('_')[0] if '_' in session_id else session_id
     user_info = get_user_info(real_username)
     if user_info and user_info.get("status") == "禁用":
-        print(f"###安全拦截### 用户 {real_username} 试图操作，已被强制拦截！")
-        return "【系统安全提示】您的账号已被管理员禁用，您已被强制下线，请联系管理员！"
-    
-    original_query = query
-    # 构建历史存储的消息
-    history_text = user_text if user_text else original_query
-    if query and query.startswith("文件"):
-        match = re.search(r"文件 (.+?) 的内容如下：", query)
-        if match:
-            filename = match.group(1)
-            history_text = f"📎 上传文件：{filename}\n\n{user_text}" if user_text else f"📎 上传文件：{filename}"
+        return "【系统安全提示】您的账号已被管理员禁用，您已被强制下线，请联系管理员！", []
 
-    # 输入护栏
+    original_query = query
+    history_text = user_text if user_text else original_query
+
+    # ==================== 2. 输入护栏 ====================
     is_safe, err_msg = input_guard(query)
     if not is_safe:
-        return err_msg
+        return err_msg, []
 
-    # 惰性启动 Worker
+    # ==================== 3. 惰性启动 Worker ====================
     if not query_worker.is_running:
         asyncio.create_task(query_worker.run_loop())
         query_worker.is_running = True
@@ -256,7 +244,7 @@ async def chat_core(session_id: str, query: str, user_text: str = None, query_wo
         asyncio.create_task(command_worker.run_loop())
         command_worker.is_running = True
 
-    # 确认回复处理
+    # ==================== 4. 待确认工具的处理 ====================
     if session_id in pending and "确认" in query.strip():
         tool_info = pending.pop(session_id)
         save_pending(pending)
@@ -270,345 +258,211 @@ async def chat_core(session_id: str, query: str, user_text: str = None, query_wo
         else:
             result = f"未找到工具 {tool_name}"
         memory.append(session_id, "确认执行工具", result)
-        return output_guard(result)
+        return output_guard(result), []
 
-    # ================= 变量初始化 =================
-    context = "暂无相关文档（知识库未加载）"
-    history = memory.get(session_id)[-5:]
+    # ==================== 5. 临时会话文件（只记路径，不读内容） ====================
+    # 【架构级修复】每次请求以本次是否携带 temp_file_path 为准：
+    # - 带了：说明本次是"上传文件后提问"，用新文件
+    # - 没带：说明本次是"纯知识库提问"，清除缓存，避免沿用上一轮
+    if temp_file_path:
+        _session_temp_files[session_id] = temp_file_path
+        current_temp_file = temp_file_path
+    else:
+        _session_temp_files.pop(session_id, None)
+        current_temp_file = None
 
-    # ================= 物理级防幻觉：添加日程强制拦截（强制接管，模型无权传参！） =================
-    if re.search(r'提醒我|添加日程|安排日程|设置日程', query):
-        rel_match = re.search(r'(明天|后天|大后天|今天)', query)
-        days = 0
-        if rel_match:
-            if rel_match.group(1) == '明天':
-                days = 1
-            elif rel_match.group(1) == '后天':
-                days = 2
-            elif rel_match.group(1) == '大后天':
-                days = 3
+    # ==================== 6. 检索层：临时文件模式 vs 知识库模式 ====================
+    # 【架构决策】两种模式严格隔离：
+    #   - 临时文件模式：不检索知识库，让 LLM 通过 analyze_data 工具分析文件
+    #   - 知识库模式：正常检索 ChromaDB + BM25
+    # 这样从源头消除"参考资料里混入无关内容"导致的 LLM 废话。
+    history = memory.get(session_id)[-10:]
+    rag_sources = []
+    rag_context = ""
 
-        # 提取时间（支持“9点”，“上午9点”，“9:00”，“下午3点”等多种格式）
-        time_match = re.search(r'(上午|下午|晚上|早上|中午)?\s*(\d{1,2})\s*[点时:：]?\s*(\d{1,2})?', query)
-        if time_match:
-            meridiem = time_match.group(1) or ''
-            hour = int(time_match.group(2))
-            minute = int(time_match.group(3) or 0)
-
-            if meridiem in ['下午', '晚上'] and hour != 12:
-                hour += 12
-            elif meridiem == '上午' and hour == 12:
-                hour = 0
-
-            title_match = re.search(r'(?:提醒我|添加日程|安排日程|设置日程)\s*(.*)', query)
-            title = title_match.group(1).strip() if title_match else "日程提醒"
-            title = re.sub(r'(明天|后天|今天|上午|下午|晚上|早上|中午|\d{1,2}\s*[点时:：]?\s*\d{1,2}?|点半|点|半)', '', title).strip()
-
-            if title:
-                # 【关键】工具内部自己计算，模型连传参的资格都没有！
-                from common.tools import add_event
-                target_date = datetime.datetime.now() + datetime.timedelta(days=days)
-                clean_start = f"{target_date.year}-{target_date.month:02d}-{target_date.day:02d} {hour:02d}:{minute:02d}"
-                result_str = add_event(title, clean_start)
-
-                # 冲突检测
-                if "⚠️" in result_str or "失败" in result_str:
-                    return output_guard(result_str)
-
-                match_id = re.search(r'ID:(\d+)', result_str)
-                friendly_id = match_id.group(1) if match_id else "?"
-                day_text = "今天" if days == 0 else ("明天" if days == 1 else ("后天" if days == 2 else "大后天"))
-
-                # 生成友好且绝对真实的回复
-                return output_guard(f"✅ 好的，已为您设置日程提醒！\n\n**事件**：{title}\n**时间**：{day_text}（{clean_start}）\n**日程ID**：{friendly_id}\n\n到时候我会准时提醒您，请放心！")
-    # ================= 添加拦截结束 =================
-    
-    # ================= 强制时间查询处理 =================
-    if any(kw in query for kw in ["现在几点", "现在时间", "几点了", "什么时间", "当前时间"]):
+    if current_temp_file:
+        # 临时文件模式：跳过知识库检索
+        print(f"[RAG] 临时文件模式，跳过知识库检索。文件: {current_temp_file}")
+        # 不注入任何参考资料，LLM 会看到 history 里的"📎 上传文件：xxx" + 用户问题
+        # 自主决定是否调用 analyze_data 工具
+    else:
+        # 知识库模式
         try:
-            time_result = get_current_time()
-            simple_log_tool(session_id, original_query, "get_current_time", {}, time_result)
-            time_answer = f"现在是 {time_result}（北京时间）。"
-            memory.append(session_id, query, time_answer)
-            return output_guard(time_answer)
+            from common.rag_v2 import search_knowledge_v2
+            rag_result = search_knowledge_v2(query, "")
+            if isinstance(rag_result, dict):
+                rag_context = rag_result.get("context_text", "")
+                rag_sources = rag_result.get("sources", [])
+            else:
+                rag_context = str(rag_result) if rag_result else ""
+
+            if rag_context:
+                MAX_CONTEXT_CHARS = 78000
+                if len(rag_context) > MAX_CONTEXT_CHARS:
+                    print(f"[RAG] 上下文超长（{len(rag_context)}字符），截断")
+                    rag_context = rag_context[:MAX_CONTEXT_CHARS]
+
+                # 【事实陈述】从 sources 提取文件名（去重），陈述"命中来自哪个文件"
+                # 不规定 LLM 做什么，只告诉它事实
+                source_files = []
+                seen_files = set()
+                for s in rag_sources:
+                    fname = s.get("file_name")
+                    if fname and fname not in seen_files:
+                        source_files.append(fname)
+                        seen_files.add(fname)
+
+                # 【事实陈述】把命中的 CSV 物理路径告诉 LLM
+                # 让 LLM 自主决定是否调用 analyze_data 做精确计算
+                csv_paths = []
+                for fname in source_files:
+                    for search_dir in [
+                        os.path.join(UPLOAD_DIR, "temp"),
+                        UPLOAD_DIR,
+                    ]:
+                        cand = os.path.join(search_dir, fname)
+                        if os.path.exists(cand) and fname.lower().endswith(('.csv', '.xlsx', '.xls')):
+                            csv_paths.append(cand)
+                            break
+
+                source_header = ""
+                if source_files:
+                    source_header = f"【企业知识库数据（来源文件：{', '.join(source_files)}）】"
+                else:
+                    source_header = "【企业知识库数据】"
+
+                file_fact = ""
+                if csv_paths:
+                    file_fact = f"\n\n【会话可访问的数据文件】{csv_paths[0]}"
+
+                print(f"[RAG] 知识库上下文已注入（{len(rag_context)}字符，来源: {source_files}）")
+                query = f"{source_header}\n{rag_context}{file_fact}\n\n【用户问题】\n{query}"
+            else:
+                print(f"[RAG] 未命中任何相关内容")
         except Exception as e:
-            print(f"[时间查询] 直接调用失败，回退到模型逻辑: {e}")
+            import traceback
+            print(f"###RAG检索异常### {traceback.format_exc()}")
+            rag_sources = []
 
-    # ================= 物理级强制计算拦截（彻底摆脱模型限制） =================
-    if ("计算" in query or "统计" in query or "排名" in query or "汇总" in query) and ("月份" in query or "月度" in query or "销售" in query or "收入" in query or "品类" in query or "咖啡" in query):
-        try:
-            from common.tools import analyze_data
-            # 直接调用工具，由于工具内有自动寻址功能，会扫描 uploads 目录找到完整文件
-            result_str = analyze_data(query, "")
-            return output_guard(result_str)
-        except Exception as e:
-            return f"计算分析失败: {e}"
-    # ================= 拦截结束 =================
+    # ==================== 7. 构建消息列表 ====================
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages.extend(history)
+    messages.append({"role": "user", "content": query})
 
-    # ================= RAG V2 实验版逻辑（纯 V2 混合检索） =================
-    # 【纯V2修改】强制导入 V2 检索函数，移除V1逻辑和RAG_MODE开关
-    from common.rag_v2 import search_knowledge_v2
-    kb_context = search_knowledge_v2(query, "")
-
-    # ================= RAG 极速计算优化 =================
-    if kb_context:
-        print(f"[RAG] 已检索到知识库内容")
-        import re as _re
-        _year_match = _re.search(r'(20\d{2})年', query)
-        _month_match = _re.search(r'(\d{1,2})月份', query)
-        final_quick_answer = ""
-        if _year_match and _month_match:
-            _target_date = f"{_year_match.group(1)}/{int(_month_match.group(1))}/"
-            _prices = []
-            for line in kb_context.split("\n"):
-                if _target_date in line:
-                    parts = line.split(",")
-                    if len(parts) >= 5:
-                        try: _prices.append(float(parts[4]))
-                        except ValueError: pass
-            if _prices:
-                total = sum(_prices); count = len(_prices)
-                final_quick_answer = f"根据知识库统计，{int(_month_match.group(1))}月份销售总收入为: {total} 元（共 {count} 笔交易）。"
-                simple_log_tool(session_id, original_query, "knowledge_search", {"query": original_query}, final_quick_answer)
-        
-        if final_quick_answer:
-            query = (f"【预计算结果】\n{final_quick_answer}\n请根据上述预计算结果，用自然、友好、专业的销售助理口吻直接回答用户的问题。要求：不要出现“根据预计算结果”或“根据知识库统计”等生硬词汇。严禁编造任何未给出的数据。")
-        else:
-            query = (f"请严格按照以下【企业知识库数据】中的原始数据来回答用户的问题。严禁调用任何数据库查询工具。\n\n【企业知识库数据】\n{kb_context}\n\n【用户问题】\n{query}")
-        context = kb_context[:20000] if kb_context else ""
-
-    # 获取用户角色
+    # ==================== 8. 角色权限 ====================
     role = user_info.get("role", "viewer") if user_info else "viewer"
     if role not in ROLE_PERMISSIONS:
         role = "manager"
 
-    tool_descriptions = {}
-    for tool_meta in TOOLS_METADATA:
-        tool_descriptions[tool_meta["function"]["name"]] = tool_meta["function"]["description"]
-
-    available_tools_str = ""
-    for name in tool_descriptions:
-        if is_tool_allowed(role, name):
-            available_tools_str += f"- {name}: {tool_descriptions[name]}\n"
-
-    system_content = SYSTEM_PROMPT.format(available_tools=available_tools_str, context=context)
-
-    messages = [{"role": "system", "content": system_content}]
-    messages.extend(history)
-
-    # 上传文件内容注入
-    uploaded_names = memory.get_uploaded_file_names(session_id)
-    if uploaded_names:
-        latest_file = uploaded_names[0]
-        mentioned_file = None
-        for fname in uploaded_names:
-            if fname.lower() in query.lower():
-                mentioned_file = fname
-                break
-
-        if mentioned_file:
-            file_content = memory.get_uploaded_file_content(session_id, mentioned_file)
-            if file_content:
-                messages.append({"role": "system", "content": f"【指定文件内容：{mentioned_file}】\n{file_content[:20000]}"})
-        else:
-            latest_content = memory.get_uploaded_file_content(session_id, latest_file)
-            if latest_content:
-                messages.append({"role": "system", "content": f"【最新上传文件：{latest_file}】\n{latest_content[:20000]}"})
-
-        file_list_str = ", ".join(uploaded_names)
-        messages.append({"role": "system", "content": f"当前会话已上传的文件：{file_list_str}。如涉及文件但未指明，默认使用最新上传的文件。否则请告知用户。"})
-
-    messages.append({"role": "user", "content": query})
-
-    # 规划模式与常规模式
-    plan = None
-    try:
-        plan = await generate_plan(query, messages[:5], client)
-        if plan and len(plan) <= 1: plan = None
-    except Exception as e:
-        plan = None
+    allowed_tools = TOOLS_METADATA
+    if role == "viewer":
+        allowed_tools = [t for t in TOOLS_METADATA if t["function"]["name"] not in ["web_search", "fetch_webpage"]]
 
     image_output = None
 
-    if plan:
-        # 规划引擎执行模式
-        results = {}; email_args = None; completed_steps = []; step_times = {}
-        start_total = time.monotonic()
-        for step in plan:
-            step_id = step["id"]; tool_name = step["tool"]; step_desc = step.get("description", f"步骤{step_id}")
-            arguments = step["arguments"]; arguments["_tenant"] = memory.get_tenant(session_id)
-            for dep_id in step.get("depends_on", []):
-                if dep_id in results:
-                    replacement = str(results[dep_id])
-                    for key, val in arguments.items():
-                        if isinstance(val, str): arguments[key] = val.replace(f"{{step_{dep_id}_result}}", replacement)
-            if not is_tool_allowed(role, tool_name): results[step_id] = f"⚠️ 您没有权限使用工具 {tool_name}。"; continue
-            if tool_name == "send_email": email_args = arguments; continue
+    # ==================== 9. 工具调用循环 ====================
+    for _ in range(8):
+        try:
+            response = client.chat.completions.create(
+                model="deepseek-chat",
+                messages=messages,
+                tools=allowed_tools,
+                tool_choice="auto"
+            )
+        except Exception as e:
+            answer = f"模型调用失败: {e}"
+            memory.append(session_id, original_query, answer)
+            return output_guard(answer), _extract_ids_from_sources(rag_sources)
 
-            step_start = time.monotonic()
-            if tool_name in TOOL_ROUTER:
-                target_worker = TOOL_ROUTER[tool_name]; task = {"tool": tool_name, "arguments": arguments}
+        msg = response.choices[0].message
+        if msg.tool_calls:
+            messages.append(msg)
+
+            for tool_call in msg.tool_calls:
+                func_name = ""
+                arguments = {}
                 try:
-                    res = await target_worker.send_task(task)
-                    raw_result = res.get("result", res.get("error")) if res else "未知错误"
-                    if "error" in res or _is_error_result(raw_result):
-                        steps_summary = [f"✅ {comp_step.get('description', '步骤' + str(comp_step['id']))}" for comp_step, _, _ in completed_steps]
-                        steps_summary.append(f"❌ {step_desc}（遇到问题）")
-                        compensation_msgs = [f"🔄 {comp_step.get('description', '未知步骤')} 已回滚" for comp_step, _, _ in completed_steps if comp_step.get("tool") in COMPENSATIONS]
-                        answer = "任务执行情况：\n" + "\n".join(steps_summary) + ("\n\n" + "\n".join(compensation_msgs) if compensation_msgs else "\n\n没有需要回滚的操作。")
-                        total_time = round(time.monotonic() - start_total, 3)
-                        enhanced_log_plan(session_id, query, plan, results, step_times, "failed_with_compensation", total_time, completed_steps)
-                        memory.append(session_id, original_query, answer)
-                        return output_guard(answer)
-                    results[step_id] = str(raw_result); step_times[step_id] = round(time.monotonic() - step_start, 3)
-                    completed_steps.append((step, arguments, raw_result))
-                except Exception as e:
-                    pass
-        raw_info = "\n".join([f"{step['description']}: {str(results[step['id']])[:500]}" for step in plan if step['tool'] != 'send_email'])
-        if len(raw_info) > 10000: raw_info = raw_info[:10000] + "\n...（内容过长，已截断）"
-        summary_prompt = f"用户需求：{query}\n\n以下是执行结果：\n{raw_info}\n\n请根据用户需求，从以上结果中提取或总结出用户想要的信息，用简洁清晰的格式回答。"
-        messages.append({"role": "user", "content": summary_prompt})
-        summary_resp = client.chat.completions.create(model="deepseek-chat", messages=messages, temperature=0.3, max_tokens=8000)
-        answer = output_guard(summary_resp.choices[0].message.content)
-        enhanced_log_plan(session_id, query, plan, results, step_times, "success", round(time.monotonic() - start_total, 3), completed_steps)
-        memory.append(session_id, original_query, answer)
-        return answer
-    else:
-        # 常规单步/多工具调用模式
-        for _ in range(8):
-            try:
-                response = client.chat.completions.create(model="deepseek-chat", messages=messages, tools=TOOLS_METADATA, tool_choice="auto")
-            except Exception as e:
-                answer = f"模型调用失败: {e}"
-                memory.append(session_id, original_query, answer)
-                return output_guard(answer)
-
-            msg = response.choices[0].message
-            if msg.tool_calls:
-                messages.append(msg)
-                for tool_call in msg.tool_calls:
+                    arguments = json.loads(tool_call.function.arguments)
                     func_name = tool_call.function.name
-                    arguments = {}
-                    try:
-                        arguments = json.loads(tool_call.function.arguments)
-                    except json.JSONDecodeError:
-                        messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": "函数参数格式错误，请重新提供有效的参数。"})
-                        continue
+                except Exception as e:
+                    messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": f"函数解析错误: {e}"})
+                    continue
 
-                    if func_name in ("execute_python", "calculator"):
-                        if len(json.dumps(arguments)) > 3000:
-                            messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": "数据量过大，请直接基于已有知识库数据进行计算，并给出精确结论。"})
-                            continue
-
+                if func_name in ["add_event", "delete_event", "list_events"]:
                     arguments["_tenant"] = memory.get_tenant(session_id)
-                    if not is_tool_allowed(role, func_name):
-                        result = f"⚠️ 您没有权限使用工具 {func_name}。"
-                        messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": result})
-                        continue
 
-                    if func_name in ("ocr_image", "speech_to_text", "recognize_table"):
-                        required_param = "image_path" if func_name != "speech_to_text" else "audio_file_path"
-                        if required_param not in arguments:
-                            result = f"错误：工具 {func_name} 缺少 {required_param} 参数。请先上传文件。"
-                            messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": str(result)})
-                            continue
+                # 权限检查
+                if role == "viewer" and func_name in ["web_search", "fetch_webpage"]:
+                    result = "无权限执行此操作。"
+                elif func_name in AVAILABLE_TOOLS:
+                    # 【隐式参数注入】analyze_data 的 file_path 后端自动补
+                    # 来源优先级：临时文件 > RAG sources 命中的 CSV 物理文件
+                    if func_name == "analyze_data" and not arguments.get("file_path"):
+                        filled = None
+                        # 1. 临时文件
+                        if current_temp_file:
+                            filled = current_temp_file
+                        # 2. 从 RAG sources 找
+                        elif rag_sources:
+                            for s in rag_sources:
+                                fname = s.get("file_name")
+                                if not fname:
+                                    continue
+                                if not fname.lower().endswith(('.csv', '.xlsx', '.xls')):
+                                    continue
+                                for search_dir in [
+                                    os.path.join(UPLOAD_DIR, "temp"),
+                                    UPLOAD_DIR,
+                                ]:
+                                    cand = os.path.join(search_dir, fname)
+                                    if os.path.exists(cand):
+                                        filled = cand
+                                        break
+                                if filled:
+                                    break
 
-                    if func_name in ("ocr_image", "recognize_table", "analyze_file"):
-                        has_file_content = any(getattr(m, "content", "") and "【上传文件：" in str(getattr(m, "content", "")) for m in messages)
-                        if has_file_content:
-                            result = "文件内容已在对话历史中，请直接基于该内容回答，不要调用工具。"
+                        if filled:
+                            arguments["file_path"] = filled
+                            print(f"[Tool] analyze_data 自动补 file_path: {filled}")
+                        else:
+                            result = "错误：未找到相关数据文件。"
                             messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": result})
                             continue
+                    try:
+                        result = AVAILABLE_TOOLS[func_name](**arguments)
+                    except Exception as e:
+                        result = f"工具执行错误: {e}"
+                else:
+                    result = f"未找到工具 {func_name}"
 
-                    if func_name == "send_email":
-                        if tool_call_guard(func_name):
-                            pending[session_id] = {"tool_name": func_name, "arguments": arguments}
-                            save_pending(pending)
-                            return f"### ⚠️ 危险操作确认\n**收件人**：{arguments.get('to_email')}\n**主题**：{arguments.get('subject')}\n**内容预览**：\n{arguments.get('body', '')[:500]}\n\n> 请回复 **“确认”** 以执行，或回复其他内容取消。"
-                        try:
-                            result = AVAILABLE_TOOLS[func_name](**arguments)
-                        except Exception as e:
-                            result = f"工具执行错误: {e}"
-                    elif func_name in TOOL_ROUTER:
-                        target_worker = TOOL_ROUTER[func_name]
-                        task = {"tool": func_name, "arguments": arguments}
-                        try:
-                            res = await target_worker.send_task(task)
-                            raw_result = res.get("result", res.get("error")) if res else "未知错误"
-                        except asyncio.TimeoutError:
-                            raw_result = "工具执行超时，请稍后重试。"
-                        except Exception as e:
-                            raw_result = f"工具调用失败: {e}"
-                        if func_name == "generate_image" and not raw_result.startswith("图像生成"):
-                            image_output = raw_result
-                            result = "图片已生成，将在最终回答中展示。"
-                        else:
-                            result = raw_result
-                        simple_log_tool(session_id, original_query, func_name, arguments, result)
-                    else:
-                        result = f"未找到工具 {func_name}"
+                # 审计日志
+                simple_log_tool(session_id, original_query, func_name, arguments, result)
 
-                    messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": result})
-                continue
-            else:
-                answer = msg.content
-                break
+                messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": result})
         else:
-            answer = "抱歉，处理超时，请简化您的问题。"
+            answer = msg.content
+            break
+    else:
+        answer = "抱歉，处理超时，请简化您的问题。"
 
-        answer = output_guard(answer)
-        if image_output:
-            answer = answer + "\n\n" + image_output
-        memory.append(session_id, history_text, answer)
-        return answer
+    # ==================== 10. 输出与返回 ====================
+    answer = output_guard(answer)
+    if image_output:
+        answer = answer + "\n\n" + image_output
+    memory.append(session_id, history_text, answer)
 
-# ==================== 规划生成函数 ====================
+    context_ids = _extract_ids_from_sources(rag_sources)
+    return answer, context_ids
+
+# ==================== 语义提示生成函数（已废弃） ====================
 async def generate_plan(user_query, history, client):
-    try:
-        prompt = f"""
-你是一个任务规划器。根据用户的需求，生成一个 JSON 格式的执行计划。
-当前可用的工具及必须遵守的参数：
-- query_database: 查询员工数据库（参数必须为 "sql"）
-- web_search: 搜索互联网（参数必须为 "query"）
-- fetch_webpage: 抓取网页全文（参数必须为 "url"）
-- execute_python: 安全执行 Python 代码（参数必须为 "code"）
-- get_current_time: 获取当前时间（无参数）
-- calculator: 数学计算（参数必须为 "expression"）
-- analyze_file: 分析 CSV/Excel 文件（参数必须为 "file_path"）
-- send_email: 发送邮件（参数必须为 "to_email", "subject", "body"）
-- generate_image: 根据文字描述生成图片（参数必须为 "prompt"）
-- add_event: 添加日程（参数必须为 "title" 和 "start_time"，start_time 必须是绝对日期时间，格式为 "YYYY-MM-DD HH:MM"）
-- list_events: 列出日程（可选参数 "date"）
-- delete_event: 删除日程（参数必须为 "event_id"）
-- ocr_image: 识别图片文字（参数必须为 "image_path"）
-- speech_to_text: 语音转文字（参数必须为 "audio_file_path"）
-- recognize_table: 识别图片中的表格（参数必须为 "image_path"）
-
-计划是一个步骤列表，每个步骤包含：
-- id: 步骤唯一编号（从1开始）
-- tool: 要调用的工具名称
-- arguments: 工具参数字典
-- depends_on: 依赖的步骤id列表
-- description: 步骤的中文描述
-
-【核心规则】
-1. 所有数学计算必须使用 calculator 或 SQL 聚合函数。
-2. 如果步骤需要用到前一步的结果，请在 arguments 中使用占位符 {{{{step_X_result}}}}。
-3. send_email 必须放在最后一个步骤，且需要用户确认。
-4. 只返回 JSON 数组，不要有任何额外文字。
-5. 禁止使用任何需要文件路径的工具；对话历史中已包含文件内容时，禁止生成 ocr_image、recognize_table、analyze_file。
-
-用户需求：{user_query}
-"""
-        messages = history + [{"role": "user", "content": prompt}]
-        resp = client.chat.completions.create(model="deepseek-chat", messages=messages, temperature=0)
-        plan_text = resp.choices[0].message.content
-        json_match = re.search(r'\[.*\]', plan_text, re.DOTALL)
-        if json_match:
-            return json.loads(json_match.group())
-        return None
-    except Exception as e:
-        return None
+    """
+    【已废弃】原规划引擎的生成函数。
+    当前系统已切换为纯语义 Agent，无需生成任务规划。
+    此函数仅为保持兼容性，不再返回任何复杂的步骤依赖提示。
+    """
+    # 直接返回空，提示架构已变更
+    return None
 
 # ================= 各类 API 接口 =================
 @app.post("/api/login")
@@ -627,10 +481,65 @@ async def api_chat(request: ChatRequest):
         user_info = get_user_info(real_username)
         if user_info and user_info.get("status") == "禁用":
             return {"answer": "【系统提示】您的账号已被禁用，请联系管理员。您已被强制下线。"}
-        answer = await chat_core(request.session_id, request.query, request.user_text, _query_worker, _command_worker, _tool_router)
-        return {"answer": answer}
+        result = await chat_core(
+            request.session_id, request.query, request.user_text,
+            _query_worker, _command_worker, _tool_router,
+            temp_file_path=getattr(request, 'temp_file_path', None)
+        )
+        # 【防御】如果 chat_core 返回 None（某条代码路径漏了 return），不要崩溃
+        if result is None:
+            import traceback
+            print(f"###chat_core 返回 None### 这是 bug，请检查 chat_core 分支")
+            traceback.print_stack()
+            return {"answer": "系统处理异常：内部返回空，请查看后端日志。", "contexts": []}
+        answer, retrieved_ids = result
+        return {"answer": answer, "contexts": retrieved_ids}
     except Exception as e:
+        import traceback
+        print(f"###严重Bug### 堆栈详情: {traceback.format_exc()}")
         return {"answer": f"系统处理异常: {e}"}
+
+@app.post("/api/upload_temp")
+async def api_upload_temp(file: UploadFile = File(...), session_id: str = Form(...)):
+    """
+    聊天框临时文件上传接口（与知识库隔离）。
+    - 保存到 uploads/temp/{session_id}_{uuid}_{filename}
+    - 返回 file_path 供前端后续在 chat 请求里携带
+    - 每次上传时清理 > 1 小时的旧临时文件
+    """
+    import time as _t
+
+    # 清理 > 1 小时的旧文件
+    now = _t.time()
+    for f in os.listdir(TEMP_UPLOAD_DIR):
+        fp = os.path.join(TEMP_UPLOAD_DIR, f)
+        try:
+            if os.path.isfile(fp) and (now - os.path.getmtime(fp)) > 3600:
+                os.remove(fp)
+        except Exception:
+            pass
+
+    # 保存新文件
+    safe_name = os.path.basename(file.filename)
+    unique_name = f"{session_id}_{_uuid_mod.uuid4().hex[:8]}_{safe_name}"
+    file_path = os.path.join(TEMP_UPLOAD_DIR, unique_name)
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        _session_temp_files[session_id] = file_path
+        print(f"[Temp] 会话 {session_id} 上传临时文件: {file_path}")
+        return {"status": "success", "file_name": safe_name, "file_path": file_path}
+    except Exception as e:
+        return {"status": "error", "message": f"临时文件保存失败: {e}"}
+
+    # ==================== 临时文件事实注入 ====================
+    # 【设计决策】只陈述事实，不暗示行为。
+    # - 如果本次请求带 temp_file_path，更新会话级缓存
+    # - 从缓存读取当前会话的临时文件（供 system message 注入）
+    if temp_file_path:
+        _session_temp_files[session_id] = temp_file_path
+
+    current_temp_file = _session_temp_files.get(session_id)
 
 @app.post("/api/upload")
 async def api_upload(file: UploadFile = File(...)):
@@ -653,23 +562,29 @@ async def api_upload(file: UploadFile = File(...)):
     except Exception as e:
         return {"status": "error", "message": f"上传失败: {e}"}
 
-# 知识库管理接口 (纯 V2 模式)
+# 知识库管理接口
 @app.get("/api/kb/list")
 async def api_kb_list():
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     rag_file = os.path.join(BASE_DIR, "rag_data.json")
-    if os.path.exists(rag_file):
-        try:
+    try:
+        if os.path.exists(rag_file):
             with open(rag_file, "r", encoding="utf-8") as f:
                 store = json.load(f)
-                return {"status": "success", "data": store.get("files", [])}
-        except Exception as e:
-            return {"status": "error", "message": str(e)}
-    return {"status": "success", "data": []}
+                # 确保返回的是列表，防止前端解析出错
+                files_list = store.get("files", [])
+                if not isinstance(files_list, list):
+                    files_list = []
+                return {"status": "success", "data": files_list}
+        return {"status": "success", "data": []}
+    except Exception as e:
+        # 打印完整报错到后端终端，方便排查
+        import traceback
+        print(f"###知识库列表Bug### 堆栈详情: {traceback.format_exc()}")
+        return {"status": "error", "message": str(e)}
 
 @app.post("/api/kb/update_tags")
 async def api_kb_update_tags(file_name: str = Form(...), tags: str = Form("")):
-    """更新已有文档的标签"""
     import json
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     rag_file = os.path.join(BASE_DIR, "rag_data.json")
@@ -694,19 +609,28 @@ async def api_kb_update_tags(file_name: str = Form(...), tags: str = Form("")):
 
 @app.post("/api/kb/index")
 async def api_kb_index(file: UploadFile = File(...), tags: str = Form("")):
-    file_path = os.path.join(UPLOAD_DIR, file.filename)
+    """
+    异步化上传：把阻塞的索引处理放到后台线程，避免卡死整个后端。
+    """
+    import asyncio
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    file_path = os.path.join(UPLOAD_DIR, os.path.basename(file.filename))
+    
     try:
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
-        # 【纯V2修改】强制使用 V2 的索引入库逻辑，移除 V1 判断
         from common.rag_v2 import index_document_v2
-        msg = index_document_v2(file_path, tags)
+        
+        # 【关键】用 to_thread 把同步阻塞函数放到后台线程
+        msg = await asyncio.to_thread(index_document_v2, file_path, tags)
         
         if "成功" in str(msg):
             return {"status": "success", "message": msg}
         return {"status": "error", "message": msg}
     except Exception as e:
+        import traceback
+        print(f"###索引Bug### 堆栈详情: {traceback.format_exc()}")
         return {"status": "error", "message": f"索引失败(详细原因): {e}"}
 
 @app.post("/api/kb/delete")

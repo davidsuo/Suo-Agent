@@ -21,7 +21,7 @@ from email.mime.multipart import MIMEMultipart
 from ddgs import DDGS
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo  # Python 3.9+ 内置
+from zoneinfo import ZoneInfo
 from typing import Any, Dict, Optional
 
 # ==================== 通用辅助函数 ====================
@@ -37,14 +37,14 @@ def _request_with_retry(method: str, url: str, retries: int = 2, **kwargs):
     return None
 
 # ==================== 基础工具 ====================
-def get_current_time() -> str:
+def get_current_time(**kwargs) -> str:
     try:
         now = datetime.now(ZoneInfo("Asia/Shanghai"))
     except Exception:
         now = datetime.utcnow() + timedelta(hours=8)
     return now.strftime("%Y-%m-%d %H:%M:%S")
 
-def calculator(expression: str) -> str:
+def calculator(expression: str, **kwargs) -> str:
     try:
         if '\n' in expression:
             lines = expression.strip().split('\n')
@@ -58,19 +58,18 @@ def calculator(expression: str) -> str:
                         continue
             if not numbers:
                 return "错误：表达式中未找到有效数字"
-            return str(sum(numbers))
+            return str(round(sum(numbers), 2))
         else:
             expression = expression.replace(",", "")
             allowed_chars = set("0123456789+-*/().% ^")
             if not all(c in allowed_chars for c in expression.replace(" ", "")):
                 return "错误：表达式包含不允许的字符，请只使用数字和运算符。"
             result = eval(expression, {"__builtins__": {}})
-            return str(result)
+            return str(round(float(result), 2))
     except Exception as e:
         return f"计算出错: {e}"
 
-def query_database(sql: str) -> str:
-    """查询 SQLite 数据库，仅允许 SELECT"""
+def query_database(sql: str, **kwargs) -> str:
     if not sql.strip().upper().startswith("SELECT"):
         return "错误：仅允许执行 SELECT 查询"
     try:
@@ -105,7 +104,7 @@ def send_email(to_email: str, subject: str, body: str, **kwargs) -> str:
     except Exception as e:
         return f"邮件发送错误: {e}"
 
-def web_search(query: str, max_results: int = 5) -> str:
+def web_search(query: str, max_results: int = 5, **kwargs) -> str:
     try:
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=max_results))
@@ -121,7 +120,7 @@ def web_search(query: str, max_results: int = 5) -> str:
     except Exception as e:
         return f"搜索失败: {e}"
 
-def execute_python(code: str) -> str:
+def execute_python(code: str, **kwargs) -> str:
     safe_builtins = {
         "print": print, "range": range, "len": len, "int": int, "float": float,
         "str": str, "list": list, "dict": dict, "abs": abs, "min": min,
@@ -217,8 +216,58 @@ def speech_to_text(audio_file_path: str) -> str:
     except Exception as e:
         return f"语音识别请求错误: {e}"
 
-# ==================== 文件分析（原函数保留，作为备用） ====================
-def analyze_file(file_path: str, _tenant: str = "default") -> str:
+# ==================== 数据驱动列角色识别（通用） ====================
+def _detect_data_columns(df) -> dict:
+    """
+    数据驱动识别列角色：
+    - date_col: 可被 pd.to_datetime 解析为"多日"的列（排除纯时间列如 6:14）
+    - price_col: 数值列
+    - name_col: 低基数的文本列（分类）
+    """
+    import pandas as pd
+    roles = {"date_col": None, "price_col": None, "name_col": None}
+
+    # 日期列：采样解析，排除纯时间
+    for col in df.columns:
+        series = df[col].dropna()
+        if len(series) == 0:
+            continue
+        sample = series.head(min(50, len(series)))
+        try:
+            parsed = pd.to_datetime(sample, errors="coerce", format="mixed")
+            valid = parsed.dropna()
+            if len(valid) / len(sample) > 0.8 and valid.dt.date.nunique() > 1:
+                roles["date_col"] = col
+                break
+        except Exception:
+            continue
+
+    # 数值列：dtype
+    num_cols = df.select_dtypes(include="number").columns.tolist()
+    if num_cols:
+        # 优先选列名含 price/amount/revenue/sales 的
+        preferred = None
+        for col in num_cols:
+            lc = col.lower()
+            if any(k in lc for k in ["price", "amount", "revenue", "sales", "价格", "金额", "收入", "销售额"]):
+                preferred = col
+                break
+        roles["price_col"] = preferred or num_cols[0]
+
+    # 分类列：低基数 object 列
+    for col in df.columns:
+        if col == roles["date_col"] or col == roles["price_col"]:
+            continue
+        if df[col].dtype == "object":
+            nunique = df[col].nunique()
+            if 1 < nunique < min(100, len(df) * 0.3):
+                roles["name_col"] = col
+                break
+
+    return roles
+
+# ==================== 文件分析（保留为兼容函数） ====================
+def analyze_file(file_path: str, _tenant: str = "default", **kwargs) -> str:
     if not file_path:
         return "错误：请提供文件路径。"
     try:
@@ -242,50 +291,50 @@ def analyze_file(file_path: str, _tenant: str = "default") -> str:
         if not num_cols.empty:
             info += "\n\n数值列统计:\n"
             info += num_cols.describe().to_string()
-        date_col = None
-        for col in df.columns:
-            col_lower = col.lower()
-            if 'date' in col_lower or '日期' in col_lower or 'time' in col_lower:
-                date_col = col
-                break
-        price_col = None
-        for col in df.columns:
-            if 'price' in col.lower() or '价格' in col.lower() or 'amount' in col.lower() or '收入' in col.lower():
-                price_col = col
-                break
-        if not price_col and len(num_cols.columns) > 0:
-            price_col = num_cols.columns[0]
-        if date_col and price_col:
-            try:
-                df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
-                df['__month'] = df[date_col].dt.to_period('M')
-                monthly_sum = df.groupby('__month')[price_col].sum().to_string()
-                info += f"\n\n按月份汇总（{price_col}）:\n{monthly_sum}"
-            except Exception as e:
-                info += f"\n\n（未能自动计算时间汇总: {e}）"
         return info
     except Exception as e:
         return f"文件分析失败: {e}"
 
-# ==================== 【故事4核心】通用动态数据分析工具 ====================
-def analyze_data(query: str, file_path: str = "") -> str:
-    """【通用能力】自动分析上传的CSV/Excel，支持动态汇总、分组和排序。自带物理级路径寻址！"""
-    # ==================== 物理级自动寻址（彻底摆脱模型猜路径） ====================
-    if not file_path:
-        upload_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'uploads')
-        if os.path.exists(upload_dir):
-            candidate_files = [f for f in os.listdir(upload_dir) if f.lower().endswith(('.csv', '.xlsx', '.xls'))]
-            for f in candidate_files:
-                if f.split('.')[0].lower() in query.lower():
-                    file_path = os.path.join(upload_dir, f)
-                    break
-            if not file_path and candidate_files:
-                latest_file = max(candidate_files, key=lambda f: os.path.getmtime(os.path.join(upload_dir, f)))
-                file_path = os.path.join(upload_dir, latest_file)
+# ==================== 通用动态数据分析工具（核心） ====================
+def analyze_data(query: str, file_path: str = "", **kwargs) -> str:
+    """
+    【通用能力】自动分析上传的 CSV/Excel。
     
+    【关键设计】
+    1. 支持"月份筛选"：从 query 中提取"XX月"或"XXXX年XX月"，精确过滤后聚合
+    2. 数据驱动识别列角色，不硬编码列名
+    3. 金额统一 round(x, 2)
+    4. 路径查找覆盖 uploads/ 和 uploads/temp/ 两个位置
+    """
+    # ==================== 路径查找 ====================
     if not file_path:
-        return "错误：未识别到具体的数据文件路径，请确保先上传文件。"
-    # =====================================================================
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        search_dirs = [
+            os.path.join(base, 'uploads', 'temp'),
+            os.path.join(base, 'uploads'),
+        ]
+        for sdir in search_dirs:
+            if not os.path.exists(sdir):
+                continue
+            candidates = [f for f in os.listdir(sdir)
+                          if f.lower().endswith(('.csv', '.xlsx', '.xls'))]
+            if not candidates:
+                continue
+            # 优先文件名出现在 query 里
+            for f in candidates:
+                base_name = f.split('.')[0].lower()
+                if base_name in query.lower() or any(
+                    token and token in f.lower()
+                    for token in re.findall(r'[a-zA-Z_]+', query)
+                ):
+                    file_path = os.path.join(sdir, f)
+                    break
+            if not file_path:
+                latest = max(candidates, key=lambda f: os.path.getmtime(os.path.join(sdir, f)))
+                file_path = os.path.join(sdir, latest)
+
+    if not file_path:
+        return "错误：未识别到具体的数据文件路径，请先上传文件。"
 
     try:
         import pandas as pd
@@ -296,58 +345,81 @@ def analyze_data(query: str, file_path: str = "") -> str:
         else:
             return "不支持的文件格式"
 
-        date_col = None
-        for col in df.columns:
-            if 'date' in col.lower() or '日期' in col.lower() or 'time' in col.lower():
-                date_col = col
-                break
-        
-        name_col = None
-        for col in df.columns:
-            if 'coffee_name' in col.lower() or '名称' in col.lower() or '品类' in col.lower() or 'name' in col.lower():
-                name_col = col
-                break
+        # 数据驱动识别列角色
+        roles = _detect_data_columns(df)
+        date_col = roles["date_col"]
+        price_col = roles["price_col"]
+        name_col = roles["name_col"]
 
-        price_col = None
-        for col in df.columns:
-            if 'price' in col.lower() or '价格' in col.lower() or 'amount' in col.lower() or '收入' in col.lower():
-                price_col = col
-                break
         if not price_col:
-            num_cols = df.select_dtypes(include='number').columns
-            if len(num_cols) > 0:
-                price_col = num_cols[0]
+            return "文件结构无法自动识别（未找到数值列）。"
 
-        if not date_col and not name_col and not price_col:
-            return "文件结构无法自动识别，请检查列名。"
+        # ========== 1. 月份筛选（优先级最高） ==========
+        if date_col and re.search(r'\d{1,2}\s*月', query):
+            month_match = re.search(r'(\d{1,2})\s*月', query)
+            year_match = re.search(r'(20\d{2})\s*年', query)
 
-        # 1. 判断用户的意图：是否要求按月汇总排序？
-        # 【修复】增加优先级判断：只要明确提到月份汇总，优先处理并直接返回！
-        if date_col and '月' in query and ('汇总' in query or '计算' in query or '排序' in query or '收入' in query or '销售' in query):
-            df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
-            df['月份'] = df[date_col].dt.strftime('%Y年%m月')
-            summary = df.groupby('月份')[price_col].sum().reset_index()
-            summary = summary.sort_values(by=price_col, ascending=False)
-            
-            result_str = "根据上传的完整数据文件分析，各月销售汇总（已按金额降序排列）：\n"
+            df[date_col] = pd.to_datetime(df[date_col], errors='coerce', format='mixed')
+            target_month = int(month_match.group(1))
+
+            if year_match:
+                target_year = int(year_match.group(1))
+                filtered = df[
+                    (df[date_col].dt.year == target_year) &
+                    (df[date_col].dt.month == target_month)
+                ]
+                period_label = f"{target_year}年{target_month}月"
+            else:
+                filtered = df[df[date_col].dt.month == target_month]
+                period_label = f"{target_month}月"
+
+            if len(filtered) == 0:
+                return f"数据中未找到 {period_label} 的记录。"
+
+            total = round(float(filtered[price_col].sum()), 2)
+            count = len(filtered)
+            avg = round(total / count, 2) if count else 0.0
+
+            result = f"筛选条件：{period_label}\n"
+            result += f"成交笔数：{count}\n"
+            result += f"销售总收入：{total} 元\n"
+            result += f"平均客单价：{avg} 元\n"
+            if date_col:
+                d_min = filtered[date_col].min()
+                d_max = filtered[date_col].max()
+                if pd.notna(d_min) and pd.notna(d_max):
+                    result += f"覆盖日期：{d_min.strftime('%Y/%m/%d')} ~ {d_max.strftime('%Y/%m/%d')}\n"
+            return result
+
+        # ========== 2. 按月汇总 ==========
+        if date_col and any(k in query for k in ['汇总', '趋势', '按月']):
+            df[date_col] = pd.to_datetime(df[date_col], errors='coerce', format='mixed')
+            df['_period_'] = df[date_col].dt.strftime('%Y-%m')
+            summary = df.groupby('_period_')[price_col].agg(['sum', 'count']).reset_index()
+            summary = summary.sort_values('_period_')
+            result = "各月销售汇总：\n"
             for _, row in summary.iterrows():
-                result_str += f"- {row['月份']}: {round(float(row[price_col]), 2)} 元\n"
-            
-            # 【核心修复】此处必须 return，否则会被后面的品类逻辑覆盖！
-            return result_str
+                result += f"- {row['_period_']}: {round(float(row['sum']), 2)} 元（{int(row['count'])} 笔）\n"
+            return result
 
-        # 2. 判断用户的意图：是否要求按品类排名？
-        if name_col and ('品类' in query or '排名' in query or '哪个' in query or '受欢迎' in query or '品种' in query):
-            summary = df.groupby(name_col)[price_col].sum().reset_index()
-            summary = summary.sort_values(by=price_col, ascending=False)
-            result_str = "根据上传的完整数据文件分析，各品类销售汇总（已按金额降序排列）：\n"
-            for _, row in summary.head(10).iterrows():
-                result_str += f"- {row[name_col]}: {round(float(row[price_col]), 2)} 元\n"
-            return result_str
+        # ========== 3. 按品类排名 ==========
+        if name_col and any(k in query for k in ['品类', '排名', '最', '哪个']):
+            summary = df.groupby(name_col)[price_col].agg(['sum', 'count']).reset_index()
+            summary = summary.sort_values('sum', ascending=False)
+            result = f"各{name_col}销售汇总（降序）：\n"
+            for _, row in summary.head(20).iterrows():
+                result += f"- {row[name_col]}: {round(float(row['sum']), 2)} 元（{int(row['count'])} 笔）\n"
+            return result
 
-        # 3. 默认情况：返回基础汇总
-        return analyze_file(file_path)
+        # ========== 4. 默认：返回摘要 ==========
+        return (
+            f"文件共 {len(df)} 行，列：{', '.join(df.columns)}\n"
+            f"识别角色：日期列={date_col}，数值列={price_col}，分类列={name_col}\n"
+            f"请明确您的分析需求（如按月、按品类、指定月份）。"
+        )
     except Exception as e:
+        import traceback
+        print(f"###analyze_data 异常### {traceback.format_exc()}")
         return f"数据分析错误: {e}"
 
 # ==================== 图像生成 ====================
@@ -632,28 +704,23 @@ COMPENSATIONS = {
 # ==================== 工具元数据 ====================
 TOOLS_METADATA = [
     {"type": "function", "function": {"name": "get_current_time", "description": "获取当前的日期和时间", "parameters": {"type": "object", "properties": {}, "required": []}}},
-    {"type": "function", "function": {"name": "calculator", "description": "执行数学计算", "parameters": {"type": "object", "properties": {"expression": {"type": "string", "description": "数学表达式，如 '(3+5)*2'"}}, "required": ["expression"]}}},
-    {"type": "function", "function": {"name": "query_database", "description": "查询本地 SQLite 数据库，表 employees (id, name, position, salary)", "parameters": {"type": "object", "properties": {"sql": {"type": "string", "description": "SELECT 查询语句"}}, "required": ["sql"]}}},
-    {"type": "function", "function": {"name": "send_email", "description": "发送邮件（需要用户确认）", "parameters": {"type": "object", "properties": {"to_email": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}}, "required": ["to_email", "subject", "body"]}}},
-    {"type": "function", "function": {"name": "web_search", "description": "搜索互联网获取实时信息", "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "max_results": {"type": "integer", "description": "返回结果数量，默认5"}}, "required": ["query"]}}},
+    {"type": "function", "function": {"name": "calculator", "description": "执行数学计算", "parameters": {"type": "object", "properties": {"expression": {"type": "string"}}, "required": ["expression"]}}},
+    {"type": "function", "function": {"name": "query_database", "description": "查询本地 SQLite 数据库", "parameters": {"type": "object", "properties": {"sql": {"type": "string"}}, "required": ["sql"]}}},
+    {"type": "function", "function": {"name": "send_email", "description": "发送邮件", "parameters": {"type": "object", "properties": {"to_email": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}}, "required": ["to_email", "subject", "body"]}}},
+    {"type": "function", "function": {"name": "web_search", "description": "搜索互联网获取信息", "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "max_results": {"type": "integer"}}, "required": ["query"]}}},
     {"type": "function", "function": {"name": "execute_python", "description": "安全执行 Python 代码并返回输出", "parameters": {"type": "object", "properties": {"code": {"type": "string"}}, "required": ["code"]}}},
-    {"type": "function", "function": {"name": "speech_to_text", "description": "将用户上传的音频文件转写为文本，支持中文普通话", "parameters": {"type": "object", "properties": {"audio_file_path": {"type": "string"}}, "required": ["audio_file_path"]}}},
-    {"type": "function", "function": {"name": "fetch_webpage", "description": "抓取指定 URL 的网页文本内容", "parameters": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]}}},
-    {"type": "function", "function": {"name": "generate_image", "description": "使用 AI 根据文字描述生成图片", "parameters": {"type": "object", "properties": {"prompt": {"type": "string"}, "negative_prompt": {"type": "string"}}, "required": ["prompt"]}}},
-    {"type": "function", "function": {"name": "ocr_image", "description": "识别并提取图片中的文字", "parameters": {"type": "object", "properties": {"image_path": {"type": "string"}}, "required": ["image_path"]}}},
-    {"type": "function", "function": {"name": "add_event", "description": "添加一个日程事件，时间格式 YYYY-MM-DD HH:MM", "parameters": {"type": "object", "properties": {"title": {"type": "string"}, "start_time": {"type": "string"}, "end_time": {"type": "string"}, "description": {"type": "string"}}, "required": ["title", "start_time"]}}},
-    {"type": "function", "function": {"name": "list_events", "description": "列出日程，可指定日期（YYYY-MM-DD）或不填列出所有", "parameters": {"type": "object", "properties": {"date": {"type": "string"}}, "required": []}}},
-    {"type": "function", "function": {"name": "delete_event", "description": "根据日程ID删除一个日程", "parameters": {"type": "object", "properties": {"event_id": {"type": "integer"}}, "required": ["event_id"]}}},
-    {"type": "function", "function": {"name": "recognize_table", "description": "识别图片中的表格，返回 CSV 格式的表格内容", "parameters": {"type": "object", "properties": {"image_path": {"type": "string"}}, "required": ["image_path"]}}},
-    {"type": "function", "function": {"name": "execute_workflow", "description": "执行一个预定义的工作流（由管理员配置）", "parameters": {"type": "object", "properties": {"name": {"type": "string"}, "extra_params": {"type": "object"}}, "required": ["name"]}}},
-    # 【故事4新增】数据分析工具的元数据，供模型识别并调用
-    {"type": "function", "function": {"name": "analyze_data", "description": "对上传的结构化数据文件（CSV/Excel）进行动态分析，支持按月份汇总、按品类排名、按时间筛选等计算。如果用户要求计算销售数据、按月份排名、哪个品类最好，请调用此工具。", "parameters": {"type": "object", "properties": {"query": {"type": "string", "description": "用户的分析问题"}, "file_path": {"type": "string", "description": "数据文件的路径"}}, "required": ["query", "file_path"]}}}
+    {"type": "function", "function": {"name": "speech_to_text", "description": "将音频文件转写为文本", "parameters": {"type": "object", "properties": {"audio_file_path": {"type": "string"}}, "required": ["audio_file_path"]}}},
+    {"type": "function", "function": {"name": "analyze_file", "description": "分析上传的 CSV 或 Excel 文件", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}}, "required": ["file_path"]}}},
+    {"type": "function", "function": {"name": "analyze_data", "description": "对本次会话中用户上传的数据文件进行动态分析，支持月份筛选、按月汇总、按品类排名。file_path 由后端自动注入，无需提供。", "parameters": {"type": "object", "properties": {"query": {"type": "string", "description": "用户的自然语言分析需求"}}, "required": ["query"]}}},
+    {"type": "function", "function": {"name": "fetch_webpage", "description": "抓取指定 URL 的网页文本", "parameters": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]}}},
+    {"type": "function", "function": {"name": "generate_image", "description": "使用 AI 生成图片", "parameters": {"type": "object", "properties": {"prompt": {"type": "string"}}, "required": ["prompt"]}}},
+    {"type": "function", "function": {"name": "ocr_image", "description": "识别图片中的文字", "parameters": {"type": "object", "properties": {"image_path": {"type": "string"}}, "required": ["image_path"]}}},
+    {"type": "function", "function": {"name": "add_event", "description": "添加一个日程事件", "parameters": {"type": "object", "properties": {"title": {"type": "string"}, "start_time": {"type": "string"}, "end_time": {"type": "string"}, "description": {"type": "string"}}, "required": ["title", "start_time"]}}},
+    {"type": "function", "function": {"name": "list_events", "description": "列出日程", "parameters": {"type": "object", "properties": {"date": {"type": "string"}}, "required": []}}},
+    {"type": "function", "function": {"name": "delete_event", "description": "根据日程ID删除日程", "parameters": {"type": "object", "properties": {"event_id": {"type": "integer"}}, "required": ["event_id"]}}},
+    {"type": "function", "function": {"name": "recognize_table", "description": "识别图片中的表格", "parameters": {"type": "object", "properties": {"image_path": {"type": "string"}}, "required": ["image_path"]}}},
+    {"type": "function", "function": {"name": "execute_workflow", "description": "执行一个预定义的工作流", "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}}}
 ]
-
-# ---------- 低代码工作流执行 ----------
-def execute_workflow_tool(name: str, extra_params: Optional[Dict[str, Any]] = None) -> str:
-    from common.workflows import execute_workflow
-    return execute_workflow(name, extra_params=extra_params)
 
 # ==================== 工具映射 ====================
 AVAILABLE_TOOLS = {
@@ -665,7 +732,7 @@ AVAILABLE_TOOLS = {
     "execute_python": execute_python,
     "speech_to_text": speech_to_text,
     "analyze_file": analyze_file,
-    "analyze_data": analyze_data,  # 【故事4新增注册】
+    "analyze_data": analyze_data,
     "fetch_webpage": fetch_webpage,
     "generate_image": generate_image,
     "ocr_image": ocr_image,
