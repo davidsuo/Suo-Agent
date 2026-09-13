@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, Fragment } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Layout, Menu, Input, Button, Avatar, message as antMessage, Tooltip, Card, Row, Col, Statistic, Table, Spin, Space, Modal, Tag, Select } from 'antd';
 import { UserOutlined, SendOutlined, PlusOutlined, DeleteOutlined, PaperClipOutlined, SoundOutlined, LogoutOutlined, CloseOutlined, SearchOutlined, DownloadOutlined, UploadOutlined, LikeOutlined, DislikeOutlined, EditOutlined } from '@ant-design/icons';
 import api from '../api/client';
@@ -6,7 +6,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 const { Sider, Content } = Layout;
-interface Message { role: 'user' | 'assistant'; content: string; image?: string; }
+interface Message { role: 'user' | 'assistant'; content: string; }
 
 export default function Chat({ user, onLogout }: { user: any, onLogout: () => void }) {
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
@@ -228,10 +228,9 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
         return;
       }
       const fullText = res.data.answer || '抱歉，暂时无法回答。';
-      const imageData = res.data.image || '';
       setMessages(prev => {
         const newMessages = [...prev];
-        newMessages[newMessages.length - 1] = { role: 'assistant', content: fullText, image: imageData };
+        newMessages[newMessages.length - 1] = { role: 'assistant', content: fullText };
         return newMessages;
       });
     } catch (err) {
@@ -638,36 +637,15 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                   <div style={{ maxWidth: '80%', padding: '10px 16px', borderRadius: 8, background: msg.role === 'user' ? '#1890ff' : '#fff', color: msg.role === 'user' ? '#fff' : '#333', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
                     {msg.role === 'assistant' ? (
                       <div className="markdown-body" style={{ textAlign: 'left' }}>
-                        {msg.content.split('[[CHART]]').map((part, i, arr) => (
-                          <Fragment key={i}>
-                            {part && (
-                              <ReactMarkdown
-                                remarkPlugins={[remarkGfm]}
-                                components={{
-                                  img: ({ node, ...props }: any) => {
-                                    if (!props.src || props.src.trim() === '' || props.src.startsWith('![')) return null;
-                                    return <img {...props} style={{ maxWidth: '100%', height: 'auto', borderRadius: 6, marginTop: 8 }} />;
-                                  }
-                                }}
-                              >{part}</ReactMarkdown>
-                            )}
-                            {i < arr.length - 1 && msg.image && (
-                              <img
-                                src={msg.image}
-                                alt="图表"
-                                style={{
-                                  maxWidth: '100%',
-                                  height: 'auto',
-                                  marginTop: 12,
-                                  marginBottom: 12,
-                                  borderRadius: 6,
-                                  border: '1px solid #f0f0f0',
-                                  display: 'block'
-                                }}
-                              />
-                            )}
-                          </Fragment>
-                        ))}
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            img: ({ node, ...props }: any) => {
+                              if (!props.src || props.src.trim() === '') return null;
+                              return <img {...props} style={{ maxWidth: '100%', height: 'auto', borderRadius: 6, marginTop: 8 }} />;
+                            }
+                          }}
+                        >{msg.content}</ReactMarkdown>
                         <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
                           <Button size="small" type="text" icon={<LikeOutlined />} onClick={async () => {
                             const fd = new FormData(); fd.append('session_id', sessionId); fd.append('feedback_type', 'up'); await api.post('/feedback', fd); antMessage.success('感谢您的点赞！');

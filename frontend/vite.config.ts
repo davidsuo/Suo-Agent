@@ -7,7 +7,11 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:10000', // 指向你的后端端口
+        target: 'http://localhost:10000',
+        changeOrigin: true,
+      },
+      '/charts': {
+        target: 'http://localhost:10000',
         changeOrigin: true,
       },
     },

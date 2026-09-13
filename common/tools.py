@@ -901,12 +901,15 @@ def generate_chart(
 
     plt.tight_layout()
 
-    # 转为 Base64
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', bbox_inches='tight', facecolor='white')
+    # 保存为静态文件（替代 base64）
+    import uuid as _uuid
+    charts_dir = os.path.join(base, "uploads", "charts")
+    os.makedirs(charts_dir, exist_ok=True)
+    chart_filename = f"{_uuid.uuid4().hex[:12]}.png"
+    chart_path = os.path.join(charts_dir, chart_filename)
+    plt.savefig(chart_path, dpi=100, bbox_inches='tight', facecolor='white')
     plt.close(fig)
-    buf.seek(0)
-    img_b64 = base64.b64encode(buf.read()).decode('utf-8')
+    chart_url = f"/charts/{chart_filename}"
 
     # ---------- 5. 统计摘要 ----------
     total_count = len(df)
@@ -918,7 +921,7 @@ def generate_chart(
         f"平均{agg_column}: {avg_val}"
     )
 
-    return f"图片已生成：![{title}](data:image/png;base64,{img_b64}){summary}"
+    return f"图片已生成：![{title}]({chart_url}){summary}"
 
 COMPENSATIONS = {
     "send_email": compensate_send_email,

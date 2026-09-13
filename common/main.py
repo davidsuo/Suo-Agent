@@ -286,7 +286,7 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
     real_username = session_id.split('_')[0] if '_' in session_id else session_id
     user_info = get_user_info(real_username)
     if user_info and user_info.get("status") == "禁用":
-        return "【系统安全提示】您的账号已被管理员禁用。", [], None
+        return "【系统安全提示】您的账号已被管理员禁用。", []
 
     original_query = query
     history_text = user_text if user_text else original_query
@@ -297,7 +297,7 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
 
     is_safe, err_msg = input_guard(query)
     if not is_safe:
-        return err_msg, [], None
+        return err_msg, []
 
     if not query_worker.is_running:
         asyncio.create_task(query_worker.run_loop())
@@ -319,7 +319,7 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
         else:
             result = f"未找到工具 {tool_name}"
         memory.append(session_id, "确认执行工具", result)
-        return output_guard(result), [], None
+        return output_guard(result), []
 
     if temp_file_path:
         _session_temp_files[session_id] = temp_file_path
@@ -334,7 +334,7 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
         answer = f"现在是 {time_result}（北京时间）。"
         simple_log_tool(session_id, original_query, "get_current_time", {}, time_result)
         memory.append(session_id, history_text, answer)
-        return output_guard(answer), [], None
+        return output_guard(answer), []
 
     # 记忆装载
     history = memory.get(session_id)[-20:]
@@ -395,7 +395,7 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
             answer = f"模型调用失败: {e}"
             memory.append(session_id, original_query, answer)
             tool_trace.append({"iteration": iteration, "stage": "llm", "error": str(e)})
-            return output_guard(answer), collected_sources, None
+            return output_guard(answer), collected_sources
         t_llm_cost = round(time.time() - t_llm, 3)
 
         msg = response.choices[0].message
@@ -472,20 +472,20 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
                         time.sleep(0.5)
             t_tool_cost = round(time.time() - t_tool, 3)
 
-            # 【图片通道分离】generate_chart 返回的 base64 图片不经过 LLM，由后端直接拼接
+            # 【图片通道分离】generate_chart 返回的 URL 图片不经过 LLM，由后端直接拼接
             if func_name == "generate_chart" and result:
                 img_match = re.search(
-                    r'!\[.*?\]\(data:image/png;base64,[A-Za-z0-9+/=]+\)',
+                    r'!\[.*?\]\(/charts/[a-f0-9]+\.png\)',
                     str(result)
                 )
                 if img_match:
                     full = img_match.group(0)
-                    # 从 ![alt](DATA_URI) 中提取纯 DATA_URI
+                    # 从 ![alt](/charts/xxx.png) 中提取纯 URL
                     image_output = full[full.index('](') + 2 : -1]
-                    print(f"###图片通道### 已捕获 generate_chart 图片，长度 {len(image_output)}")
-                    # 给 LLM 的 tool 结果中，把 base64 图片替换成占位提示，让 LLM 不再复制
+                    print(f"###图片通道### 已捕获 generate_chart 图片 URL: {image_output}")
+                    # 给 LLM 的 tool 结果中，把图片 markdown 替换成占位提示，让 LLM 不再复制
                     result = re.sub(
-                        r'!\[.*?\]\(data:image/png;base64,[A-Za-z0-9+/=]+\)',
+                        r'!\[.*?\]\(/charts/[a-f0-9]+\.png\)',
                         '[图片已就绪]',
                         str(result)
                     )
@@ -517,7 +517,18 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
 
     answer = source_prefix + answer
 
-    # ⑦ 后置管道（记忆清洁）
+    # 【位置修复】将图片 markdown 直接插入到第一个 markdown 标题下方
+    # 注意：必须在 memory.append 之前执行，否则 memory 里存的是不含图片的旧版
+    if image_output:
+        title_match = re.search(r'^(#{1,3}\s+.+)$', answer, re.MULTILINE)
+        img_md = f"![图表]({image_output})"
+        if title_match:
+            pos = title_match.end()
+            answer = answer[:pos] + "\n\n" + img_md + "\n" + answer[pos:]
+        else:
+            answer = answer.rstrip() + "\n\n" + img_md
+
+    # ⑦ 后置管道（记忆清洁）—— 此时 answer 已含图片 markdown
     answer_for_memory = re.sub(
         r'\n*\s*>?\s*说明：本[次轮].{0,20}资料中[^\n]*(?:\n(?!\n|如需|如果您)[^\n]*)*',
         '', answer
@@ -530,16 +541,7 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
     tool_names = [t['name'] for t in tool_trace if t['stage'] == 'tool']
     print(f"###trace### session={session_id}, llm_calls={llm_count}, tools={tool_names}")
 
-    # 【位置修复】将占位符插入到第一个 markdown 标题下方，图片走独立字段
-    if image_output:
-        title_match = re.search(r'^(#{1,3}\s+.+)$', answer, re.MULTILINE)
-        if title_match:
-            pos = title_match.end()
-            answer = answer[:pos] + "\n\n[[CHART]]\n" + answer[pos:]
-        else:
-            answer = answer.rstrip() + "\n\n[[CHART]]"
-
-    return answer, collected_sources, image_output
+    return answer, collected_sources
 
 
 async def generate_plan(user_query, history, client):
@@ -571,11 +573,10 @@ async def api_chat(request: ChatRequest):
         )
         if result is None:
             return {"answer": "系统处理异常：内部返回空。", "contexts": [], "image": ""}
-        answer, retrieved_ids, image_output = result
+        answer, retrieved_ids = result
         return {
             "answer": answer,
             "contexts": retrieved_ids,
-            "image": image_output or ""
         }
     except Exception as e:
         import traceback
@@ -881,6 +882,9 @@ async def api_status():
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+CHARTS_DIR = os.path.join(UPLOAD_DIR, "charts")
+os.makedirs(CHARTS_DIR, exist_ok=True)
+app.mount("/charts", StaticFiles(directory=CHARTS_DIR), name="charts")
 
 if os.path.exists(DIST_DIR):
     app.mount("/assets", StaticFiles(directory=os.path.join(DIST_DIR, "assets")), name="assets")
