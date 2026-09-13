@@ -28,6 +28,23 @@ class ConversationMemory:
         with open(MEMORY_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
+    def clear(self, session_id: str = None):
+        """
+        清空 memory。
+
+        - 传 session_id：只清空该 session 的 history
+        - 不传：清空所有 session 的 history（保留 files 和 tenant 元数据）
+        """
+        if session_id:
+            if session_id in self.memory_store:
+                self.memory_store[session_id]["history"] = []
+                print(f"✅ 已清空 {session_id} 的 history")
+        else:
+            for sid in self.memory_store.keys():
+                self.memory_store[sid]["history"] = []
+            print(f"✅ 已清空所有 session 的 history")
+        self._save()
+
     def set_tenant(self, session_id: str, tenant: str):
         self.all_tenants.add(tenant)
         self._save()

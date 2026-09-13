@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, Fragment } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Layout, Menu, Input, Button, Avatar, message as antMessage, Tooltip, Card, Row, Col, Statistic, Table, Spin, Space, Modal, Tag, Select } from 'antd';
 import { UserOutlined, SendOutlined, PlusOutlined, DeleteOutlined, PaperClipOutlined, SoundOutlined, LogoutOutlined, CloseOutlined, SearchOutlined, DownloadOutlined, UploadOutlined, LikeOutlined, DislikeOutlined, EditOutlined } from '@ant-design/icons';
 import api from '../api/client';
@@ -79,6 +79,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
         const newMsgs: Message[] = [];
         for (const msg of msgs) {
           if (msg.role === 'user' && msg.content.startsWith('📎 上传文件：')) {
+            // 【新架构】格式为 "📎 上传文件：xxx\n用户问题"（单换行）
             const parts = msg.content.split('\n');
             if (parts.length >= 2) {
               const fileRef = parts[0];
@@ -196,6 +197,8 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     setInput('');
     setLoading(true);
 
+    // 【优化】文件气泡已在选文件时显示，这里不再重复 push
+    // 【恢复原行为】发送时，文件气泡 + 问题气泡一起进聊天窗
     if (pendingFileData) {
       const fileDisplay = isAudio ? '🎤 语音文件' : `📎 上传文件：${pendingFileData.name}`;
       setMessages(prev => [...prev, { role: 'user', content: fileDisplay }]);
@@ -206,6 +209,8 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     setMessages(prev => [...prev, { role: 'assistant', content: '🔍 正在处理...' }]);
 
     try {
+      // 【架构级改动】文件内容不再拼接进 query。
+      // 文件已在选文件时上传到 uploads/temp，通过 temp_file_path 传递。
       const query = msgText || '请分析该文件';
 
       const userTextForMemory = pendingFileData?.path
@@ -244,6 +249,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
       });
     } finally {
       setLoading(false);
+      // 【设计决策】每次发送后清空临时文件，符合"单次对话临时分析"语义
       setPendingFile(null);
       setSelectedFile(null);
     }
@@ -374,6 +380,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     { title: '状态', dataIndex: 'status', width: 80 },
   ];
 
+  // 【P1-2 恢复】kbColumns 加"操作"列
   const kbColumns = [
     { title: '文档名称', dataIndex: 'file_name' },
     { title: '标签', dataIndex: 'tags', width: 220, ellipsis: true },
@@ -638,36 +645,15 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                   <div style={{ maxWidth: '80%', padding: '10px 16px', borderRadius: 8, background: msg.role === 'user' ? '#1890ff' : '#fff', color: msg.role === 'user' ? '#fff' : '#333', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
                     {msg.role === 'assistant' ? (
                       <div className="markdown-body" style={{ textAlign: 'left' }}>
-                        {msg.content.split('[[CHART]]').map((part, i, arr) => (
-                          <Fragment key={i}>
-                            {part && (
-                              <ReactMarkdown
-                                remarkPlugins={[remarkGfm]}
-                                components={{
-                                  img: ({ node, ...props }: any) => {
-                                    if (!props.src || props.src.trim() === '' || props.src.startsWith('![')) return null;
-                                    return <img {...props} style={{ maxWidth: '100%', height: 'auto', borderRadius: 6, marginTop: 8 }} />;
-                                  }
-                                }}
-                              >{part}</ReactMarkdown>
-                            )}
-                            {i < arr.length - 1 && msg.image && (
-                              <img
-                                src={msg.image}
-                                alt="图表"
-                                style={{
-                                  maxWidth: '100%',
-                                  height: 'auto',
-                                  marginTop: 12,
-                                  marginBottom: 12,
-                                  borderRadius: 6,
-                                  border: '1px solid #f0f0f0',
-                                  display: 'block'
-                                }}
-                              />
-                            )}
-                          </Fragment>
-                        ))}
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            img: ({ node, ...props }) => {
+                              if (!props.src || props.src.trim() === '' || props.src.startsWith('![')) return null;
+                              return <img {...props} style={{ maxWidth: '100%', height: 'auto', borderRadius: 6, marginTop: 8 }} />;
+                            }
+                          }}
+                        >{msg.content}</ReactMarkdown>
                         <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
                           <Button size="small" type="text" icon={<LikeOutlined />} onClick={async () => {
                             const fd = new FormData(); fd.append('session_id', sessionId); fd.append('feedback_type', 'up'); await api.post('/feedback', fd); antMessage.success('感谢您的点赞！');
@@ -693,6 +679,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
             <Input.TextArea value={input} onChange={(e) => setInput(e.target.value)} onPressEnter={handleSend} disabled={loading} placeholder={loading ? "AI 正在处理复杂任务..." : "发消息或按住喇叭说话，松开发送..."} autoSize={{ minRows: 1, maxRows: 4 }} style={{ borderRadius: '8px', fontSize: '16px', border: '1px solid #d9d9d9', background: '#fff' }} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {/* 【P0-2】聊天框文件上传：改为走 /upload_temp，不读全文，显示气泡 */}
             <input type="file" ref={chatFileInputRef} style={{ display: 'none' }} onChange={async (e) => {
                 const file = e.target.files?.[0];
                 if (file) {

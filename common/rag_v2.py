@@ -104,6 +104,30 @@ DEPARTMENTS = [
     "Operations", "Legal", "Admin", "Product", "Engineering"
 ]
 
+# 【US-01 追加】部门中英文别名 → 统一 canonical 名
+DEPARTMENT_ALIASES = {
+    # IT
+    "it": "it", "信息技术": "it", "技术": "it", "技术部": "it",
+    # Sales
+    "sales": "sales", "销售": "sales", "销售部": "sales", "业务": "sales",
+    # HR
+    "hr": "hr", "人事": "hr", "人力资源": "hr", "人事部": "hr",
+    # Finance
+    "finance": "finance", "财务": "finance", "财务部": "finance", "会计": "finance",
+    # Marketing
+    "marketing": "marketing", "市场": "marketing", "市场部": "marketing",
+    # Operations
+    "operations": "operations", "运营": "operations", "运营部": "operations",
+    # Legal
+    "legal": "legal", "法务": "legal", "法务部": "legal",
+    # Admin
+    "admin": "admin", "行政": "admin", "行政部": "admin", "管理": "admin",
+    # Product
+    "product": "product", "产品": "product", "产品部": "product",
+    # Engineering
+    "engineering": "engineering", "研发": "engineering", "研发部": "engineering",
+}
+
 # 分块参数（参考《切片原理》：400 token，15% overlap）
 CHUNK_CONFIG = {
     "target_chars": 570,       # ≈ 400 token
@@ -131,18 +155,16 @@ VECTOR_ENABLED_EXTENSIONS = {".md", ".txt", ".pdf", ".docx"}
 
 def _extract_department(tags: str) -> str:
     """
-    从 tags 中提取部门名。
-    白名单匹配，不区分大小写。
+    从 tags 中提取部门，支持中英文别名。
     匹配不到则落到 'general'。
     """
     if not tags:
         return "general"
     tags_lower = tags.lower()
-    for dept in DEPARTMENTS:
-        if dept.lower() in tags_lower:
-            return dept.lower()
+    for alias, canonical in DEPARTMENT_ALIASES.items():
+        if alias.lower() in tags_lower:
+            return canonical
     return "general"
-
 
 def _get_collection(department: str):
     """获取或创建部门对应的 collection（幂等）"""
@@ -154,11 +176,7 @@ def _get_collection(department: str):
         metadata={"hnsw:space": "cosine"},
     )
 
-
 def _list_all_collections() -> List[str]:
-    """列出所有 dept_ 前缀的 collection 名"""
-    if not _chroma_client:
-        return []
     try:
         collections = _chroma_client.list_collections()
         names = []
@@ -348,6 +366,13 @@ def _chunk_table(text: str) -> List[str]:
     if not date_col:
         print(f"【诊断-chunk】未检测到日期列，按固定行数（50行/块）切分")
         header = ",".join(df.columns)
+        # 【US-01 方案A】无日期列时同样生成摘要块
+        summary_lines = [
+            "【数据摘要】表格数据文件",
+            f"总行数：{len(df)}",
+            f"列名：{','.join(str(c) for c in df.columns)}",
+        ]
+        chunks.append("\n".join(summary_lines))
         rows_per_chunk = 50
         overlap_rows = 5
         i = 0
@@ -364,10 +389,53 @@ def _chunk_table(text: str) -> List[str]:
         print(f"【诊断-chunk】表格分块完成：{len(chunks)} 块（按行）")
         return chunks
 
+    # 【US-01 方案A】生成"数据摘要块"作为第一块
+    # 目的：让 CSV 也有 1 个向量进 ChromaDB，使 dept_sales collection 存在
+    # 用途：US-01 领域筛选的"入口信号"，不参与实际检索
+    summary_lines = [
+        f"【数据摘要】表格数据文件",
+        f"总行数：{len(df)}",
+        f"列名：{','.join(str(c) for c in df.columns)}",
+        "样例数据（前3行）：",
+    ]
+    try:
+        summary_lines.append(df.head(3).to_csv(index=False, header=False).strip())
+    except Exception:
+        pass
+    summary_chunk = "\n".join(summary_lines)
+
+    # 把摘要块插到 chunks 列表最前面（后续按月切的块会 append 到后面）
+    # 注意：此处需要改函数返回值结构，见下方说明
+
     # ========== 有日期列：按月份切 ==========
     print(f"【诊断-chunk】检测到日期列: '{date_col}'，按月切分")
     df["_parsed_date_"] = pd.to_datetime(df[date_col], errors="coerce", format="mixed")
     df["_period_"] = df["_parsed_date_"].dt.to_period("M")
+
+    # 【US-01 方案A】摘要块作为第一块
+    # 【关键】加入高频分类值作为"领域指纹"，让无关查询相似度显著下降
+    summary_lines = [
+        "【数据摘要】表格数据文件",
+        f"总行数：{len(df)}",
+        f"列名：{','.join(str(c) for c in df.columns if not str(c).startswith('_'))}",
+    ]
+    # 提取前 3 个低基数列的 Top 5 高频值，作为领域特征
+    try:
+        obj_cols = [c for c in df.columns if df[c].dtype == "object" and not str(c).startswith("_")]
+        for col in obj_cols[:3]:
+            top_vals = df[col].value_counts().head(5).index.tolist()
+            top_vals = [str(v) for v in top_vals if str(v).strip()]
+            if top_vals:
+                summary_lines.append(f"{col} 高频取值：{', '.join(top_vals)}")
+    except Exception:
+        pass
+    summary_lines.append("样例数据（前3行）：")
+    try:
+        summary_lines.append(df.head(3).iloc[:, :6].to_csv(index=False, header=False).strip())
+    except Exception:
+        pass
+    chunks.append("\n".join(summary_lines))
+    print(f"【诊断-chunk】已生成数据摘要块（含领域特征）")
 
     # 记录原始列（排除辅助列）
     other_cols = [c for c in df.columns if c not in ["_parsed_date_", "_period_"]]
@@ -440,73 +508,91 @@ def _smart_chunk_text(text: str, file_ext: str) -> List[str]:
 
 def index_document_v2(file_path: str, tags: str = "") -> str:
     """
-    处理上传文档：解析 → 分块 → 写 rag_data.json → 【分层】写 ChromaDB → 重建 BM25
+    处理上传文档：解析 → 分块 → 写 rag_data.json → 分层写 ChromaDB → 重建 BM25
 
+    【支持格式】.md / .txt / .csv / .xlsx / .xls / .pdf / .docx
     【分层策略】
-    - 语义类文档（.md/.txt/.pdf/.docx）：GTE 向量 + BM25（保留语义能力）
-    - 结构化数据（.csv/.xlsx/.xls）：仅 BM25（用户查询精确，关键词足够）
+    - 语义类（.md/.txt/.pdf/.docx）：全块编码进 ChromaDB
+    - 表格类（.csv/.xlsx/.xls）：只编码摘要块，其余仅 BM25
     """
+    # 【关键修复】统一在函数顶部 import pandas，避免局部导入导致 UnboundLocalError
+    import pandas as pd
+
     with _INDEX_LOCK:
         try:
             ext = os.path.splitext(file_path)[1].lower()
             content = ""
 
+            # ========== 1. 解析（支持 7 种格式） ==========
             if ext in [".txt", ".md"]:
                 with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                     content = f.read()
+
             elif ext in [".csv", ".xlsx", ".xls"]:
-                df = pd.read_csv(file_path) if ext == ".csv" else pd.read_excel(file_path)
+                if ext == ".csv":
+                    df = pd.read_csv(file_path)
+                else:
+                    df = pd.read_excel(file_path)
                 df = df.fillna("")
                 content = df.to_csv(index=False)
+
             elif ext == ".pdf":
                 try:
                     from pypdf import PdfReader
                 except ImportError:
                     return "❌ 缺少 pypdf 库，请执行: pip install pypdf"
-                reader = PdfReader(file_path)
-                for page in reader.pages:
-                    content += (page.extract_text() or "") + "\n"
+                try:
+                    reader = PdfReader(file_path)
+                    for page in reader.pages:
+                        page_text = page.extract_text() or ""
+                        content += page_text + "\n"
+                except Exception as e:
+                    return f"❌ PDF 解析失败: {e}"
+                if not content.strip():
+                    return "❌ PDF 内容为空或无法提取文本（可能是扫描版 PDF，需 OCR）"
+
             elif ext == ".docx":
                 try:
                     from docx import Document
                 except ImportError:
                     return "❌ 缺少 python-docx 库，请执行: pip install python-docx"
-                doc = Document(file_path)
-                for para in doc.paragraphs:
-                    content += para.text + "\n"
-                for table in doc.tables:
-                    for row in table.rows:
-                        content += " | ".join([cell.text for cell in row.cells]) + "\n"
+                try:
+                    doc = Document(file_path)
+                    # 提取段落
+                    for para in doc.paragraphs:
+                        if para.text.strip():
+                            content += para.text + "\n"
+                    # 提取表格
+                    for table in doc.tables:
+                        for row in table.rows:
+                            row_text = " | ".join(cell.text for cell in row.cells)
+                            content += row_text + "\n"
+                except Exception as e:
+                    return f"❌ DOCX 解析失败: {e}"
+                if not content.strip():
+                    return "❌ DOCX 内容为空"
+
             else:
-                return f"❌ 不支持的文件格式: {ext}"
+                return f"❌ 不支持的文件格式: {ext}（支持 .md/.txt/.csv/.xlsx/.pdf/.docx）"
 
             if not content.strip():
                 return "❌ 文件内容为空。"
 
-            # === 1. 分块 ===
+            # ========== 2. 分块 ==========
             chunks = _smart_chunk_text(content, file_ext=ext)
             file_name = os.path.basename(file_path)
             current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
             print(f"【诊断-index】文件 '{file_name}' 分块数: {len(chunks)}")
 
-            # === 2. 部门分片 ===
+            # ========== 3. 部门分片 ==========
             department = _extract_department(tags)
             print(f"【诊断-index】文件 '{file_name}' → 部门分片: {department}")
 
-            # === 3. 写入 rag_data.json ===
+            # ========== 4. 写入 rag_data.json ==========
             store = _load_store()
             store["files"] = [f for f in store.get("files", []) if f.get("file_name") != file_name]
             for key in list(store.get("store", {}).keys()):
                 store["store"][key] = [d for d in store["store"][key] if d.get("file_name") != file_name]
-
-            store.setdefault("files", []).append({
-                "file_name": file_name,
-                "tags": tags if tags else "(无)",
-                "department": department,
-                "created_at": current_time,
-                "chunks": len(chunks),
-            })
 
             target_key = f"dept_{department}"
             store.setdefault("store", {}).setdefault(target_key, [])
@@ -526,14 +612,51 @@ def index_document_v2(file_path: str, tags: str = "") -> str:
 
             print(f"【诊断-index】准备写入的块数: {len(new_docs)}")
 
+            # ========== 5. 提取 schema（供 LLM 语义理解） ==========
+            file_schema = None
+            try:
+                if ext in [".csv", ".xlsx", ".xls"]:
+                    if ext == ".csv":
+                        _df = pd.read_csv(file_path)
+                    else:
+                        _df = pd.read_excel(file_path)
+                    _df = _df.fillna("")
+                    from common.tools import extract_schema
+                    file_schema = extract_schema(_df)
+                    print(f"【诊断-schema】{file_name} schema 提取完成：{len(file_schema['columns'])} 列")
+            except Exception as e:
+                print(f"⚠️ schema 提取失败: {e}")
+
+            # 写入文件元数据
+            file_entry = {
+                "file_name": file_name,
+                "tags": tags if tags else "(无)",
+                "department": department,
+                "created_at": current_time,
+                "chunks": len(chunks),
+            }
+            if file_schema:
+                file_entry["schema"] = file_schema
+            store.setdefault("files", []).append(file_entry)
+
             with open(RAG_DATA_FILE, "w", encoding="utf-8") as f:
                 json.dump(store, f, ensure_ascii=False, indent=2)
 
-            # === 4. 【分层】写入 ChromaDB ===
+            # ========== 6. 分层写入 ChromaDB ==========
             use_vector = ext in VECTOR_ENABLED_EXTENSIONS
+            is_csv_like = ext in [".csv", ".xlsx", ".xls"]
 
-            if not use_vector:
-                print(f"【诊断-index】{ext} 结构化数据 → 跳过 GTE，仅 BM25 索引")
+            if use_vector:
+                vector_docs = new_docs
+                print(f"【诊断-index】{ext} 语义类 → 编码全部 {len(new_docs)} 块")
+            elif is_csv_like and new_docs:
+                vector_docs = new_docs[:1]   # 只取第一块（摘要块）
+                print(f"【诊断-index】{ext} 表格类 → 只编码摘要块 1 条（其余 {len(new_docs)-1} 块仅 BM25）")
+            else:
+                vector_docs = []
+
+            if not vector_docs:
+                print(f"【诊断-index】{ext} 跳过向量索引")
             elif _chroma_client and _vector_model:
                 t0 = time.time()
                 collection = _get_collection(department)
@@ -541,14 +664,14 @@ def index_document_v2(file_path: str, tags: str = "") -> str:
                     try:
                         collection.delete(where={"file_name": file_name})
                     except Exception as e:
-                        print(f"⚠️ ChromaDB 删除旧块（可能本就不存在）: {e}")
+                        print(f"⚠️ ChromaDB 删除旧块: {e}")
 
-                    texts = [d["text"] for d in new_docs]
-                    ids = [d["id"] for d in new_docs]
+                    texts = [d["text"] for d in vector_docs]
+                    ids = [d["id"] for d in vector_docs]
                     metadatas = [
                         {"file_name": file_name, "department": department,
                          "tags": tags or "", "time": current_time}
-                        for _ in new_docs
+                        for _ in vector_docs
                     ]
 
                     print(f"【诊断-index】开始 GTE 编码 {len(texts)} 条...")
@@ -569,7 +692,7 @@ def index_document_v2(file_path: str, tags: str = "") -> str:
             else:
                 print(f"⚠️ ChromaDB 或向量模型不可用，跳过向量索引")
 
-            # === 5. 重建 BM25（所有文档都走） ===
+            # ========== 7. 重建 BM25 ==========
             t0 = time.time()
             _build_bm25()
             print(f"✅ BM25 重建完成，耗时 {time.time() - t0:.2f}s")
@@ -647,12 +770,11 @@ def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
     if _chroma_client and _vector_model:
         try:
             t0 = time.time()
-            query_emb = _vector_model.encode(
-                [query], normalize_embeddings=True, show_progress_bar=False
-            ).tolist()
-
+            query_emb = _vector_model.encode([query], normalize_embeddings=True, show_progress_bar=False).tolist()
             collection_names = _list_all_collections()
-            all_hits = []  # (distance, doc_id, metadata, document)
+
+            # 【US-01】每个 collection 独立检索，计算 max_similarity
+            collection_stats = {}   # cname -> {"max_sim": float, "hits": [...]}
             for cname in collection_names:
                 try:
                     col = _chroma_client.get_collection(name=cname)
@@ -661,25 +783,52 @@ def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
                         n_results=RETRIEVAL_CONFIG["vector_top_k"],
                         include=["documents", "metadatas", "distances"],
                     )
+                    hits = []
+                    max_sim = 0.0
                     if res and res["ids"] and res["ids"][0]:
                         for i, doc_id in enumerate(res["ids"][0]):
-                            distance = res["distances"][0][i]
-                            similarity = 1.0 - distance  # cosine distance → similarity
-                            if similarity >= RETRIEVAL_CONFIG["vector_threshold"]:
-                                all_hits.append((
-                                    similarity, doc_id,
-                                    res["metadatas"][0][i],
-                                    res["documents"][0][i],
-                                ))
+                            sim = 1.0 - res["distances"][0][i]
+                            if sim > max_sim:
+                                max_sim = sim
+                            if sim >= RETRIEVAL_CONFIG["vector_threshold"]:
+                                hits.append((sim, doc_id, res["metadatas"][0][i], res["documents"][0][i]))
+                    collection_stats[cname] = {"max_sim": max_sim, "hits": hits}
                 except Exception as e:
                     print(f"⚠️ 查询 collection {cname} 失败: {e}")
 
-            # 全局排序，取 Top K
+            # 【US-01】只保留 max_sim 最显著的 collection（允许并列）
+            # 【US-01 领域筛选】先判断绝对阈值，再选相对最优
+            ABSOLUTE_THRESHOLD = 0.35  # 低于此值判定为"无相关领域"
+            if collection_stats:
+                best_sim = max(s["max_sim"] for s in collection_stats.values())
+                summary = {c: round(s["max_sim"], 3) for c, s in collection_stats.items()}
+
+                if best_sim < ABSOLUTE_THRESHOLD:
+                    # 所有 collection 都不相关 → 返回空（如"日程"、"天气"）
+                    print(f"【US-01】best_sim={best_sim:.4f} < {ABSOLUTE_THRESHOLD} "
+                          f"→ 无相关领域，返回空。all={summary}")
+                    all_hits = []
+                else:
+                    selected = [c for c, s in collection_stats.items()
+                                if best_sim - s["max_sim"] < 0.05]
+                    print(f"【US-01】领域筛选: best_sim={best_sim:.4f}, "
+                          f"selected={selected}, all={summary}")
+                    all_hits = []
+                    for cname in selected:
+                        all_hits.extend(collection_stats[cname]["hits"])
+            else:
+                all_hits = []
+
+            # 【US-01 追加】无相关领域时，跳过 BM25，直接返回空
+            # 防止 BM25 全局检索污染无关问题的上下文
+            if not all_hits:
+                print(f"【US-01】无相关领域 → 跳过 BM25，整体返回空")
+                return {"context_text": "", "sources": []}
+
             all_hits.sort(key=lambda x: x[0], reverse=True)
             for rank, (sim, doc_id, meta, doc_text) in enumerate(all_hits[:RETRIEVAL_CONFIG["vector_top_k"]]):
                 vector_results[doc_id] = rank
                 vector_meta[doc_id] = {"meta": meta, "text": doc_text, "similarity": sim}
-
             print(f"【诊断-rag_v2】向量路命中 {len(vector_results)} 条，耗时 {time.time() - t0:.3f}s")
         except Exception as e:
             print(f"⚠️ 向量检索失败: {e}")

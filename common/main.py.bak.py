@@ -59,18 +59,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 class LoginRequest(BaseModel):
     username: str
     pin: str
-
 
 class ChatRequest(BaseModel):
     session_id: str
     query: str
     user_text: Optional[str] = None
     temp_file_path: Optional[str] = None
-
 
 def init_db():
     db_path = "sample.db"
@@ -84,7 +81,6 @@ def init_db():
         conn.commit()
         conn.close()
 
-
 def init_health_db():
     conn = sqlite3.connect("health.db")
     cursor = conn.cursor()
@@ -94,7 +90,6 @@ def init_health_db():
         tool TEXT, query TEXT, result TEXT, status TEXT)''')
     conn.commit()
     conn.close()
-
 
 def write_log_to_db(entry):
     try:
@@ -110,7 +105,6 @@ def write_log_to_db(entry):
     except Exception as e:
         print(f"###DEBUG### SQLite写入失败: {e}")
 
-
 from bus_memory.event_bus import EventBus
 from common.agents_memory import WorkerAgent, QueryWorker
 
@@ -118,13 +112,11 @@ _query_worker = None
 _command_worker = None
 _tool_router = None
 
-
 def set_workers(query_worker, command_worker, tool_router):
     global _query_worker, _command_worker, _tool_router
     _query_worker = query_worker
     _command_worker = command_worker
     _tool_router = tool_router
-
 
 @app.on_event("startup")
 async def startup_event():
@@ -153,7 +145,6 @@ async def startup_event():
         for name in _command_worker.tools: _tool_router[name] = _command_worker
         set_workers(_query_worker, _command_worker, _tool_router)
     print("✅ FastAPI 初始化完成")
-
 
 # ================= V3 系统提示（语义边界，不规定流程） =================
 SYSTEM_PROMPT = """
@@ -186,10 +177,8 @@ SYSTEM_PROMPT = """
 - `generate_chart` 支持数据文件的图表生成，会自动读取文件、聚合、渲染彩色图片。
 """
 
-
 def _is_error_result(result) -> bool:
     return ("错误" in str(result)) or ("失败" in str(result))
-
 
 def simple_log_tool(session_id, user_query, tool_name, arguments, result):
     real_username = session_id.split('_')[0] if '_' in session_id else session_id
@@ -212,9 +201,7 @@ def simple_log_tool(session_id, user_query, tool_name, arguments, result):
     except Exception as e:
         print(f"[审计] 写入失败: {e}", flush=True)
 
-
 log_lock = threading.Lock()
-
 
 def _extract_ids_from_text(text: str) -> list:
     if not text:
@@ -227,7 +214,6 @@ def _extract_ids_from_text(text: str) -> list:
             if len(ids) >= 5:
                 break
     return ids
-
 
 # ================= V3：从 rag_data.json 构建 schema 提示 ====================
 def _build_schema_hint() -> str:
@@ -286,7 +272,7 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
     real_username = session_id.split('_')[0] if '_' in session_id else session_id
     user_info = get_user_info(real_username)
     if user_info and user_info.get("status") == "禁用":
-        return "【系统安全提示】您的账号已被管理员禁用。", [], None
+        return "【系统安全提示】您的账号已被管理员禁用。", []
 
     original_query = query
     history_text = user_text if user_text else original_query
@@ -297,7 +283,7 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
 
     is_safe, err_msg = input_guard(query)
     if not is_safe:
-        return err_msg, [], None
+        return err_msg, []
 
     if not query_worker.is_running:
         asyncio.create_task(query_worker.run_loop())
@@ -319,7 +305,7 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
         else:
             result = f"未找到工具 {tool_name}"
         memory.append(session_id, "确认执行工具", result)
-        return output_guard(result), [], None
+        return output_guard(result), []
 
     if temp_file_path:
         _session_temp_files[session_id] = temp_file_path
@@ -334,7 +320,7 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
         answer = f"现在是 {time_result}（北京时间）。"
         simple_log_tool(session_id, original_query, "get_current_time", {}, time_result)
         memory.append(session_id, history_text, answer)
-        return output_guard(answer), [], None
+        return output_guard(answer), []
 
     # 记忆装载
     history = memory.get(session_id)[-20:]
@@ -395,7 +381,7 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
             answer = f"模型调用失败: {e}"
             memory.append(session_id, original_query, answer)
             tool_trace.append({"iteration": iteration, "stage": "llm", "error": str(e)})
-            return output_guard(answer), collected_sources, None
+            return output_guard(answer), collected_sources
         t_llm_cost = round(time.time() - t_llm, 3)
 
         msg = response.choices[0].message
@@ -486,7 +472,7 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
                     # 给 LLM 的 tool 结果中，把 base64 图片替换成占位提示，让 LLM 不再复制
                     result = re.sub(
                         r'!\[.*?\]\(data:image/png;base64,[A-Za-z0-9+/=]+\)',
-                        '[图片已就绪]',
+                        '【系统已生成图表，图片将由系统自动展示在回答末尾，你无需自己写图片 markdown】',
                         str(result)
                     )
             if func_name == "search_knowledge" and result:
@@ -513,9 +499,20 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
     answer = re.sub(r'^(根据|基于).*?数据，', '', answer).strip()
 
     # 【图片去重】清洗 LLM 自己写的空图片 markdown（防止裂图）
-    answer = re.sub(r'!\[.*?\]\(\s*\)', '', answer)
+    answer = re.sub(r'!\[.*?\]\(\)', '', answer)
 
     answer = source_prefix + answer
+
+    # 【位置修复】将图片插入到第一个 markdown 标题下方
+    if image_output:
+        title_match = re.search(r'^(#{1,3}\s+.+)$', answer, re.MULTILINE)
+        if title_match:
+            pos = title_match.end()
+            answer = answer[:pos] + "\n\n" + f"![图表]({image_output})\n" + answer[pos:]
+        else:
+            answer = answer.rstrip() + "\n\n" + f"![图表]({image_output})"
+
+    answer = re.sub(r'!\[.*?\]\(\s*\)', '', answer)
 
     # ⑦ 后置管道（记忆清洁）
     answer_for_memory = re.sub(
@@ -530,21 +527,20 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
     tool_names = [t['name'] for t in tool_trace if t['stage'] == 'tool']
     print(f"###trace### session={session_id}, llm_calls={llm_count}, tools={tool_names}")
 
-    # 【位置修复】将占位符插入到第一个 markdown 标题下方，图片走独立字段
+    # 【位置修复】将图片插入到第一个 markdown 标题下方
     if image_output:
         title_match = re.search(r'^(#{1,3}\s+.+)$', answer, re.MULTILINE)
         if title_match:
             pos = title_match.end()
-            answer = answer[:pos] + "\n\n[[CHART]]\n" + answer[pos:]
+            answer = answer[:pos] + "\n\n" + f"![图表]({image_output})\n" + answer[pos:]
         else:
-            answer = answer.rstrip() + "\n\n[[CHART]]"
+            answer = answer.rstrip() + "\n\n" + f"![图表]({image_output})"
 
     return answer, collected_sources, image_output
 
 
 async def generate_plan(user_query, history, client):
     return None
-
 
 # ================= API 接口 =================
 @app.post("/api/login")
@@ -556,32 +552,30 @@ async def api_login(request: LoginRequest):
         return {"status": "success", "user": user}
     return {"status": "error", "message": "用户名或密码错误"}
 
-
 @app.post("/api/chat")
 async def api_chat(request: ChatRequest):
     try:
         real_username = request.session_id.split('_')[0] if '_' in request.session_id else request.session_id
         user_info = get_user_info(real_username)
         if user_info and user_info.get("status") == "禁用":
-            return {"answer": "【系统提示】您的账号已被禁用。", "image": ""}
+            return {"answer": "【系统提示】您的账号已被禁用。"}
         result = await chat_core(
             request.session_id, request.query, request.user_text,
             _query_worker, _command_worker, _tool_router,
             temp_file_path=getattr(request, 'temp_file_path', None)
         )
         if result is None:
-            return {"answer": "系统处理异常：内部返回空。", "contexts": [], "image": ""}
+            return {"answer": "系统处理异常：内部返回空。", "contexts": []}
         answer, retrieved_ids, image_output = result
         return {
             "answer": answer,
             "contexts": retrieved_ids,
-            "image": image_output or ""
+            "image": image_output or ""   # 独立字段，图片走独立通道
         }
     except Exception as e:
         import traceback
         print(f"###严重Bug### {traceback.format_exc()}")
-        return {"answer": f"系统处理异常: {e}", "image": ""}
-
+        return {"answer": f"系统处理异常: {e}"}
 
 @app.post("/api/upload_temp")
 async def api_upload_temp(file: UploadFile = File(...), session_id: str = Form(...)):
@@ -606,7 +600,6 @@ async def api_upload_temp(file: UploadFile = File(...), session_id: str = Form(.
     except Exception as e:
         return {"status": "error", "message": f"临时文件保存失败: {e}"}
 
-
 @app.post("/api/upload")
 async def api_upload(file: UploadFile = File(...)):
     file_path = os.path.join(os.getcwd(), file.filename)
@@ -626,7 +619,6 @@ async def api_upload(file: UploadFile = File(...)):
     except Exception as e:
         return {"status": "error", "message": f"上传失败: {e}"}
 
-
 @app.get("/api/kb/list")
 async def api_kb_list():
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -640,7 +632,6 @@ async def api_kb_list():
         return {"status": "success", "data": []}
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
 
 @app.post("/api/kb/update_tags")
 async def api_kb_update_tags(file_name: str = Form(...), tags: str = Form("")):
@@ -665,7 +656,6 @@ async def api_kb_update_tags(file_name: str = Form(...), tags: str = Form("")):
             return {"status": "error", "message": str(e)}
     return {"status": "error", "message": "知识库不存在"}
 
-
 @app.post("/api/kb/index")
 async def api_kb_index(file: UploadFile = File(...), tags: str = Form("")):
     import asyncio
@@ -683,7 +673,6 @@ async def api_kb_index(file: UploadFile = File(...), tags: str = Form("")):
         import traceback
         print(f"###索引Bug### {traceback.format_exc()}")
         return {"status": "error", "message": f"索引失败: {e}"}
-
 
 @app.post("/api/kb/delete")
 async def api_kb_delete(file_name: str = Form(...)):
@@ -703,7 +692,6 @@ async def api_kb_delete(file_name: str = Form(...)):
             return {"status": "error", "message": str(e)}
     return {"status": "error", "message": "知识库不存在"}
 
-
 @app.get("/api/kb/download")
 async def api_kb_download(file_name: str):
     from fastapi.responses import FileResponse
@@ -713,7 +701,6 @@ async def api_kb_download(file_name: str):
         return {"status": "error", "message": "文件不存在"}
     return FileResponse(path=file_path, filename=safe_name, media_type='application/octet-stream')
 
-
 @app.get("/api/users/list")
 async def api_users_list():
     conn = sqlite3.connect("users.db")
@@ -722,7 +709,6 @@ async def api_users_list():
     users = [{"username": r[0], "real_name": r[1], "role": r[2], "department": r[3], "contact": r[4], "status": r[5]} for r in cursor.fetchall()]
     conn.close()
     return {"status": "success", "data": users}
-
 
 @app.post("/api/users/add")
 async def api_users_add(username: str = Form(...), pin: str = Form(...), real_name: str = Form(""), role: str = Form("viewer"), department: str = Form(""), contact: str = Form(""), status: str = Form("正常")):
@@ -738,7 +724,6 @@ async def api_users_add(username: str = Form(...), pin: str = Form(...), real_na
             return {"status": "error", "message": "用户已存在"}
         return {"status": "error", "message": f"添加失败: {e}"}
 
-
 @app.post("/api/users/delete")
 async def api_users_delete(username: str = Form(...)):
     conn = sqlite3.connect("users.db")
@@ -748,7 +733,6 @@ async def api_users_delete(username: str = Form(...)):
     conn.close()
     return {"status": "success", "message": "用户已删除"}
 
-
 @app.post("/api/users/update")
 async def api_users_update(username: str = Form(...), role: str = Form(...), status: str = Form("正常")):
     conn = sqlite3.connect("users.db")
@@ -757,7 +741,6 @@ async def api_users_update(username: str = Form(...), role: str = Form(...), sta
     conn.commit()
     conn.close()
     return {"status": "success", "message": "用户更新成功"}
-
 
 @app.get("/api/health")
 async def api_health():
@@ -796,7 +779,6 @@ async def api_health():
         "sorted_tools": [{"tool": k, "count": v} for k, v in sorted_tools.items()]
     }}
 
-
 @app.get("/api/logs")
 async def api_logs():
     BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -822,7 +804,6 @@ async def api_logs():
     logs.reverse()
     return {"status": "success", "data": logs[:100]}
 
-
 @app.get("/api/logs/export")
 async def api_logs_export():
     import csv
@@ -847,7 +828,6 @@ async def api_logs_export():
     filename = f"logs_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     return Response(content=output.getvalue().encode('utf-8-sig'), media_type="text/csv", headers={"Content-Disposition": f"attachment; filename={filename}"})
 
-
 @app.get("/api/history/{session_id}")
 async def get_history(session_id: str):
     try:
@@ -855,7 +835,6 @@ async def get_history(session_id: str):
         return {"status": "success", "data": hist if hist else []}
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
 
 @app.post("/api/feedback")
 async def api_feedback(session_id: str = Form(...), feedback_type: str = Form(...), feedback_text: str = Form("")):
@@ -870,7 +849,6 @@ async def api_feedback(session_id: str = Form(...), feedback_type: str = Form(..
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-
 @app.get("/api/status")
 async def api_status():
     workers = []
@@ -880,7 +858,6 @@ async def api_status():
         return {"status": "success", "data": workers}
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
 
 if os.path.exists(DIST_DIR):
     app.mount("/assets", StaticFiles(directory=os.path.join(DIST_DIR, "assets")), name="assets")
