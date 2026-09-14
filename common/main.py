@@ -160,7 +160,8 @@ SYSTEM_PROMPT = """
 你是一个企业级AI智能助手。你拥有工具调用能力，请根据用户意图自主决策调用哪些工具。
 
 【能力边界】
-- 涉及企业内部知识、文档、FAQ、故障排查 → 使用 search_knowledge
+- **系统已自动检索企业知识库，背景资料已注入 system prompt**。请优先基于背景资料回答。
+- 如果背景资料不足以回答，可调用 search_knowledge 做**进一步**检索。
 - 涉及数据文件的统计、趋势、聚合、筛选 → 使用 aggregate
 - 涉及日程 → 使用 list_events / add_event / delete_event
 - 涉及实时信息 → 使用 web_search
@@ -228,6 +229,28 @@ def _extract_ids_from_text(text: str) -> list:
                 break
     return ids
 
+async def _is_data_query(query: str) -> bool:
+    """
+    【AI 原生意图预判】用轻量 LLM 判断用户问题是否涉及数据文件查询。
+    不使用关键词匹配——完全依赖语义理解。
+    """
+    try:
+        resp = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {"role": "system", "content": "判断用户的问题是否涉及对数据文件（CSV/Excel等）的查询、统计、分析、可视化。只回答'是'或'否'，不要任何解释。"},
+                {"role": "user", "content": query}
+            ],
+            max_tokens=5,
+            temperature=0
+        )
+        answer = resp.choices[0].message.content.strip()
+        result = "是" in answer or "yes" in answer.lower()
+        print(f"###schema### 意图预判: '{query[:30]}...' -> {'数据类' if result else '非数据类'}")
+        return result
+    except Exception as e:
+        print(f"###schema### 意图预判失败: {e}，保守注入 schema")
+        return True
 
 # ================= V3：从 rag_data.json 构建 schema 提示 ====================
 def _build_schema_hint() -> str:
@@ -275,6 +298,28 @@ def _build_schema_hint() -> str:
     print(f"###schema### 构建成功，包含 {len(lines) - 2} 列信息")
     return "\n".join(lines)
 
+def _retrieve_background(query: str) -> dict:
+    """
+    【检索基础设施化】物理层无条件执行企业知识库检索。
+    与 LLM 决策解耦：无论 LLM 是否调用 search_knowledge，本函数总会执行。
+
+    返回：
+        {"text": 拼接后的上下文, "ids": 结构化 ID 列表}
+    """
+    from common.rag_v2 import search_knowledge_v2
+    try:
+        result = search_knowledge_v2(query, "")
+        if isinstance(result, dict):
+            text = result.get("context_text", "")
+            sources = result.get("sources", [])
+            ids = [s.get("doc_id") for s in sources if s.get("doc_id")]
+            # 背景资料截断，避免撑爆 system prompt
+            if text and len(text) > 8000:
+                text = text[:8000] + "\n...（背景资料过长，已截断）"
+            return {"text": text, "ids": ids}
+    except Exception as e:
+        print(f"###背景检索### 失败: {e}")
+    return {"text": "", "ids": []}
 
 async def chat_core(session_id: str, query: str, user_text: str = None,
     query_worker=None, command_worker=None, TOOL_ROUTER=None,
@@ -339,12 +384,17 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
     # 记忆装载
     history = memory.get(session_id)[-20:]
 
-    # ② 构建 system_content（一次性完成，不重复）
-    schema_hint = _build_schema_hint()
+    # ② 构建 system_content（按需注入 schema）
     system_content = SYSTEM_PROMPT
-    if schema_hint:
-        system_content = SYSTEM_PROMPT + "\n\n" + schema_hint
-        print(f"###schema### 注入 {len(schema_hint)} 字符的数据 schema")
+    if await _is_data_query(query):
+        schema_hint = _build_schema_hint()
+        if schema_hint:
+            system_content = SYSTEM_PROMPT + "\n\n" + schema_hint
+            print(f"###schema### 注入 {len(schema_hint)} 字符的数据 schema")
+        else:
+            print(f"###schema### 无可用 schema，跳过")
+    else:
+        print(f"###schema### 非数据类意图，跳过 schema 注入")
 
     # 【故事8修复】物理层判断数据来源
     if current_temp_file:
@@ -357,6 +407,19 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
         source_prefix = f"根据上传文件 {file_name} 和工具返回的真实数据，"
     else:
         source_prefix = "根据企业知识库文档和工具返回的真实数据，"
+
+    # 【检索基础设施化】无条件执行企业知识库检索，作为背景知识注入
+    bg = _retrieve_background(query)
+    if bg["text"]:
+        system_content += (
+            f"\n\n【企业知识库背景资料】\n{bg['text']}\n\n"
+            "【背景资料说明】以上是系统自动检索到的企业知识库内容。"
+            "请优先基于这些资料回答用户问题。"
+            "如果资料与问题无关，请忽略，不要强行引用。"
+        )
+        print(f"###背景检索### 命中 {len(bg['ids'])} 个 ID: {bg['ids']}")
+    else:
+        print(f"###背景检索### 无相关命中")
 
     system_content += "\n\n【回答要求】请不要在回答开头写任何关于数据来源的说明。直接以'以下是...'开头。系统会自动为你添加前缀。"
 
@@ -376,7 +439,7 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
     messages.append({"role": "user", "content": query})
 
     image_output = None
-    collected_sources = []
+    collected_sources = list(bg["ids"])  # 从背景检索结果初始化
 
     MAX_ITERATIONS = 8
     MAX_RETRIES = 2
@@ -409,20 +472,30 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
             answer = msg.content
 
             # 【故事11修复】决策校验器：数据意图命中但未调工具 → 通用反思
+            # 【意图词只是"触发反思"的信号，不是"决定调用哪个工具"的规则】
+            # 最终调什么工具，完全由 LLM 基于工具描述自主决策
             data_intent_words = [
                 "趋势", "统计", "汇总", "销售额", "各月", "季度", "同比", "环比", "排名",
-                "画图", "绘制", "生成图", "折线图", "柱状图", "饼图", "可视化", "图表", "作图"
+                "画图", "绘制", "生成图", "折线图", "柱状图", "饼图", "可视化", "图表", "作图",
+                "收入", "利润", "订单", "销量", "业绩", "明细", "对比", "分布"
+            ]
+            knowledge_intent_words = [
+                "怎么处理", "怎么办", "如何解决", "如何恢复", "怎样修复", "如何处理",
+                "报错", "故障", "失效", "打不开", "连不上", "没反应", "不响应",
+                "脱机", "崩溃", "蓝屏", "死机", "闪退", "异常",
+                "流程", "规定", "手册", "指南", "政策", "怎么申请", "如何申请"
             ]
             has_data_intent = any(w in original_query for w in data_intent_words)
+            has_knowledge_intent = any(w in original_query for w in knowledge_intent_words)
 
-            if has_data_intent and iteration == 0:
-                print(f"###决策校验### 拦截：数据意图命中但 tools=[]，强制重试")
+            if (has_data_intent or has_knowledge_intent) and iteration == 0:
+                print(f"###决策校验### 意图词命中（data={has_data_intent}, knowledge={has_knowledge_intent}）但 tools=[]，触发反思重试")
                 messages.append({
                     "role": "system",
                     "content": (
-                        "你刚才的回答没有调用任何工具。请重新审视用户的问题："
-                        "如果需要查询数据、统计数据或生成图表，请调用相应的工具。"
-                        "你可以参考可用工具的描述来选择最合适的工具。"
+                        "你刚才的回答没有调用任何工具。请重新审视用户的问题，"
+                        "判断是否需要调用工具。可用工具及其适用场景见工具描述，"
+                        "请根据用户意图自主选择最合适的工具。"
                     )
                 })
                 continue
@@ -490,9 +563,23 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
                         str(result)
                     )
             if func_name == "search_knowledge" and result:
-                for m in _extract_ids_from_text(str(result)):
-                    if m not in collected_sources:
-                        collected_sources.append(m)
+                # 【诊断增强】优先从结构化标记 [RETRIEVED_IDS] 提取真实检索 ID
+                ids_match = re.search(r'\[RETRIEVED_IDS\](.*?)\[/RETRIEVED_IDS\]', str(result))
+                if ids_match:
+                    for doc_id in ids_match.group(1).split(','):
+                        doc_id = doc_id.strip()
+                        if doc_id and doc_id not in collected_sources:
+                            collected_sources.append(doc_id)
+                    print(f"###contexts来源### 结构化提取 | 命中 {len(collected_sources)} 个: {collected_sources}")
+                else:
+                    # 保底：旧的文本提取逻辑
+                    for m in _extract_ids_from_text(str(result)):
+                        if m not in collected_sources:
+                            collected_sources.append(m)
+                    if collected_sources:
+                        print(f"###contexts来源### 文本兜底提取 | 命中 {len(collected_sources)} 个: {collected_sources}")
+                    else:
+                        print(f"###contexts来源### 检索无命中 | contexts=[]")
 
             tool_trace.append({
                 "iteration": iteration, "stage": "tool",

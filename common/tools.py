@@ -481,18 +481,24 @@ def aggregate(
 
 # ==================== 知识库检索工具 ====================
 def search_knowledge(query: str, department: str = "", **kwargs) -> str:
-    """从企业知识库检索相关文档。"""
+    """从企业知识库检索相关文档。返回时附带结构化 ID 列表供后端可靠提取。"""
     from common.rag_v2 import search_knowledge_v2
     try:
         result = search_knowledge_v2(query, department)
         if isinstance(result, dict):
             text = result.get("context_text", "")
+            sources = result.get("sources", [])
         else:
             text = str(result) if result else ""
+            sources = []
         if not text.strip():
             return "企业知识库中未找到相关内容。"
         if len(text) > 30000:
             text = text[:30000] + "\n...（内容过长，已截断）"
+        # 【诊断增强】附加结构化 ID 列表
+        real_ids = [s.get("doc_id") for s in sources if s.get("doc_id")]
+        if real_ids:
+            text += f"\n\n[RETRIEVED_IDS]{','.join(real_ids)}[/RETRIEVED_IDS]"
         return text
     except Exception as e:
         return f"知识库检索失败: {e}"

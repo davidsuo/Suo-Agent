@@ -1,0 +1,377 @@
+{
+  "evaluation_time": "2026-09-14T11:12:47.368594",
+  "total_samples": 20,
+  "passed_samples": 2,
+  "pass_rate": 0.1,
+  "average_metrics": {
+    "context_recall": 0.0,
+    "context_precision": 0.0,
+    "rejection_accuracy": 0.1,
+    "answer_relevancy": 0.0
+  },
+  "average_latency_seconds": 1.805,
+  "results": [
+    {
+      "id": "Q01",
+      "query": "打印机报错 0x80004005 怎么处理",
+      "type": "exact",
+      "ground_truth": [
+        "IT-01"
+      ],
+      "retrieved_ids": [],
+      "generated_answer": "模型调用失败: Error code: 402 - {'error': {'message': 'Insufficient Balance', 'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}}",
+      "metrics": {
+        "context_recall": 0.0,
+        "context_precision": 0.0,
+        "rejection_accuracy": 0.0,
+        "answer_relevancy": 0.0
+      },
+      "latency_seconds": 2.769190788269043,
+      "passed": false
+    },
+    {
+      "id": "Q02",
+      "query": "打印的东西一直出不来，点了打印没有反应，该怎么办",
+      "type": "semantic",
+      "ground_truth": [
+        "IT-02"
+      ],
+      "retrieved_ids": [],
+      "generated_answer": "模型调用失败: Error code: 402 - {'error': {'message': 'Insufficient Balance', 'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}}",
+      "metrics": {
+        "context_recall": 0.0,
+        "context_precision": 0.0,
+        "rejection_accuracy": 0.0,
+        "answer_relevancy": 0.0
+      },
+      "latency_seconds": 1.8452427387237549,
+      "passed": false
+    },
+    {
+      "id": "Q03",
+      "query": "办公室的 HP 打印机今天突然显示脱机，任务全卡着不动，怎么恢复",
+      "type": "hybrid",
+      "ground_truth": [
+        "IT-07",
+        "IT-02"
+      ],
+      "retrieved_ids": [],
+      "generated_answer": "模型调用失败: Error code: 402 - {'error': {'message': 'Insufficient Balance', 'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}}",
+      "metrics": {
+        "context_recall": 0.0,
+        "context_precision": 0.0,
+        "rejection_accuracy": 0.0,
+        "answer_relevancy": 0.0
+      },
+      "latency_seconds": 2.156069040298462,
+      "passed": false
+    },
+    {
+      "id": "Q04",
+      "query": "共享打印机提示拒绝访问，权限在哪里设置",
+      "type": "exact",
+      "ground_truth": [
+        "IT-05"
+      ],
+      "retrieved_ids": [],
+      "generated_answer": "模型调用失败: Error code: 402 - {'error': {'message': 'Insufficient Balance', 'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}}",
+      "metrics": {
+        "context_recall": 0.0,
+        "context_precision": 0.0,
+        "rejection_accuracy": 0.0,
+        "answer_relevancy": 0.0
+      },
+      "latency_seconds": 2.2403464317321777,
+      "passed": false
+    },
+    {
+      "id": "Q05",
+      "query": "电脑刚重装完系统，打印机就失踪了，别人那台都用得好好的",
+      "type": "semantic",
+      "ground_truth": [
+        "IT-04"
+      ],
+      "retrieved_ids": [],
+      "generated_answer": "模型调用失败: Error code: 402 - {'error': {'message': 'Insufficient Balance', 'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}}",
+      "metrics": {
+        "context_recall": 0.0,
+        "context_precision": 0.0,
+        "rejection_accuracy": 0.0,
+        "answer_relevancy": 0.0
+      },
+      "latency_seconds": 1.6874725818634033,
+      "passed": false
+    },
+    {
+      "id": "Q06",
+      "query": "取出卡住的纸之后，打印机还是老毛病，一打印就报错",
+      "type": "hybrid",
+      "ground_truth": [
+        "IT-06",
+        "IT-01"
+      ],
+      "retrieved_ids": [],
+      "generated_answer": "模型调用失败: Error code: 402 - {'error': {'message': 'Insufficient Balance', 'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}}",
+      "metrics": {
+        "context_recall": 0.0,
+        "context_precision": 0.0,
+        "rejection_accuracy": 0.0,
+        "answer_relevancy": 0.0
+      },
+      "latency_seconds": 1.6840054988861084,
+      "passed": false
+    },
+    {
+      "id": "Q07",
+      "query": "打印出来颜色很淡还有条纹，是不是该换耗材了",
+      "type": "exact",
+      "ground_truth": [
+        "IT-08"
+      ],
+      "retrieved_ids": [],
+      "generated_answer": "模型调用失败: Error code: 402 - {'error': {'message': 'Insufficient Balance', 'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}}",
+      "metrics": {
+        "context_recall": 0.0,
+        "context_precision": 0.0,
+        "rejection_accuracy": 0.0,
+        "answer_relevancy": 0.0
+      },
+      "latency_seconds": 1.72481107711792,
+      "passed": false
+    },
+    {
+      "id": "Q08",
+      "query": "系统前几天自动升级完，打印机就变得很不稳定，经常打一半中断",
+      "type": "hybrid",
+      "ground_truth": [
+        "IT-04",
+        "IT-02"
+      ],
+      "retrieved_ids": [],
+      "generated_answer": "模型调用失败: Error code: 402 - {'error': {'message': 'Insufficient Balance', 'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}}",
+      "metrics": {
+        "context_recall": 0.0,
+        "context_precision": 0.0,
+        "rejection_accuracy": 0.0,
+        "answer_relevancy": 0.0
+      },
+      "latency_seconds": 1.719515085220337,
+      "passed": false
+    },
+    {
+      "id": "Q09",
+      "query": "公司下午茶的报销流程是怎样的",
+      "type": "negative",
+      "ground_truth": [],
+      "retrieved_ids": [],
+      "generated_answer": "模型调用失败: Error code: 402 - {'error': {'message': 'Insufficient Balance', 'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}}",
+      "metrics": {
+        "context_recall": 0.0,
+        "context_precision": 0.0,
+        "rejection_accuracy": 1.0,
+        "answer_relevancy": 0.0
+      },
+      "latency_seconds": 1.7496559619903564,
+      "passed": true
+    },
+    {
+      "id": "Q10",
+      "query": "打印机端口 9100 连不上，防火墙怎么放行",
+      "type": "exact",
+      "ground_truth": [
+        "IT-03"
+      ],
+      "retrieved_ids": [],
+      "generated_answer": "模型调用失败: Error code: 402 - {'error': {'message': 'Insufficient Balance', 'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}}",
+      "metrics": {
+        "context_recall": 0.0,
+        "context_precision": 0.0,
+        "rejection_accuracy": 0.0,
+        "answer_relevancy": 0.0
+      },
+      "latency_seconds": 1.687147617340088,
+      "passed": false
+    },
+    {
+      "id": "Q11",
+      "query": "ThinkPad X1 Carbon 2024 开机没反应，电源灯不亮",
+      "type": "exact",
+      "ground_truth": [
+        "TS-01"
+      ],
+      "retrieved_ids": [],
+      "generated_answer": "模型调用失败: Error code: 402 - {'error': {'message': 'Insufficient Balance', 'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}}",
+      "metrics": {
+        "context_recall": 0.0,
+        "context_precision": 0.0,
+        "rejection_accuracy": 0.0,
+        "answer_relevancy": 0.0
+      },
+      "latency_seconds": 1.6167347431182861,
+      "passed": false
+    },
+    {
+      "id": "Q12",
+      "query": "开机后一直没画面，能听到机器运转的声音，屏幕就是没图像",
+      "type": "semantic",
+      "ground_truth": [
+        "TS-02"
+      ],
+      "retrieved_ids": [],
+      "generated_answer": "模型调用失败: Error code: 402 - {'error': {'message': 'Insufficient Balance', 'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}}",
+      "metrics": {
+        "context_recall": 0.0,
+        "context_precision": 0.0,
+        "rejection_accuracy": 0.0,
+        "answer_relevancy": 0.0
+      },
+      "latency_seconds": 1.616948127746582,
+      "passed": false
+    },
+    {
+      "id": "Q13",
+      "query": "我的 X1 2024 开机后屏幕一片漆黑，机器在转但啥都不显示",
+      "type": "hybrid",
+      "ground_truth": [
+        "TS-01",
+        "TS-02"
+      ],
+      "retrieved_ids": [],
+      "generated_answer": "模型调用失败: Error code: 402 - {'error': {'message': 'Insufficient Balance', 'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}}",
+      "metrics": {
+        "context_recall": 0.0,
+        "context_precision": 0.0,
+        "rejection_accuracy": 0.0,
+        "answer_relevancy": 0.0
+      },
+      "latency_seconds": 1.6363072395324707,
+      "passed": false
+    },
+    {
+      "id": "Q14",
+      "query": "开机蓝屏 0x0000007B 是什么问题",
+      "type": "exact",
+      "ground_truth": [
+        "TS-05"
+      ],
+      "retrieved_ids": [],
+      "generated_answer": "模型调用失败: Error code: 402 - {'error': {'message': 'Insufficient Balance', 'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}}",
+      "metrics": {
+        "context_recall": 0.0,
+        "context_precision": 0.0,
+        "rejection_accuracy": 0.0,
+        "answer_relevancy": 0.0
+      },
+      "latency_seconds": 1.6469230651855469,
+      "passed": false
+    },
+    {
+      "id": "Q15",
+      "query": "电源插着也一直掉电，拿掉适配器更撑不了几分钟",
+      "type": "semantic",
+      "ground_truth": [
+        "TS-04"
+      ],
+      "retrieved_ids": [],
+      "generated_answer": "模型调用失败: Error code: 402 - {'error': {'message': 'Insufficient Balance', 'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}}",
+      "metrics": {
+        "context_recall": 0.0,
+        "context_precision": 0.0,
+        "rejection_accuracy": 0.0,
+        "answer_relevancy": 0.0
+      },
+      "latency_seconds": 1.6493034362792969,
+      "passed": false
+    },
+    {
+      "id": "Q16",
+      "query": "X1 用着用着就突然重启，散热口附近特别热，风扇跟拖拉机一样响",
+      "type": "hybrid",
+      "ground_truth": [
+        "TS-06",
+        "TS-05"
+      ],
+      "retrieved_ids": [],
+      "generated_answer": "模型调用失败: Error code: 402 - {'error': {'message': 'Insufficient Balance', 'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}}",
+      "metrics": {
+        "context_recall": 0.0,
+        "context_precision": 0.0,
+        "rejection_accuracy": 0.0,
+        "answer_relevancy": 0.0
+      },
+      "latency_seconds": 1.6181390285491943,
+      "passed": false
+    },
+    {
+      "id": "Q17",
+      "query": "家里网连不上，手机都能上，就电脑不行",
+      "type": "semantic",
+      "ground_truth": [
+        "TS-07"
+      ],
+      "retrieved_ids": [],
+      "generated_answer": "模型调用失败: Error code: 402 - {'error': {'message': 'Insufficient Balance', 'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}}",
+      "metrics": {
+        "context_recall": 0.0,
+        "context_precision": 0.0,
+        "rejection_accuracy": 0.0,
+        "answer_relevancy": 0.0
+      },
+      "latency_seconds": 1.6002705097198486,
+      "passed": false
+    },
+    {
+      "id": "Q18",
+      "query": "外接显示器没信号，按 F7 也没用",
+      "type": "exact",
+      "ground_truth": [
+        "TS-08"
+      ],
+      "retrieved_ids": [],
+      "generated_answer": "模型调用失败: Error code: 402 - {'error': {'message': 'Insufficient Balance', 'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}}",
+      "metrics": {
+        "context_recall": 0.0,
+        "context_precision": 0.0,
+        "rejection_accuracy": 0.0,
+        "answer_relevancy": 0.0
+      },
+      "latency_seconds": 1.6663055419921875,
+      "passed": false
+    },
+    {
+      "id": "Q19",
+      "query": "这台电脑的保修期到什么时候，发票在哪里开",
+      "type": "negative",
+      "ground_truth": [],
+      "retrieved_ids": [],
+      "generated_answer": "模型调用失败: Error code: 402 - {'error': {'message': 'Insufficient Balance', 'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}}",
+      "metrics": {
+        "context_recall": 0.0,
+        "context_precision": 0.0,
+        "rejection_accuracy": 1.0,
+        "answer_relevancy": 0.0
+      },
+      "latency_seconds": 1.8049423694610596,
+      "passed": true
+    },
+    {
+      "id": "Q20",
+      "query": "电脑最近老是突然自己重启，没有任何提示",
+      "type": "semantic",
+      "ground_truth": [
+        "TS-05",
+        "TS-06"
+      ],
+      "retrieved_ids": [],
+      "generated_answer": "模型调用失败: Error code: 402 - {'error': {'message': 'Insufficient Balance', 'type': 'unknown_error', 'param': None, 'code': 'invalid_request_error'}}",
+      "metrics": {
+        "context_recall": 0.0,
+        "context_precision": 0.0,
+        "rejection_accuracy": 0.0,
+        "answer_relevancy": 0.0
+      },
+      "latency_seconds": 1.9803171157836914,
+      "passed": false
+    }
+  ]
+}
