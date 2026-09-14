@@ -419,7 +419,10 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
   return (
     <Layout style={{ height: '100vh', width: '100%', margin: 0, padding: 0, background: '#f5f5f5' }}>
       <Sider theme="light" width={240} style={{ background: '#fff', borderRight: '1px solid #f0f0f0' }}>
-        <div style={{ padding: '16px 10px', fontWeight: 'bold', fontSize: 16 }}>🚀 某某企业AI原生系统平台</div>
+        <div style={{ padding: '16px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <img src="/logo.png" alt="欣正咨询" style={{ height: 28, objectFit: 'contain' }} />
+          <span style={{ fontWeight: 'bold', fontSize: 18 }}>AI管理咨询</span>
+        </div>
         <div style={{ padding: '0 10px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
           <Avatar icon={<UserOutlined />} />
           <span>{user.display_name}</span>
