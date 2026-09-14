@@ -16,6 +16,33 @@
 版本号遵循 [SemVer 2.0.0](https://semver.org/lang/zh-CN/)。
 
 
+## [rag/v2.5.0] - 2026-09-14
+
+### Added
+- **检索基础设施化（核心突破）**：新增 `_retrieve_background(query)` 函数，在 `chat_core` 构建 messages 前**无条件执行**企业知识库检索，检索结果作为"背景资料"注入 system prompt。检索不再依赖 LLM 决策，从根本上解决"LLM 不调 search_knowledge"的问题。
+- **意图预判函数 `_is_data_query`**：使用轻量 LLM 调用判断用户问题是否涉及数据文件查询，按需注入 schema。避免"一刀切"注入污染上下文。
+
+### Changed
+- **Schema 注入策略**：从"无条件注入所有文件 schema"改为"按意图预判分流"——数据类问题注入 schema，非数据类问题跳过，让 LLM 视野干净。
+- **`search_knowledge` 返回值结构**：附加 `[RETRIEVED_IDS]IT-01,IT-02[/RETRIEVED_IDS]` 结构化标记，供后端可靠提取真实检索 ID。
+- **`main.py` 的 contexts 提取逻辑**：从"正则从散文抠 ID"改为"从结构化标记直接提取"，彻底杜绝 UUID 映射错位。
+- **SYSTEM_PROMPT 能力边界**：从"用户问 X 就用 Y"的命令式，改为"系统已自动检索，背景资料已注入，优先基于背景资料回答"的事实陈述。
+- **`chat_core` 的 `collected_sources` 初始化**：从 `[]` 改为 `list(bg["ids"])`，与背景检索结果保持一致。
+
+### Fixed
+- 修复"20 题评估中 19 题 `tools=[]`"的决策不触发问题。
+- 修复"contexts 为空"问题（背景检索保证每道题都有上下文）。
+- 修复 `_is_data_query` 意图预判失败时的 fallback 处理（保守注入 schema）。
+
+### Performance
+- **评估集通过率：5% → 85%**（17/20 通过）。
+- **context_recall：0.325 → 0.85**（2.6 倍提升）。
+- **contexts 覆盖率：9/20 题 → 20/20 题**。
+
+### Known Issues（列入 Backlog）
+- Q16、Q20 的 ground_truth 含两个 ID 但只召回一个（TS-05 未进 Top-5），属检索排序问题，待引入 Reranker 优化。
+- Q19 negative 题 LLM 回答措辞未命中 `reject_signals`，属评测脚本措辞覆盖不全，待扩充。
+
 ---
 
 ## [ui/v3.2.0] - 2026-09-14
