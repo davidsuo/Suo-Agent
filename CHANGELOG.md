@@ -15,6 +15,23 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer 2.0.0](https://semver.org/lang/zh-CN/)。
 
+
+---
+
+## [ui/v3.2.0] - 2026-09-14
+
+### Added
+- **Logo 资产快照化**：将登录页和聊天页侧边栏的 Logo 从 base64 嵌入迁移到静态文件 `frontend/public/logo.png`。
+- **PDF 转 PNG 工具**：新增 `scripts/pdf_to_png.py`，支持自动裁剪空白边缘。
+- **新命名规范首例**：本标签是 `ui/` 前缀的首次应用，标志 UI 架构线正式进入规范化管理。
+
+### Changed
+- **`Login.tsx`**：移除约 65KB 的 base64 常量，改用 `<img src="/logo.png" />`。
+- **`Chat.tsx`**：侧边栏标题从"🚀 某某企业AI原生系统平台"改为"Logo + AI 管理咨询"。
+
+### Fixed
+- 修复前端代码中因 base64 嵌入导致的代码可读性问题。
+
 ---
 
 ## [agent/v3.1.1] - 2026-09-14
