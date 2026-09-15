@@ -161,6 +161,45 @@ def init_health_db():
     conn.commit()
     conn.close()
 
+def _cleanup_old_charts(days: int = 30):
+    """
+    【故事 4】清理 uploads/charts/ 目录下超过指定天数的旧图表。
+
+    策略：
+    - 只清理 .png 文件（图表专用）
+    - 保留其它文件（如非图表文件，避免误删）
+    - 每次启动时执行一次，不引入定时任务
+
+    Args:
+        days: 保留天数，默认 30 天
+    """
+    import time as _t
+    charts_dir = os.path.join(UPLOAD_DIR, "charts")
+    if not os.path.exists(charts_dir):
+        return
+
+    now = _t.time()
+    cutoff_seconds = days * 24 * 3600
+    cleaned = 0
+    failed = 0
+
+    for fname in os.listdir(charts_dir):
+        if not fname.endswith(".png"):
+            continue
+        fpath = os.path.join(charts_dir, fname)
+        try:
+            if os.path.isfile(fpath) and (now - os.path.getmtime(fpath)) > cutoff_seconds:
+                os.remove(fpath)
+                cleaned += 1
+        except Exception as e:
+            failed += 1
+            print(f"###图片清理### 删除失败 {fname}: {e}")
+
+    if cleaned > 0 or failed > 0:
+        print(f"###图片清理### 清理完成 | 删除 {cleaned} 个 | 失败 {failed} 个 | 保留天数 {days}")
+    else:
+        print(f"###图片清理### 无过期图表 | 保留天数 {days}")
+
 
 def write_log_to_db(entry):
     try:
@@ -198,6 +237,7 @@ async def startup_event():
     init_users_db()
     init_db()
     init_health_db()
+    _cleanup_old_charts(days=30)  # 【故事 4】启动时清理超过 30 天的旧图表
     if _query_worker is None:
         bus = EventBus()
         query_worker_tools = {
