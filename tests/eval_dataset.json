@@ -1,0 +1,14 @@
+[
+  {
+    "query": "各月咖啡销售趋势",
+    "expected_tool": "aggregate",
+    "expected_params": {"group_by": "month", "agg_column": "price"},
+    "expect_hallucination": false
+  },
+  {
+    "query": "2024年Q3咖啡销售",
+    "expected_tool": "aggregate",
+    "expected_params": {"filter_json": "{\"year\": 2024, \"quarter\": 3}"},
+    "expect_hallucination": false
+  }
+]

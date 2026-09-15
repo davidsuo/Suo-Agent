@@ -37,15 +37,34 @@ def input_guard(query: str) -> Tuple[bool, str]:
     """
     检查用户输入是否安全。
 
-    参数:
-        query: 用户输入的文本
-
-    返回:
-        (是否安全, 错误信息) 二元组。安全时返回 (True, "")。
+    【文件上传豁免】
+    前端聊天框上传文件时，会把文件内容拼接到 query 里，格式为：
+      "文件 xxx.csv 的内容如下：\n<文件内容>\n\n用户问题：<问题>"
+    这种场景下：
+    - 长度检查只针对「用户问题」部分，不针对文件内容
+    - 敏感词检查只针对「用户问题」部分，不针对文件内容
     """
     if not query or not query.strip():
         return False, "输入不能为空。"
 
+    # ========== 文件上传豁免 ==========
+    is_file_upload = (
+        query.lstrip().startswith("文件 ")
+        and "的内容如下：" in query[:200]
+    )
+
+    if is_file_upload:
+        # 只提取「用户问题」部分做检查
+        user_q = query.split("用户问题：", 1)[-1] if "用户问题：" in query else ""
+        if len(user_q) > MAX_QUERY_LENGTH:
+            return False, f"用户问题过长，请限制在 {MAX_QUERY_LENGTH} 字符以内。"
+        lower_q = user_q.lower()
+        for keyword in BLOCKED_KEYWORDS:
+            if keyword.lower() in lower_q:
+                return False, "您的输入包含不受支持的内容，请重新描述。"
+        return True, ""
+
+    # ========== 普通输入检查 ==========
     if len(query) > MAX_QUERY_LENGTH:
         return False, f"输入过长，请限制在 {MAX_QUERY_LENGTH} 字符以内。"
 
