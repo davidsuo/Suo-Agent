@@ -109,7 +109,12 @@ from common.memory import memory
 
 app = FastAPI()
 DIST_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'frontend', 'dist')
-UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'uploads')
+# 【Render Disk 适配】优先用环境变量 UPLOAD_DIR（指向 Persistent Disk）
+# 本地开发时环境变量不存在，走默认路径
+UPLOAD_DIR = os.getenv(
+    "UPLOAD_DIR",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'uploads')
+)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 import uuid as _uuid_mod
