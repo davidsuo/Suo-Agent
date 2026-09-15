@@ -16,6 +16,24 @@
 版本号遵循 [SemVer 2.0.0](https://semver.org/lang/zh-CN/)。
 
 
+## [ui/v3.4.0] - 2026-09-15
+
+### Added
+- **故事 6.1 消息复制**：在每条用户/AI 消息气泡右上角始终显示"复制"按钮，一键复制消息内容到剪贴板。
+- **故事 6.2 对话导出**：聊天窗顶部新增"导出对话"按钮，将当前会话导出为 `.md` 文件（保留 Markdown 格式、图片 URL、表格）。
+- **故事 6.2 增强 单条导出**：AI 助手消息气泡右上角新增"下载"按钮，将单条 AI 回答导出为 `.md` 文件（含用户提问上下文 + 元信息）。
+- **故事 6.3 清空对话**：聊天窗顶部新增"清空对话"按钮，通过二次确认弹窗防止误操作。
+- **后端新增端点 `POST /api/history/clear`**：调用 `memory.clear(session_id)` 清空指定会话历史，仅清空 `history` 字段，保留 files / tenant 元数据。
+
+### Changed
+- **`Chat.tsx` 消息气泡 padding 动态化**：AI 消息右侧 64px（下载 + 复制两个按钮），用户消息右侧 44px（复制一个按钮），避免按钮遮挡文字。
+- **`Chat.tsx` 头部按钮组改为 flex 布局**：`display: flex; gap: 4px;`，容纳多个按钮。
+
+### Fixed
+- **`handleClear` 作用域修复**：初次插入时被误放入 `handleExportOne` 函数体内，导致工具栏访问不到（报 `Cannot find name 'handleClear'`）。移动到 `handleExportOne` 之后作为平级函数。
+
+---
+
 ## [ui/v3.3.0] - 2026-09-15
 
 ### Fixed
