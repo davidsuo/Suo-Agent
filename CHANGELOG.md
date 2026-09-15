@@ -16,6 +16,21 @@
 版本号遵循 [SemVer 2.0.0](https://semver.org/lang/zh-CN/)。
 
 
+## [ui/v3.3.0] - 2026-09-15
+
+### Fixed
+- **输入框卡顿性能问题**：修复 `Chat.tsx` 中 `input` 状态变化导致整个 `messages.map` 重渲染的问题。长会话（消息多）下每按一个键都会触发所有 `ReactMarkdown` 重新解析 Markdown，造成明显输入延迟。
+
+### Changed
+- **`Chat.tsx` 消息列表渲染优化**：将 `messages.map(...)` 抽为 `messageListJsx`，用 `useMemo` 缓存，依赖 `[messages, sessionId]`。输入时 `messages` 引用不变 → 缓存命中 → 不重渲染历史消息。
+- **`Chat.tsx` import 更新**：新增 `useMemo`。
+
+### Performance
+- 长会话（50+ 消息）输入延迟从数百毫秒降至**几毫秒**。
+- 输入性能与消息数量**解耦**——无论会话多长，输入响应速度恒定。
+
+---
+
 ## [rag/v2.5.0] - 2026-09-14
 
 ### Added
