@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Layout, Menu, Input, Button, Avatar, message as antMessage, Tooltip, Card, Row, Col, Statistic, Table, Spin, Space, Modal, Tag, Select } from 'antd';
 import { UserOutlined, SendOutlined, PlusOutlined, DeleteOutlined, PaperClipOutlined, SoundOutlined, LogoutOutlined, CloseOutlined, SearchOutlined, DownloadOutlined, UploadOutlined, LikeOutlined, DislikeOutlined, EditOutlined } from '@ant-design/icons';
 import api from '../api/client';
@@ -188,6 +188,41 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
       recognitionRef.current = recognition;
     }
   }, []);
+
+  // 【性能修复】用 useMemo 缓存消息列表渲染结果
+  //   根因：input 状态变化时，Chat 组件整体重渲染，导致所有 ReactMarkdown 重新解析
+  //   解决：messages 引用不变时，缓存命中，输入时不重渲染历史消息
+  const messageListJsx = useMemo(() => (
+    messages.map((msg, idx) => (
+      <div key={idx} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
+        <div style={{ maxWidth: '80%', padding: '10px 16px', borderRadius: 8, background: msg.role === 'user' ? '#1890ff' : '#fff', color: msg.role === 'user' ? '#fff' : '#333', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+          {msg.role === 'assistant' ? (
+            <div className="markdown-body" style={{ textAlign: 'left' }}>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  img: ({ node, ...props }: any) => {
+                    if (!props.src || props.src.trim() === '' || props.src.startsWith('![')) return null;
+                    return <img {...props} style={{ maxWidth: '100%', height: 'auto', borderRadius: 6, marginTop: 8 }} />;
+                  }
+                }}
+              >{msg.content}</ReactMarkdown>
+              <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                <Button size="small" type="text" icon={<LikeOutlined />} onClick={async () => {
+                  const fd = new FormData(); fd.append('session_id', sessionId); fd.append('feedback_type', 'up'); await api.post('/feedback', fd); antMessage.success('感谢您的点赞！');
+                }} />
+                <Button size="small" type="text" danger icon={<DislikeOutlined />} onClick={async () => {
+                  const fd = new FormData(); fd.append('session_id', sessionId); fd.append('feedback_type', 'down'); await api.post('/feedback', fd); antMessage.info('感谢您的反馈，我们会努力改进！');
+                }} />
+              </div>
+            </div>
+          ) : (
+            <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.content}</div>
+          )}
+        </div>
+      </div>
+    ))
+  ), [messages, sessionId]);
 
   const sendMessage = async (msgText: string, fileData?: any) => {
     if ((!msgText && !fileData) || loading) return;
@@ -635,35 +670,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
 
           {activeView === 'chat' && (
             <>
-              {messages.map((msg, idx) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
-                  <div style={{ maxWidth: '80%', padding: '10px 16px', borderRadius: 8, background: msg.role === 'user' ? '#1890ff' : '#fff', color: msg.role === 'user' ? '#fff' : '#333', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-                    {msg.role === 'assistant' ? (
-                      <div className="markdown-body" style={{ textAlign: 'left' }}>
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm]}
-                          components={{
-                            img: ({ node, ...props }: any) => {
-                              if (!props.src || props.src.trim() === '') return null;
-                              return <img {...props} style={{ maxWidth: '100%', height: 'auto', borderRadius: 6, marginTop: 8 }} />;
-                            }
-                          }}
-                        >{msg.content}</ReactMarkdown>
-                        <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
-                          <Button size="small" type="text" icon={<LikeOutlined />} onClick={async () => {
-                            const fd = new FormData(); fd.append('session_id', sessionId); fd.append('feedback_type', 'up'); await api.post('/feedback', fd); antMessage.success('感谢您的点赞！');
-                          }} />
-                          <Button size="small" type="text" danger icon={<DislikeOutlined />} onClick={async () => {
-                            const fd = new FormData(); fd.append('session_id', sessionId); fd.append('feedback_type', 'down'); await api.post('/feedback', fd); antMessage.info('感谢您的反馈，我们会努力改进！');
-                          }} />
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.content}</div>
-                    )}
-                  </div>
-                </div>
-              ))}
+              {messageListJsx}
               <div ref={messagesEndRef} />
             </>
           )}

@@ -796,23 +796,31 @@ def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
                 except Exception as e:
                     print(f"⚠️ 查询 collection {cname} 失败: {e}")
 
-            # 【US-01】只保留 max_sim 最显著的 collection（允许并列）
-            # 【US-01 领域筛选】先判断绝对阈值，再选相对最优
-            ABSOLUTE_THRESHOLD = 0.35  # 低于此值判定为"无相关领域"
+            # 【可观测】领域筛选绝对阈值
+            #   0.35 → 0.55：过滤"擦边"误召回
+            #   日志格式：###RAG检索### 阈值判定 | best_sim=0.xxxx | 阈值=0.55 | 判定=...
+            ABSOLUTE_THRESHOLD = 0.55
             if collection_stats:
                 best_sim = max(s["max_sim"] for s in collection_stats.values())
                 summary = {c: round(s["max_sim"], 3) for c, s in collection_stats.items()}
 
                 if best_sim < ABSOLUTE_THRESHOLD:
-                    # 所有 collection 都不相关 → 返回空（如"日程"、"天气"）
-                    print(f"【US-01】best_sim={best_sim:.4f} < {ABSOLUTE_THRESHOLD} "
-                          f"→ 无相关领域，返回空。all={summary}")
+                    print(
+                        f"###RAG检索### 阈值判定 | best_sim={best_sim:.4f} | "
+                        f"阈值={ABSOLUTE_THRESHOLD} | 判定=拒绝 | all={summary}"
+                    )
                     all_hits = []
                 else:
                     selected = [c for c, s in collection_stats.items()
                                 if best_sim - s["max_sim"] < 0.05]
-                    print(f"【US-01】领域筛选: best_sim={best_sim:.4f}, "
-                          f"selected={selected}, all={summary}")
+                    print(
+                        f"###RAG检索### 阈值判定 | best_sim={best_sim:.4f} | "
+                        f"阈值={ABSOLUTE_THRESHOLD} | 判定=通过 | "
+                        f"selected={selected} | all={summary}"
+                    )
+                    all_hits = []
+                    for cname in selected:
+                        all_hits.extend(collection_stats[cname]["hits"])
                     all_hits = []
                     for cname in selected:
                         all_hits.extend(collection_stats[cname]["hits"])

@@ -1,4 +1,70 @@
 # common/main.py
+
+"""
+common/main.py - 核心聊天逻辑与 API 路由
+
+================================================================================
+RAG 架构组件映射（标准 RAG Architecture）
+================================================================================
+
+本系统实现了标准 RAG 架构的四个主要组件，组件位置对照如下：
+
+【1. 知识库 Knowledge Base】
+    职责：系统的外部数据存储库
+    位置：
+      - uploads/            原始上传文件
+      - rag_data.json       知识库元数据（files/schema/store）
+      - chroma_db/          向量数据库（ChromaDB 持久化）
+
+【2. 检索器 Retriever】
+    职责：在知识库中搜索相关数据的 AI 模型
+    位置：
+      - common/rag_v2.py    双路混合检索实现
+        · 向量路：ChromaDB (HNSW)    语义相似
+        · 关键词路：BM25 + jieba      精确匹配
+        · 融合：RRF (Reciprocal Rank Fusion)
+      - common/main.py::_retrieve_background    物理层检索封装
+
+【3. 集成层 Integration Layer】
+    职责：协调 RAG 的整体功能
+    位置：
+      - common/main.py::_route_query           语义路由（路由器/编排器）
+        · 判断问题类型：knowledge/data/schedule/realtime/chitchat
+        · 决定是否触发检索
+      - common/main.py::_build_schema_hint     数据文件 schema 注入
+      - common/main.py::chat_core              主流程集成
+        · 前置管线 → 路由 → 检索/schema 注入 → LLM 决策 → 工具执行 → 后置管线
+
+【4. 生成器 Generator】
+    职责：根据用户查询和检索数据创建输出
+    位置：
+      - common/main.py::client                  DeepSeek LLM 客户端
+      - common/main.py::SYSTEM_PROMPT           LLM 能力边界定义
+      - common/main.py::chat_core 的工具执行循环   LLM 决策 → 工具 → 结果
+
+【其他组件】
+  · 排名器 Ranker：RRF 融合 + 阈值筛选（rag_v2.py::search_knowledge_v2）
+  · 输出处理 Output Handler：output_guard + 物理层前缀（main.py::chat_core）
+
+================================================================================
+架构原则（AI 原生）
+================================================================================
+- 决策层：LLM 基于语义自主决策调什么工具
+- 执行层：工具执行 + 重试 + 审计日志
+- 确定性物理层：数据来源前缀、图片 URL、检索 ID 提取不依赖 LLM
+- 路由器层：通过语义路由决定"是否检索"，而非"每次提问都检索"
+
+================================================================================
+模块职责
+================================================================================
+1. FastAPI 应用与 API 路由（/api/chat /api/login /api/kb/* /api/users/*）
+2. chat_core：核心对话主流程
+3. 语义路由层：_route_query
+4. RAG 检索层：_retrieve_background / _build_schema_hint
+5. 前置管线：guardrails / 权限 / 临时文件 / pending 工具
+6. 后置管线：输出校验 / 物理层前缀 / 记忆存储
+"""
+
 import sys, os, json, asyncio, re, datetime, time
 import threading
 from typing import Optional
@@ -229,28 +295,56 @@ def _extract_ids_from_text(text: str) -> list:
                 break
     return ids
 
-async def _is_data_query(query: str) -> bool:
+async def _route_query(query: str) -> str:
     """
-    【AI 原生意图预判】用轻量 LLM 判断用户问题是否涉及数据文件查询。
-    不使用关键词匹配——完全依赖语义理解。
+    语义路由：判断用户问题的类型。
+
+    这是 RAG 架构的"路由器层"——决定是否查询外部数据，
+    还是直接交给 LLM 处理。避免"每次提问都检索"的过度行为。
+
+    返回 5 种类别：
+    - knowledge: 企业知识库类（触发背景检索）
+    - data:      数据文件类（触发 schema 注入）
+    - schedule:  日程类（不检索）
+    - realtime:  实时信息类（不检索）
+    - chitchat:  闲聊类（不检索）
+
+    原理：用轻量 LLM 做语义判断，不使用关键词匹配。
+    成本：每次约 0.5-1s 的额外 LLM 调用（可接受）。
     """
     try:
         resp = client.chat.completions.create(
             model="deepseek-chat",
             messages=[
-                {"role": "system", "content": "判断用户的问题是否涉及对数据文件（CSV/Excel等）的查询、统计、分析、可视化。只回答'是'或'否'，不要任何解释。"},
+                {
+                    "role": "system",
+                    "content": (
+                        "你是一个语义路由器。根据用户问题，判断其类型，"
+                        "只返回以下 5 个类别之一，不要任何解释：\n\n"
+                        "- knowledge: 企业内部的故障排查、IT 支持、文档查询、"
+                        "FAQ、流程规定、行政政策\n"
+                        "- data: 对数据文件（CSV/Excel）进行统计、查询、"
+                        "聚合、可视化\n"
+                        "- schedule: 日程管理（查询/添加/删除日程、会议提醒）\n"
+                        "- realtime: 需要实时互联网信息（新闻、天气、股价）\n"
+                        "- chitchat: 闲聊、常识问答、计算题、不涉及企业专属信息"
+                    )
+                },
                 {"role": "user", "content": query}
             ],
-            max_tokens=5,
+            max_tokens=10,
             temperature=0
         )
-        answer = resp.choices[0].message.content.strip()
-        result = "是" in answer or "yes" in answer.lower()
-        print(f"###schema### 意图预判: '{query[:30]}...' -> {'数据类' if result else '非数据类'}")
-        return result
+        raw = resp.choices[0].message.content.strip().lower()
+        for c in ["knowledge", "data", "schedule", "realtime", "chitchat"]:
+            if c in raw:
+                print(f"###路由### '{query[:30]}...' -> {c}")
+                return c
+        print(f"###路由### 未识别类别 '{raw}'，默认 chitchat")
+        return "chitchat"
     except Exception as e:
-        print(f"###schema### 意图预判失败: {e}，保守注入 schema")
-        return True
+        print(f"###路由### 失败: {e}，保守走 knowledge")
+        return "knowledge"
 
 # ================= V3：从 rag_data.json 构建 schema 提示 ====================
 def _build_schema_hint() -> str:
@@ -384,9 +478,14 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
     # 记忆装载
     history = memory.get(session_id)[-20:]
 
-    # ② 构建 system_content（按需注入 schema）
+    # ② 语义路由（RAG 路由器层）
+    #    - 判断问题类型，决定是否执行检索 / 注入 schema
+    #    - 这是 AI 原生架构的"路由器/编排器"，避免一刀切
+    route = await _route_query(query)
     system_content = SYSTEM_PROMPT
-    if await _is_data_query(query):
+
+    # 【数据类】注入 schema
+    if route == "data":
         schema_hint = _build_schema_hint()
         if schema_hint:
             system_content = SYSTEM_PROMPT + "\n\n" + schema_hint
@@ -394,32 +493,52 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
         else:
             print(f"###schema### 无可用 schema，跳过")
     else:
-        print(f"###schema### 非数据类意图，跳过 schema 注入")
+        print(f"###schema### 跳过（路由={route}）")
 
-    # 【故事8修复】物理层判断数据来源
+    # 【物理层数据来源】前缀按"实际数据来源"动态生成，不能硬编码
+    #   路由已经判断了问题类型，前缀应与之对应：
+    #   - knowledge → 企业知识库
+    #   - data      → 数据文件分析
+    #   - realtime  → 实时信息
+    #   - schedule  → 不加前缀（直接显示日程）
+    #   - chitchat  → 不加前缀（闲聊）
+    #   - 上传文件  → 根据上传文件
     if current_temp_file:
         raw_name = os.path.basename(current_temp_file)
         if raw_name.startswith(session_id + "_"):
             raw_name = raw_name[len(session_id) + 1:]
         if len(raw_name) > 9 and raw_name[8] == '_':
             raw_name = raw_name[9:]
-        file_name = raw_name
-        source_prefix = f"根据上传文件 {file_name} 和工具返回的真实数据，"
-    else:
+        source_prefix = f"根据上传文件 {raw_name} 和工具返回的真实数据，"
+    elif route == "knowledge":
         source_prefix = "根据企业知识库文档和工具返回的真实数据，"
+    elif route == "data":
+        source_prefix = "根据数据文件分析结果，"
+    elif route == "realtime":
+        source_prefix = "根据实时信息，"
+    elif route == "schedule":
+        source_prefix = ""
+    else:  # chitchat
+        source_prefix = ""
 
-    # 【检索基础设施化】无条件执行企业知识库检索，作为背景知识注入
-    bg = _retrieve_background(query)
-    if bg["text"]:
-        system_content += (
-            f"\n\n【企业知识库背景资料】\n{bg['text']}\n\n"
-            "【背景资料说明】以上是系统自动检索到的企业知识库内容。"
-            "请优先基于这些资料回答用户问题。"
-            "如果资料与问题无关，请忽略，不要强行引用。"
-        )
-        print(f"###背景检索### 命中 {len(bg['ids'])} 个 ID: {bg['ids']}")
+    # 【知识类背景检索】只有 knowledge 类问题才执行检索
+    #   - 这是 RAG 架构的"检索器层"，由路由器决定是否触发
+    #   - 检索结果注入 system prompt，作为 LLM 回答的背景资料
+    bg = {"text": "", "ids": []}
+    if route == "knowledge":
+        bg = _retrieve_background(query)
+        if bg["text"]:
+            system_content += (
+                f"\n\n【企业知识库背景资料】\n{bg['text']}\n\n"
+                "【背景资料说明】以上是系统自动检索到的企业知识库内容。"
+                "请优先基于这些资料回答用户问题。"
+                "如果资料与问题无关，请忽略，不要强行引用。"
+            )
+            print(f"###背景检索### 命中 {len(bg['ids'])} 个 ID: {bg['ids']}")
+        else:
+            print(f"###背景检索### 无相关命中")
     else:
-        print(f"###背景检索### 无相关命中")
+        print(f"###背景检索### 跳过（路由={route}）")
 
     system_content += "\n\n【回答要求】请不要在回答开头写任何关于数据来源的说明。直接以'以下是...'开头。系统会自动为你添加前缀。"
 
