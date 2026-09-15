@@ -26,6 +26,13 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from typing import Any, Dict, Optional
 
+
+# 【Render Disk 适配】与 main.py 保持一致，优先用环境变量 UPLOAD_DIR
+UPLOAD_DIR = os.getenv(
+    "UPLOAD_DIR",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads")
+)
+
 # ==================== 通用辅助函数 ====================
 def _request_with_retry(method: str, url: str, retries: int = 2, **kwargs):
     for attempt in range(retries + 1):
@@ -334,11 +341,7 @@ def aggregate(
     import numpy as np
 
     # ---- 1. 定位文件（uploads/temp 或 uploads） ----
-    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    candidates_dirs = [
-        os.path.join(base, "uploads", "temp"),
-        os.path.join(base, "uploads"),
-    ]
+    candidates_dirs = [os.path.join(UPLOAD_DIR, "temp"), UPLOAD_DIR]
     file_path = None
     for d in candidates_dirs:
         if not os.path.exists(d):
@@ -774,9 +777,11 @@ def generate_chart(
     import matplotlib.pyplot as plt
     import seaborn as sns
 
-    # ---------- 1. 定位文件 ----------
-    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    candidates_dirs = [os.path.join(base, "uploads", "temp"), os.path.join(base, "uploads")]
+    # ---- 1. 定位文件（UPLOAD_DIR/temp 或 UPLOAD_DIR） ----
+    candidates_dirs = [
+        os.path.join(UPLOAD_DIR, "temp"),
+        UPLOAD_DIR,
+    ]
     file_path = None
     for d in candidates_dirs:
         if not os.path.exists(d):
@@ -909,7 +914,7 @@ def generate_chart(
 
     # 保存为静态文件（替代 base64）
     import uuid as _uuid
-    charts_dir = os.path.join(base, "uploads", "charts")
+    charts_dir = os.path.join(UPLOAD_DIR, "charts")
     os.makedirs(charts_dir, exist_ok=True)
     chart_filename = f"{_uuid.uuid4().hex[:12]}.png"
     chart_path = os.path.join(charts_dir, chart_filename)
