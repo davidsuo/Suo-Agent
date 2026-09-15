@@ -123,7 +123,7 @@ class RAGV2Evaluator:
             return min(score, 1.0)
         return 0.0
 
-    async def run_full_evaluation(self, dataset_path: str, concurrency: int = 2) -> Dict:
+    async def run_full_evaluation(self, dataset_path: str, concurrency: int = 1) -> Dict:
         dataset = await self.load_dataset(dataset_path)
         if not dataset:
             return self.generate_report()

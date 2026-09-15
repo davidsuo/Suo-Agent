@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Layout, Menu, Input, Button, Avatar, message as antMessage, Tooltip, Card, Row, Col, Statistic, Table, Spin, Space, Modal, Tag, Select } from 'antd';
-import { UserOutlined, SendOutlined, PlusOutlined, DeleteOutlined, PaperClipOutlined, SoundOutlined, LogoutOutlined, CloseOutlined, SearchOutlined, DownloadOutlined, UploadOutlined, LikeOutlined, DislikeOutlined, EditOutlined } from '@ant-design/icons';
+import { UserOutlined, SendOutlined, PlusOutlined, DeleteOutlined, PaperClipOutlined, SoundOutlined, LogoutOutlined, CloseOutlined, SearchOutlined, DownloadOutlined, UploadOutlined, LikeOutlined, DislikeOutlined, EditOutlined, CopyOutlined } from '@ant-design/icons';
 import api from '../api/client';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -195,7 +195,18 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
   const messageListJsx = useMemo(() => (
     messages.map((msg, idx) => (
       <div key={idx} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
-        <div style={{ maxWidth: '80%', padding: '10px 16px', borderRadius: 8, background: msg.role === 'user' ? '#1890ff' : '#fff', color: msg.role === 'user' ? '#fff' : '#333', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+        <div
+          className="message-bubble"
+          style={{
+            position: 'relative',
+            maxWidth: '80%',
+            padding: msg.role === 'assistant' ? '10px 64px 10px 16px' : '10px 44px 10px 16px',
+            borderRadius: 8,
+            background: msg.role === 'user' ? '#1890ff' : '#fff',
+            color: msg.role === 'user' ? '#fff' : '#333',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+          }}
+        >
           {msg.role === 'assistant' ? (
             <div className="markdown-body" style={{ textAlign: 'left' }}>
               <ReactMarkdown
@@ -219,10 +230,177 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
           ) : (
             <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.content}</div>
           )}
+          {/* 【故事 6.1】复制按钮（悬停显示） */}
+          {/* 【故事 6.2 增强】右上角按钮组 */}
+          <div style={{
+            position: 'absolute',
+            top: 4,
+            right: 4,
+            display: 'flex',
+            gap: 4,
+          }}>
+            {/* AI 消息专属：下载单条 */}
+            {msg.role === 'assistant' && (
+              <Button
+                size="small"
+                type="text"
+                icon={<DownloadOutlined />}
+                onClick={() => handleExportOne(msg, idx)}
+                title="下载该条回答"
+                style={{
+                  color: '#888888',
+                  background: 'rgba(0,0,0,0.04)',
+                  borderRadius: 4,
+                }}
+              />
+            )}
+            {/* 全部消息：复制 */}
+            <Button
+              size="small"
+              type="text"
+              icon={<CopyOutlined />}
+              onClick={() => handleCopy(msg.content)}
+              title="复制"
+              style={{
+                color: msg.role === 'user' ? '#ffffff' : '#888888',
+                background: msg.role === 'user' ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.04)',
+                borderRadius: 4,
+              }}
+            />
+          </div>
         </div>
       </div>
     ))
   ), [messages, sessionId]);
+
+  // 【故事 6.1】复制消息到剪贴板
+  const handleCopy = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      antMessage.success('已复制到剪贴板');
+    } catch (err) {
+      console.error(err);
+      antMessage.error('复制失败，请检查浏览器权限');
+    }
+  };
+
+  // 【故事 6.2】导出当前会话为 Markdown 文件
+  const handleExport = () => {
+    if (messages.length === 0) {
+      antMessage.warning('当前会话为空，无需导出');
+      return;
+    }
+
+    const lines: string[] = [];
+    lines.push(`# 对话导出 - ${currentProject}`);
+    lines.push('');
+    lines.push(`> 用户：${user.display_name || user.username}`);
+    lines.push(`> 导出时间：${new Date().toLocaleString('zh-CN')}`);
+    lines.push(`> 消息条数：${messages.length}`);
+    lines.push('');
+    lines.push('---');
+    lines.push('');
+
+    messages.forEach((msg) => {
+      if (msg.role === 'user') {
+        lines.push('## 👤 用户');
+      } else {
+        lines.push('## 🤖 AI 助手');
+      }
+      lines.push('');
+      lines.push(msg.content);
+      lines.push('');
+      lines.push('---');
+      lines.push('');
+    });
+
+    const content = lines.join('\n');
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+    link.download = `对话_${currentProject}_${ts}.md`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    antMessage.success(`已导出 ${messages.length} 条消息`);
+  };
+
+  // 【故事 6.2 增强】单条 AI 回答导出（带用户提问上下文）
+  const handleExportOne = (msg: Message, idx: number) => {
+    // 找到上一条用户消息作为上下文
+    const prevUserMsg = idx > 0 && messages[idx - 1]?.role === 'user'
+      ? messages[idx - 1].content
+      : '';
+
+    const lines: string[] = [];
+    lines.push('# AI 回答');
+    lines.push('');
+    if (prevUserMsg) {
+      lines.push(`> 用户提问：${prevUserMsg}`);
+    }
+    lines.push(`> 会话：${currentProject}`);
+    lines.push(`> 时间：${new Date().toLocaleString('zh-CN')}`);
+    lines.push('');
+    lines.push('---');
+    lines.push('');
+    lines.push(msg.content);
+
+    // 文件名：内容摘要 + 时间戳
+    const summary = msg.content
+      .replace(/[#*`\n\r>\[\]()!]/g, '')
+      .replace(/\s+/g, ' ')
+      .slice(0, 20)
+      .trim();
+    const safeSummary = (summary || '回答').replace(/[\\/:*?"<>|]/g, '_');
+    const ts = new Date().toISOString().slice(0, 16).replace(/[:T-]/g, '');
+    const filename = `AI回答_${safeSummary}_${ts}.md`;
+
+    const content = lines.join('\n');
+    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    antMessage.success('已下载该条回答');
+  };
+
+  // 【故事 6.3】清空当前对话
+  const handleClear = () => {
+    if (messages.length === 0) {
+      antMessage.warning('当前会话为空，无需清空');
+      return;
+    }
+    Modal.confirm({
+      title: '确认清空当前对话？',
+      content: `将永久删除"${currentProject}"的 ${messages.length} 条消息，此操作不可恢复。`,
+      okText: '确认清空',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          const fd = new FormData();
+          fd.append('session_id', sessionId);
+          const res = await api.post('/history/clear', fd);
+          if (res.data.status === 'success') {
+            setMessages([]);
+            antMessage.success('对话已清空');
+          } else {
+            antMessage.error(res.data.message || '清空失败');
+          }
+        } catch (err) {
+          console.error(err);
+          antMessage.error('清空请求失败，请检查后端服务');
+        }
+      },
+    });
+  };
 
   const sendMessage = async (msgText: string, fileData?: any) => {
     if ((!msgText && !fileData) || loading) return;
@@ -452,7 +630,8 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
   );
 
   return (
-    <Layout style={{ height: '100vh', width: '100%', margin: 0, padding: 0, background: '#f5f5f5' }}>
+    <>
+      <Layout style={{ height: '100vh', width: '100%', margin: 0, padding: 0, background: '#f5f5f5' }}>
       <Sider theme="light" width={240} style={{ background: '#fff', borderRight: '1px solid #f0f0f0' }}>
         <div style={{ padding: '16px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
           <img src="/logo.png" alt="欣正咨询" style={{ height: 28, objectFit: 'contain' }} />
@@ -670,6 +849,31 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
 
           {activeView === 'chat' && (
             <>
+              {/* 【故事 6.2 + 6.3】顶部工具栏 */}
+              <div style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: 8,
+                marginBottom: 12,
+                paddingBottom: 12,
+                borderBottom: '1px solid #f0f0f0',
+              }}>
+                <Button
+                  size="small"
+                  icon={<DownloadOutlined />}
+                  onClick={handleExport}
+                >
+                  导出对话
+                </Button>
+                <Button
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                  onClick={handleClear}
+                >
+                  清空对话
+                </Button>
+              </div>
               {messageListJsx}
               <div ref={messagesEndRef} />
             </>
@@ -758,6 +962,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
         onCancel={() => setIsEditModalOpen(false)} onOk={handleEditTagsSubmit}>
         <Input placeholder="输入新标签（用逗号分隔）" value={editTags} onChange={(e) => setEditTags(e.target.value)} />
       </Modal>
-    </Layout>
+      </Layout>
+    </>
   );
 }

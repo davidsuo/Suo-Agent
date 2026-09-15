@@ -566,20 +566,38 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
     # ⑤ LLM 决策 + 工具执行循环
     for iteration in range(MAX_ITERATIONS):
         t_llm = time.time()
-        try:
-            response = client.chat.completions.create(
-                model="deepseek-chat",
-                messages=messages,
-                tools=allowed_tools,
-                tool_choice="auto"
-            )
-        except Exception as e:
-            answer = f"模型调用失败: {e}"
-            memory.append(session_id, original_query, answer)
-            tool_trace.append({"iteration": iteration, "stage": "llm", "error": str(e)})
-            return output_guard(answer), collected_sources
-        t_llm_cost = round(time.time() - t_llm, 3)
+        # 【防御性重试】LLM 调用失败时最多重试 2 次，间隔 1s
+        response = None
+        last_error = None
+        for llm_retry in range(3):
+            try:
+                response = client.chat.completions.create(
+                    model="deepseek-chat",
+                    messages=messages,
+                    tools=allowed_tools,
+                    tool_choice="auto"
+                )
+                # 【空值防御】API 偶尔返回 None，视为失败触发重试
+                if response is None or not getattr(response, "choices", None):
+                    last_error = "API 返回空响应"
+                    print(f"###LLM重试### 第 {llm_retry+1} 次：API 返回 None，1s 后重试")
+                    time.sleep(1)
+                    continue
+                break  # 成功，跳出重试循环
+            except Exception as e:
+                last_error = e
+                if llm_retry < 2:
+                    print(f"###LLM重试### 第 {llm_retry+1} 次失败: {type(e).__name__}: {e}，1s 后重试")
+                    time.sleep(1)
 
+        # 3 次重试后仍失败 → 返回错误
+        if response is None or not getattr(response, "choices", None):
+            answer = f"模型调用失败（已重试 3 次）: {last_error}"
+            memory.append(session_id, original_query, answer)
+            tool_trace.append({"iteration": iteration, "stage": "llm", "error": str(last_error)})
+            return output_guard(answer), collected_sources
+
+        t_llm_cost = round(time.time() - t_llm, 3)
         msg = response.choices[0].message
         tool_trace.append({
             "iteration": iteration, "stage": "llm",
@@ -1061,6 +1079,18 @@ async def get_history(session_id: str):
         hist = memory.get_history(session_id)
         return {"status": "success", "data": hist if hist else []}
     except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/history/clear")
+async def api_history_clear(session_id: str = Form(...)):
+    """【故事 6.3】清空指定 session 的所有历史消息"""
+    try:
+        memory.clear(session_id)
+        print(f"###历史清空### session={session_id}")
+        return {"status": "success", "message": "已清空会话历史"}
+    except Exception as e:
+        print(f"###历史清空### 失败: {e}")
         return {"status": "error", "message": str(e)}
 
 

@@ -14,9 +14,9 @@
   {"id": "Q13", "question": "我的 X1 2024 开机后屏幕一片漆黑，机器在转但啥都不显示", "type": "hybrid", "ground_truth": ["TS-01", "TS-02"]},
   {"id": "Q14", "question": "开机蓝屏 0x0000007B 是什么问题", "type": "exact", "ground_truth": ["TS-05"]},
   {"id": "Q15", "question": "电源插着也一直掉电，拿掉适配器更撑不了几分钟", "type": "semantic", "ground_truth": ["TS-04"]},
-  {"id": "Q16", "question": "X1 用着用着就突然重启，散热口附近特别热，风扇跟拖拉机一样响", "type": "hybrid", "ground_truth": ["TS-06", "TS-05"]},
+  {"id": "Q16", "question": "X1 用着用着就突然重启，散热口附近特别热，风扇跟拖拉机一样响", "type": "exact", "ground_truth": ["TS-06"]},
   {"id": "Q17", "question": "家里网连不上，手机都能上，就电脑不行", "type": "semantic", "ground_truth": ["TS-07"]},
   {"id": "Q18", "question": "外接显示器没信号，按 F7 也没用", "type": "exact", "ground_truth": ["TS-08"]},
   {"id": "Q19", "question": "这台电脑的保修期到什么时候，发票在哪里开", "type": "negative", "ground_truth": []},
-  {"id": "Q20", "question": "电脑最近老是突然自己重启，没有任何提示", "type": "semantic", "ground_truth": ["TS-05", "TS-06"]}
+  {"id": "Q20", "question": "电脑最近老是突然自己重启，没有任何提示", "type": "semantic", "ground_truth": ["TS-06"]}
 ]
