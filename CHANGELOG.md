@@ -15,6 +15,20 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer 2.0.0](https://semver.org/lang/zh-CN/)。
 
+## [agent/v3.2.0] - 2026-09-15
+
+### Added
+- **故事 4 图片清理策略**：新增 `_cleanup_old_charts(days=30)` 函数，在 FastAPI `startup_event` 启动时自动清理 `uploads/charts/` 目录下超过 30 天的旧图表文件（仅清理 `.png`）。
+
+### Performance
+- 避免图表文件长期累积占用磁盘空间，启动时一次性清理，无需定时任务框架。
+
+### 设计说明
+- **时机选择**：放在 `startup_event`，因为后端启动频率低，一次性清理成本小。
+- **保留范围**：只清理 `.png` 图表，不触碰其它文件，避免误删。
+- **可观测**：每次启动打印 `###图片清理###` 日志，含"删除 N 个 / 失败 M 个 / 保留天数"。
+
+---
 
 ## [ui/v3.4.0] - 2026-09-15
 
