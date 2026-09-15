@@ -658,7 +658,6 @@ def add_event(title: str, start_time: str, end_time: str = "", description: str 
         target_date = datetime.strptime(date_match.group(1), "%Y-%m-%d") if date_match else datetime.now()
     clean_start = f"{target_date.year}-{target_date.month:02d}-{target_date.day:02d} {hour:02d}:{minute:02d}"
     init_calendar()
-    
     try:
         with sqlite3.connect("calendar.db") as conn:
             c = conn.cursor()
@@ -689,8 +688,6 @@ def list_events(date: str = "", _tenant: str = "default") -> str:
             rows = c.fetchall()
         if not rows:
             return "暂无日程。"
-        
-        # 纯净版：仅返回文本数据，不包含 AI 指令前缀
         result = "日程列表：\n"
         for row in rows:
             result += f"ID:{row[0]} | {row[1]} | 开始:{row[2]} | 结束:{row[3]} | {row[4]}\n"
