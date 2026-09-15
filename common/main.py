@@ -1178,4 +1178,9 @@ if os.path.exists(DIST_DIR):
     async def serve_spa(full_path: str):
         if full_path.startswith("api"):
             return {"detail": "Not Found"}
+        # 【修复】先检查 dist 里是否存在该静态文件（如 logo.png / favicon.svg）
+        # 若存在 → 直接返回文件；不存在 → 走 SPA fallback（返回 index.html）
+        file_path = os.path.join(DIST_DIR, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
         return FileResponse(os.path.join(DIST_DIR, "index.html"))
