@@ -27,7 +27,12 @@ from zoneinfo import ZoneInfo
 from typing import Any, Dict, Optional
 import matplotlib.font_manager as fm
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
+# 优先使用环境变量 UPLOAD_DIR（Render Disk 挂载路径），本地开发时使用默认路径
+UPLOAD_DIR = os.getenv(
+    "UPLOAD_DIR",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'uploads')
+)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # 仅用于字体文件定位
 
 # ==================== 通用辅助函数 ====================
 def _request_with_retry(method: str, url: str, retries: int = 2, **kwargs):
@@ -777,7 +782,7 @@ def generate_chart(
     import seaborn as sns
 
     # ---------- 1. 定位文件 ----------
-    candidates_dirs = [os.path.join(BASE_DIR, "uploads", "temp"), os.path.join(BASE_DIR, "uploads")]
+    candidates_dirs = [os.path.join(UPLOAD_DIR, "temp"), UPLOAD_DIR]
     file_path = None
     for d in candidates_dirs:
         if not os.path.exists(d):
@@ -885,13 +890,11 @@ def generate_chart(
     else:
         print(f"###字体### 警告：中文字体文件不存在，当前路径: {font_path}")
 
+    sns.set_theme(style="whitegrid", font_scale=1.1)
     plt.rcParams['font.family'] = font_name
     plt.rcParams['font.sans-serif'] = [font_name]
     plt.rcParams['axes.unicode_minus'] = False
-    sns.set_theme(style="whitegrid", font_scale=1.1)
     
-    sns.set_theme(style="whitegrid", font_scale=1.1)
-
     fig, ax = plt.subplots(figsize=(7, 3.5), dpi=100)
 
     if chart_type == "bar":
@@ -925,7 +928,7 @@ def generate_chart(
 
     # 保存为静态文件（替代 base64）
     import uuid as _uuid
-    charts_dir = os.path.join(BASE_DIR, "uploads", "charts")
+    charts_dir = os.path.join(UPLOAD_DIR, "charts")
     os.makedirs(charts_dir, exist_ok=True)
     chart_filename = f"{_uuid.uuid4().hex[:12]}.png"
     chart_path = os.path.join(charts_dir, chart_filename)
