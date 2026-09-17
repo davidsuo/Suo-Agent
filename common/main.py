@@ -404,8 +404,7 @@ def _build_schema_hint() -> str:
     【V3 核心】从 rag_data.json 读取所有文件的 schema，构建给 LLM 的数据描述。
     去样本化：只告诉 LLM 有什么文件、有哪些列，不提供具体数值样本。
     """
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    rag_file = os.path.join(base_dir, "rag_data.json")
+    rag_file = os.path.join(UPLOAD_DIR, "rag_data.json")
 
     store = {}
 
@@ -918,8 +917,8 @@ async def api_upload(file: UploadFile = File(...)):
 
 @app.get("/api/kb/list")
 async def api_kb_list():
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    rag_file = os.path.join(BASE_DIR, "rag_data.json")
+    # 修正：必须去持久化磁盘读取，而不是源码目录
+    rag_file = os.path.join(UPLOAD_DIR, "rag_data.json")
     try:
         if os.path.exists(rag_file):
             with open(rag_file, "r", encoding="utf-8") as f:
@@ -933,8 +932,7 @@ async def api_kb_list():
 
 @app.post("/api/kb/update_tags")
 async def api_kb_update_tags(file_name: str = Form(...), tags: str = Form("")):
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    rag_file = os.path.join(BASE_DIR, "rag_data.json")
+    rag_file = os.path.join(UPLOAD_DIR, "rag_data.json")
     if os.path.exists(rag_file):
         try:
             with open(rag_file, "r", encoding="utf-8") as f:
@@ -976,8 +974,7 @@ async def api_kb_index(file: UploadFile = File(...), tags: str = Form("")):
 
 @app.post("/api/kb/delete")
 async def api_kb_delete(file_name: str = Form(...)):
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    rag_file = os.path.join(BASE_DIR, "rag_data.json")
+    rag_file = os.path.join(UPLOAD_DIR, "rag_data.json")
     if os.path.exists(rag_file):
         try:
             with open(rag_file, "r", encoding="utf-8") as f:
