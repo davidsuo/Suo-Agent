@@ -27,12 +27,7 @@ from zoneinfo import ZoneInfo
 from typing import Any, Dict, Optional
 import matplotlib.font_manager as fm
 
-
-# 【Render Disk 适配】与 main.py 保持一致，优先用环境变量 UPLOAD_DIR
-UPLOAD_DIR = os.getenv(
-    "UPLOAD_DIR",
-    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads")
-)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
 
 # ==================== 通用辅助函数 ====================
 def _request_with_retry(method: str, url: str, retries: int = 2, **kwargs):
@@ -342,7 +337,11 @@ def aggregate(
     import numpy as np
 
     # ---- 1. 定位文件（uploads/temp 或 uploads） ----
-    candidates_dirs = [os.path.join(UPLOAD_DIR, "temp"), UPLOAD_DIR]
+    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    candidates_dirs = [
+        os.path.join(base, "uploads", "temp"),
+        os.path.join(base, "uploads"),
+    ]
     file_path = None
     for d in candidates_dirs:
         if not os.path.exists(d):
@@ -777,11 +776,8 @@ def generate_chart(
     import matplotlib.pyplot as plt
     import seaborn as sns
 
-    # ---- 1. 定位文件（UPLOAD_DIR/temp 或 UPLOAD_DIR） ----
-    candidates_dirs = [
-        os.path.join(UPLOAD_DIR, "temp"),
-        UPLOAD_DIR,
-    ]
+    # ---------- 1. 定位文件 ----------
+    candidates_dirs = [os.path.join(BASE_DIR, "uploads", "temp"), os.path.join(BASE_DIR, "uploads")]
     file_path = None
     for d in candidates_dirs:
         if not os.path.exists(d):
@@ -876,14 +872,12 @@ def generate_chart(
     y_data = grouped.values.tolist()
     x_data = list(range(len(y_data)))  # 使用数值型 X 轴，避免字符串轴导致的断线问题
 
-    # ---------- 4. 字体与主题配置（带容错机制） ----------
-    font_path = os.path.join(base, "assets", "fonts", "msyh.ttc")
-    font_name = "sans-serif"  # 默认回退字体
-    
+    # ---------- 4. 字体与主题配置 ----------
+    font_path = os.path.join(BASE_DIR, "assets", "fonts", "simhei.ttf")
+    font_name = "sans-serif"
     if os.path.exists(font_path):
         try:
             fm.fontManager.addfont(font_path)
-            # 动态获取字体真实名称，解决 Linux 下字体名称不匹配问题
             font_name = fm.FontProperties(fname=font_path).get_name()
             print(f"###字体### 成功动态加载中文字体: {font_name}")
         except Exception as e:
@@ -893,7 +887,8 @@ def generate_chart(
 
     plt.rcParams['font.family'] = font_name
     plt.rcParams['font.sans-serif'] = [font_name]
-    plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
+    plt.rcParams['axes.unicode_minus'] = False
+    sns.set_theme(style="whitegrid", font_scale=1.1)
     
     sns.set_theme(style="whitegrid", font_scale=1.1)
 
@@ -930,7 +925,7 @@ def generate_chart(
 
     # 保存为静态文件（替代 base64）
     import uuid as _uuid
-    charts_dir = os.path.join(UPLOAD_DIR, "charts")
+    charts_dir = os.path.join(base, "uploads", "charts")
     os.makedirs(charts_dir, exist_ok=True)
     chart_filename = f"{_uuid.uuid4().hex[:12]}.png"
     chart_path = os.path.join(charts_dir, chart_filename)
