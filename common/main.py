@@ -1005,7 +1005,7 @@ async def api_kb_download(file_name: str):
 
 @app.get("/api/users/list")
 async def api_users_list():
-    conn = sqlite3.connect("users.db")
+    conn = ssqlite3.connect(os.path.join(UPLOAD_DIR, "users.db"))
     cursor = conn.cursor()
     cursor.execute("SELECT username, real_name, role, department, contact, status FROM users")
     users = [{"username": r[0], "real_name": r[1], "role": r[2], "department": r[3], "contact": r[4], "status": r[5]} for r in cursor.fetchall()]
@@ -1016,7 +1016,7 @@ async def api_users_list():
 @app.post("/api/users/add")
 async def api_users_add(username: str = Form(...), pin: str = Form(...), real_name: str = Form(""), role: str = Form("viewer"), department: str = Form(""), contact: str = Form(""), status: str = Form("正常")):
     try:
-        conn = sqlite3.connect("users.db")
+        conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "users.db"))
         cursor = conn.cursor()
         cursor.execute("INSERT INTO users (username, pin, real_name, role, department, contact, status) VALUES (?, ?, ?, ?, ?, ?, ?)", (username, pin, real_name, role, department, contact, status))
         conn.commit()
@@ -1030,7 +1030,7 @@ async def api_users_add(username: str = Form(...), pin: str = Form(...), real_na
 
 @app.post("/api/users/delete")
 async def api_users_delete(username: str = Form(...)):
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "users.db"))
     cursor = conn.cursor()
     cursor.execute("DELETE FROM users WHERE username = ?", (username,))
     conn.commit()
@@ -1040,7 +1040,7 @@ async def api_users_delete(username: str = Form(...)):
 
 @app.post("/api/users/update")
 async def api_users_update(username: str = Form(...), role: str = Form(...), status: str = Form("正常")):
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "users.db"))
     cursor = conn.cursor()
     cursor.execute("UPDATE users SET role = ?, status = ? WHERE username = ?", (role, status, username))
     conn.commit()
@@ -1052,7 +1052,7 @@ async def api_users_update(username: str = Form(...), role: str = Form(...), sta
 async def api_health():
     total_tasks = 0; success_tasks = 0; failed_tasks = 0; total_users = 0; active_users = 0; sorted_tools = {}
     try:
-        conn = sqlite3.connect("users.db")
+        conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "users.db"))
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM users")
         total_users = cursor.fetchone()[0]
@@ -1060,7 +1060,7 @@ async def api_health():
     except: pass
     try:
         cutoff_time = (datetime.datetime.now(ZoneInfo("Asia/Shanghai")) - datetime.timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
-        conn = sqlite3.connect("health.db")
+        conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "health.db"))
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM logs")
         total_tasks = cursor.fetchone()[0]
@@ -1161,7 +1161,7 @@ async def api_history_clear(session_id: str = Form(...)):
 @app.post("/api/feedback")
 async def api_feedback(session_id: str = Form(...), feedback_type: str = Form(...), feedback_text: str = Form("")):
     try:
-        conn = sqlite3.connect("feedback.db")
+        conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "feedback.db"))
         cursor = conn.cursor()
         cursor.execute('''CREATE TABLE IF NOT EXISTS feedback (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, feedback_type TEXT, feedback_text TEXT, time TEXT)''')
         time_str = datetime.datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%d %H:%M:%S")
