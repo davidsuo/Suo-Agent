@@ -75,3 +75,7 @@ rag_test/eval_report_*.json
 
 # ============ 一次性测试脚本 ============
 test_deepseek.py
+
+# .gitignore 新增
+rag_data.json
+chroma_db/
