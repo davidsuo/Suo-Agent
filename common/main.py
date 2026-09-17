@@ -586,6 +586,7 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
         print(f"###背景检索### 跳过（路由={route}）")
 
     system_content += "\n\n【回答要求】请不要在回答开头写任何关于数据来源的说明。直接以'以下是...'开头。系统会自动为你添加前缀。"
+    system_content += "\n【图表规则】禁止在回答中手动输出任何图片 Markdown（例如 ![图表](url) 或 ![描述]），系统会自动在正确位置插入图表。你只需负责撰写数据表格和文字分析。"
 
     # ③ 角色权限过滤
     role = user_info.get("role", "viewer") if user_info else "viewer"
@@ -788,14 +789,22 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
 
     # 【位置修复】将图片 markdown 直接插入到第一个 markdown 标题下方
     # 注意：必须在 memory.append 之前执行，否则 memory 里存的是不含图片的旧版
+    # 【位置修复】优先插入到包含"📊"或"汇总"的标题下方
     if image_output:
-        title_match = re.search(r'^(#{1,3}\s+.+)$', answer, re.MULTILINE)
         img_md = f"![图表]({image_output})"
-        if title_match:
-            pos = title_match.end()
+        # 尝试寻找带有 📊 或 汇总 的标题行
+        chart_title_match = re.search(r'^(#{1,3}\s+.*?(📊|汇总|图表).*?)$', answer, re.MULTILINE)
+        if chart_title_match:
+            pos = chart_title_match.end()
             answer = answer[:pos] + "\n\n" + img_md + "\n" + answer[pos:]
         else:
-            answer = answer.rstrip() + "\n\n" + img_md
+            # 如果没有匹配到，退回到第一个标题下方
+            title_match = re.search(r'^(#{1,3}\s+.+)$', answer, re.MULTILINE)
+            if title_match:
+                pos = title_match.end()
+                answer = answer[:pos] + "\n\n" + img_md + "\n" + answer[pos:]
+            else:
+                answer = answer.rstrip() + "\n\n" + img_md
 
     # ⑦ 后置管道（记忆清洁）—— 此时 answer 已含图片 markdown
     answer_for_memory = re.sub(
