@@ -876,21 +876,26 @@ def generate_chart(
     y_data = grouped.values.tolist()
     x_data = list(range(len(y_data)))  # 使用数值型 X 轴，避免字符串轴导致的断线问题
 
-    # ---------- 4. 字体与主题配置（核心修复） ----------
-    # 动态加载中文字体，兼容本地与Render环境
+    # ---------- 4. 字体与主题配置（带容错机制） ----------
     font_path = os.path.join(base, "assets", "fonts", "msyh.ttc")
+    font_name = "sans-serif"  # 默认回退字体
+    
     if os.path.exists(font_path):
-        fm.fontManager.addfont(font_path)
-        # 动态获取字体真实名称，解决 Linux 下字体名称不匹配问题
-        font_name = fm.FontProperties(fname=font_path).get_name()
-        plt.rcParams['font.family'] = font_name
-        plt.rcParams['font.sans-serif'] = [font_name]
-        print(f"###字体### 成功动态加载中文字体: {font_name}")
+        try:
+            fm.fontManager.addfont(font_path)
+            # 动态获取字体真实名称，解决 Linux 下字体名称不匹配问题
+            font_name = fm.FontProperties(fname=font_path).get_name()
+            print(f"###字体### 成功动态加载中文字体: {font_name}")
+        except Exception as e:
+            print(f"###字体### 字体加载异常，降级为默认字体: {e}")
     else:
         print(f"###字体### 警告：中文字体文件不存在，当前路径: {font_path}")
 
-    sns.set_theme(style="whitegrid", font_scale=1.1)
+    plt.rcParams['font.family'] = font_name
+    plt.rcParams['font.sans-serif'] = [font_name]
     plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
+    
+    sns.set_theme(style="whitegrid", font_scale=1.1)
 
     fig, ax = plt.subplots(figsize=(7, 3.5), dpi=100)
 
