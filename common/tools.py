@@ -428,7 +428,6 @@ def aggregate(
 
     # ---- 7. 分组或整体 ----
     filter_desc = ",".join(f"{k}={v}" for k, v in filters.items()) or "无过滤"
-# 在 common/tools.py 的 aggregate 函数中，替换分组逻辑
     if group_by:
         is_time_group = False
         time_group_label = ""
@@ -768,7 +767,7 @@ def generate_chart(
     """
     【V3 核心 · Seaborn 版】确定性绘图工具。
     LLM 只需指定文件和过滤条件，后端内部完成：
-    读取 -> 过滤 -> 聚合 -> 按时间对齐 -> Seaborn 渲染 -> 返回 Base64 图片 + 统计摘要。
+    读取 -> 过滤 -> 聚合 -> 按时间对齐 -> Seaborn 渲染 -> 返回 URL 图片 + 统计摘要。
     """
     import pandas as pd
     import numpy as np
@@ -877,18 +876,21 @@ def generate_chart(
     y_data = grouped.values.tolist()
     x_data = list(range(len(y_data)))  # 使用数值型 X 轴，避免字符串轴导致的断线问题
 
-    # ---------- 4. Seaborn 渲染 ----------
-    # 设置 Seaborn 主题（推荐 whitegrid 或 darkgrid）
+    # ---------- 4. 字体与主题配置（核心修复） ----------
     # 动态加载中文字体，兼容本地与Render环境
-    font_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "fonts", "msyh.ttc")
+    font_path = os.path.join(base, "assets", "fonts", "msyh.ttc")
     if os.path.exists(font_path):
         fm.fontManager.addfont(font_path)
-        plt.rcParams['font.family'] = 'Microsoft YaHei'
+        # 动态获取字体真实名称，解决 Linux 下字体名称不匹配问题
+        font_name = fm.FontProperties(fname=font_path).get_name()
+        plt.rcParams['font.family'] = font_name
+        plt.rcParams['font.sans-serif'] = [font_name]
+        print(f"###字体### 成功动态加载中文字体: {font_name}")
     else:
-        plt.rcParams['font.family'] = 'sans-serif'
+        print(f"###字体### 警告：中文字体文件不存在，当前路径: {font_path}")
 
     sns.set_theme(style="whitegrid", font_scale=1.1)
-    plt.rcParams['axes.unicode_minus'] = False
+    plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
 
     fig, ax = plt.subplots(figsize=(7, 3.5), dpi=100)
 
