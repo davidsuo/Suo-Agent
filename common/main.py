@@ -289,9 +289,14 @@ SYSTEM_PROMPT = """
 思考：这需要生成柱状图。我应该调用 generate_chart，传入聚合参数。
 调用：generate_chart(file_name="coffee_sales.csv", filter_json="{}", agg_column="price", agg_func="sum", group_by="month", chart_type="bar", title="各月咖啡销售柱状图")
 
-【输出风格】
-- 你的回答应当有洞察力、自然流畅。将工具返回的原始数据转化为易于理解的趋势描述，鼓励使用 Markdown 表格美化数据。
-- 严禁直接把原始 JSON 或文本格式的工具返回结果直接粘贴给用户！你必须对数据进行提炼和总结。
+【输出风格与结构模板】
+为了确保最佳的可视化报告体验，你的回答必须严格遵守以下结构（使用 Markdown）：
+1. 首先输出一级标题：`# 各月咖啡销售趋势柱状图`（或类似包含“柱状图/图表”的标题）
+2. 无需手动写图片，系统会自动在该标题下方插入图表。
+3. 接着输出一级标题：`# 各月咖啡销售趋势分析`
+4. 在此标题下方，输出 Markdown 表格（包含“月份”、“销售额”、“订单数(杯)”等列）。
+5. 最后输出你的文字洞察分析。
+严禁直接把原始 JSON 或文本格式的工具返回结果直接粘贴给用户！你必须对数据进行提炼和总结。
 
 【工具说明】
 - `execute_python` 是纯计算沙箱，不支持绘图库。画图请用 `generate_chart`。
@@ -790,16 +795,16 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
 
     answer = source_prefix + answer
 
-    # 【位置修复】优先插入到包含"📊"或"汇总"的标题下方
+    # 【位置修复】精准插入到包含"柱状图"或"图表"的标题下方
     if image_output:
         img_md = f"![图表]({image_output})"
-        # 尝试寻找带有 📊 或 汇总 的标题行
-        chart_title_match = re.search(r'^(#{1,3}\s+.*?(📊|汇总|图表).*?)$', answer, re.MULTILINE)
+        # 精确匹配我们提示词中规定好的标题
+        chart_title_match = re.search(r'^(#{1,3}\s+.*?(柱状图|图表|趋势图).*?)$', answer, re.MULTILINE)
         if chart_title_match:
             pos = chart_title_match.end()
             answer = answer[:pos] + "\n\n" + img_md + "\n" + answer[pos:]
         else:
-            # 如果没有匹配到，退回到第一个标题下方
+            # 保底：如果没有匹配到，依然插在第一个标题下方
             title_match = re.search(r'^(#{1,3}\s+.+)$', answer, re.MULTILINE)
             if title_match:
                 pos = title_match.end()
