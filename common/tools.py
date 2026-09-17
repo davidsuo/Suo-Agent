@@ -25,6 +25,7 @@ from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from typing import Any, Dict, Optional
+import matplotlib.font_manager as fm
 
 
 # 【Render Disk 适配】与 main.py 保持一致，优先用环境变量 UPLOAD_DIR
@@ -878,8 +879,16 @@ def generate_chart(
 
     # ---------- 4. Seaborn 渲染 ----------
     # 设置 Seaborn 主题（推荐 whitegrid 或 darkgrid）
-    sns.set_theme(style="whitegrid", font="Microsoft YaHei", font_scale=1.1)
-    plt.rcParams['axes.unicode_minus'] = False  # 解决负号显示问题
+    # 动态加载中文字体，兼容本地与Render环境
+    font_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "fonts", "msyh.ttc")
+    if os.path.exists(font_path):
+        fm.fontManager.addfont(font_path)
+        plt.rcParams['font.family'] = 'Microsoft YaHei'
+    else:
+        plt.rcParams['font.family'] = 'sans-serif'
+
+    sns.set_theme(style="whitegrid", font_scale=1.1)
+    plt.rcParams['axes.unicode_minus'] = False
 
     fig, ax = plt.subplots(figsize=(7, 3.5), dpi=100)
 
