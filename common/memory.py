@@ -4,7 +4,10 @@ import os
 import uuid
 from typing import List, Dict, Optional
 
-MEMORY_FILE = os.path.join(os.getcwd(), "memory.json")
+# 优先使用持久化磁盘路径
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'uploads'))
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+MEMORY_FILE = os.path.join(UPLOAD_DIR, "memory.json")
 
 class ConversationMemory:
     def __init__(self):

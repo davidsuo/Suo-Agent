@@ -638,7 +638,7 @@ def recognize_table(image_path: str) -> str:
 
 # ==================== 日程管理 ====================
 def init_calendar() -> None:
-    with sqlite3.connect("calendar.db") as conn:
+    with sqlite3.connect(os.path.join(UPLOAD_DIR, "calendar.db")) as conn:
         c = conn.cursor()
         c.execute('''CREATE TABLE IF NOT EXISTS events (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -666,7 +666,7 @@ def add_event(title: str, start_time: str, end_time: str = "", description: str 
     clean_start = f"{target_date.year}-{target_date.month:02d}-{target_date.day:02d} {hour:02d}:{minute:02d}"
     init_calendar()
     try:
-        with sqlite3.connect("calendar.db") as conn:
+        with sqlite3.connect(os.path.join(UPLOAD_DIR, "calendar.db")) as conn:
             c = conn.cursor()
             c.execute("SELECT id, title FROM events WHERE start_time = ? AND tenant = ?", (clean_start, _tenant))
             existing = c.fetchone()
@@ -686,7 +686,7 @@ def list_events(date: str = "", _tenant: str = "default") -> str:
         match = re.match(r'(\d{4}-\d{2}-\d{2})', date)
         date = match.group(1) if match else ""
     try:
-        with sqlite3.connect("calendar.db") as conn:
+        with sqlite3.connect(os.path.join(UPLOAD_DIR, "calendar.db")) as conn:
             c = conn.cursor()
             if date:
                 c.execute("SELECT id, title, start_time, end_time, description FROM events WHERE tenant=? AND start_time LIKE ? ORDER BY id ASC", (_tenant, date + "%"))
@@ -705,7 +705,7 @@ def list_events(date: str = "", _tenant: str = "default") -> str:
 def delete_event(event_id: int, _tenant: str = "default") -> str:
     init_calendar()
     try:
-        with sqlite3.connect("calendar.db") as conn:
+        with sqlite3.connect(os.path.join(UPLOAD_DIR, "calendar.db")) as conn:
             c = conn.cursor()
             c.execute("SELECT id, title, start_time, end_time, description FROM events WHERE id=? AND tenant=?", (event_id, _tenant))
             row = c.fetchone()
