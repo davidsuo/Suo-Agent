@@ -782,24 +782,26 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
     # 物理层拼接前缀，去除 LLM 可能误带的旧前缀
     answer = re.sub(r'^(根据|基于).*?数据，', '', answer).strip()
 
-    # 【位置修复】将图片 markdown 直接插入到第一个 markdown 标题下方
-    # 注意：必须在 memory.append 之前执行，否则 memory 里存的是不含图片的旧版
-    # 【位置修复】优先插入到包含"📊"或"汇总"的标题下方
-    # 【彻底清洗】清除 LLM 写的所有图片标签（包括残缺的），防止标签裸露
+    # 【Markdown 排版修复】如果 LLM 直接以标题开头，必须在前缀和标题之间加换行
+    if source_prefix and answer.startswith("#"):
+        answer = source_prefix + "\n\n" + answer
+    else:
+        answer = source_prefix + answer
+
+    # 1. 彻底清洗 LLM 自己写的无效图片标签（包括残缺的占位符）
     answer = re.sub(r'!\[.*?\](\s*\(.*?\))?', '', answer)
 
-    answer = source_prefix + answer
-
-    # 【位置修复】精准插入到包含"柱状图"或"图表"的标题下方
+    # 2. 将后端捕获的图片精确插入到标题下方
+    # 注意：必须在 memory.append 之前执行，否则 memory 里存的是不含图片的旧版
     if image_output:
         img_md = f"![图表]({image_output})"
-        # 精确匹配我们提示词中规定好的标题
+        # 优先寻找包含"柱状图"或"图表"的标题
         chart_title_match = re.search(r'^(#{1,3}\s+.*?(柱状图|图表|趋势图).*?)$', answer, re.MULTILINE)
         if chart_title_match:
             pos = chart_title_match.end()
             answer = answer[:pos] + "\n\n" + img_md + "\n" + answer[pos:]
         else:
-            # 保底：如果没有匹配到，依然插在第一个标题下方
+            # 保底方案：如果没有匹配到图表标题，插入到第一个标题下方
             title_match = re.search(r'^(#{1,3}\s+.+)$', answer, re.MULTILINE)
             if title_match:
                 pos = title_match.end()
