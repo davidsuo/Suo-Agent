@@ -782,13 +782,14 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
     # 物理层拼接前缀，去除 LLM 可能误带的旧前缀
     answer = re.sub(r'^(根据|基于).*?数据，', '', answer).strip()
 
-    # 【图片去重】清洗 LLM 自己写的空图片 markdown（防止裂图）
-    answer = re.sub(r'!\[.*?\]\(\s*\)', '', answer)
+    # 【位置修复】将图片 markdown 直接插入到第一个 markdown 标题下方
+    # 注意：必须在 memory.append 之前执行，否则 memory 里存的是不含图片的旧版
+    # 【位置修复】优先插入到包含"📊"或"汇总"的标题下方
+    # 【彻底清洗】清除 LLM 写的所有图片标签（包括残缺的），防止标签裸露
+    answer = re.sub(r'!\[.*?\](\s*\(.*?\))?', '', answer)
 
     answer = source_prefix + answer
 
-    # 【位置修复】将图片 markdown 直接插入到第一个 markdown 标题下方
-    # 注意：必须在 memory.append 之前执行，否则 memory 里存的是不含图片的旧版
     # 【位置修复】优先插入到包含"📊"或"汇总"的标题下方
     if image_output:
         img_md = f"![图表]({image_output})"
