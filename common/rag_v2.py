@@ -70,8 +70,11 @@ except Exception as e:
 
 # ==================== ChromaDB 客户端 ====================
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CHROMA_DIR = os.path.join(BASE_DIR, "chroma_db")
-RAG_DATA_FILE = os.path.join(BASE_DIR, "rag_data.json")
+# 优先使用持久化磁盘路径，将数据库和元数据存储在 Disk
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(BASE_DIR, 'uploads'))
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+CHROMA_DIR = os.path.join(UPLOAD_DIR, "chroma_db")
+RAG_DATA_FILE = os.path.join(UPLOAD_DIR, "rag_data.json")
 
 _chroma_client = None
 try:

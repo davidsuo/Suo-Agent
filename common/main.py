@@ -107,6 +107,8 @@ from common.pending_tools import pending, save_pending
 from common.auth import authenticate, get_user_info, is_tool_allowed, ROLE_PERMISSIONS, init_users_db
 from common.memory import memory
 
+
+
 app = FastAPI()
 DIST_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'frontend', 'dist')
 # 【Render Disk 适配】优先用环境变量 UPLOAD_DIR（指向 Persistent Disk）
@@ -144,7 +146,7 @@ class ChatRequest(BaseModel):
 
 
 def init_db():
-    db_path = "sample.db"
+    db_path = os.path.join(UPLOAD_DIR, "sample.db")
     if not os.path.exists(db_path):
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
@@ -157,7 +159,7 @@ def init_db():
 
 
 def init_health_db():
-    conn = sqlite3.connect("health.db")
+    conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "health.db"))
     cursor = conn.cursor()
     cursor.execute('''CREATE TABLE IF NOT EXISTS logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -208,7 +210,7 @@ def _cleanup_old_charts(days: int = 30):
 
 def write_log_to_db(entry):
     try:
-        conn = sqlite3.connect("health.db")
+        conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "health.db"))
         cursor = conn.cursor()
         status = entry.get("status") or entry.get("final_status") or ""
         cursor.execute("""INSERT INTO logs (timestamp, session_id, username, role, tool, query, result, status)
