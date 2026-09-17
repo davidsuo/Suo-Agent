@@ -15,18 +15,18 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer 2.0.0](https://semver.org/lang/zh-CN/)。
 
-## [agent/v3.2.0] - 2026-09-15
 
-### Added
-- **故事 4 图片清理策略**：新增 `_cleanup_old_charts(days=30)` 函数，在 FastAPI `startup_event` 启动时自动清理 `uploads/charts/` 目录下超过 30 天的旧图表文件（仅清理 `.png`）。
+## [ui/v3.4.1] - 2026-09-17
 
-### Performance
-- 避免图表文件长期累积占用磁盘空间，启动时一次性清理，无需定时任务框架。
+### Fixed
+- **前端环境串台（图表 404）修复**：修复了部署到 Render 后，由于前端 API 请求硬编码为 `http://localhost:10000/api`，导致浏览器将请求发向用户本地电脑，进而引发生成图表路径 Not Found (404) 的问题。
 
-### 设计说明
-- **时机选择**：放在 `startup_event`，因为后端启动频率低，一次性清理成本小。
-- **保留范围**：只清理 `.png` 图表，不触碰其它文件，避免误删。
-- **可观测**：每次启动打印 `###图片清理###` 日志，含"删除 N 个 / 失败 M 个 / 保留天数"。
+### Changed
+- **`frontend/src/api/client.ts`**：将硬编码的 `baseURL` 替换为 `import.meta.env.VITE_API_BASE_URL`，实现动态环境切换。
+- **环境变量隔离**：新增 `frontend/.env.development`（本地开发指向 `http://localhost:10000/api`）和 `frontend/.env.production`（生产构建指向 `https://suo-agent-api.onrender.com/api`）。
+
+### Improved
+- **开发规范固化**：彻底分离本地开发与 Render 生产环境，今后不再发生前后端请求“串台”问题。
 
 ---
 
@@ -63,35 +63,6 @@
 
 ---
 
-## [rag/v2.5.0] - 2026-09-14
-
-### Added
-- **检索基础设施化（核心突破）**：新增 `_retrieve_background(query)` 函数，在 `chat_core` 构建 messages 前**无条件执行**企业知识库检索，检索结果作为"背景资料"注入 system prompt。检索不再依赖 LLM 决策，从根本上解决"LLM 不调 search_knowledge"的问题。
-- **意图预判函数 `_is_data_query`**：使用轻量 LLM 调用判断用户问题是否涉及数据文件查询，按需注入 schema。避免"一刀切"注入污染上下文。
-
-### Changed
-- **Schema 注入策略**：从"无条件注入所有文件 schema"改为"按意图预判分流"——数据类问题注入 schema，非数据类问题跳过，让 LLM 视野干净。
-- **`search_knowledge` 返回值结构**：附加 `[RETRIEVED_IDS]IT-01,IT-02[/RETRIEVED_IDS]` 结构化标记，供后端可靠提取真实检索 ID。
-- **`main.py` 的 contexts 提取逻辑**：从"正则从散文抠 ID"改为"从结构化标记直接提取"，彻底杜绝 UUID 映射错位。
-- **SYSTEM_PROMPT 能力边界**：从"用户问 X 就用 Y"的命令式，改为"系统已自动检索，背景资料已注入，优先基于背景资料回答"的事实陈述。
-- **`chat_core` 的 `collected_sources` 初始化**：从 `[]` 改为 `list(bg["ids"])`，与背景检索结果保持一致。
-
-### Fixed
-- 修复"20 题评估中 19 题 `tools=[]`"的决策不触发问题。
-- 修复"contexts 为空"问题（背景检索保证每道题都有上下文）。
-- 修复 `_is_data_query` 意图预判失败时的 fallback 处理（保守注入 schema）。
-
-### Performance
-- **评估集通过率：5% → 85%**（17/20 通过）。
-- **context_recall：0.325 → 0.85**（2.6 倍提升）。
-- **contexts 覆盖率：9/20 题 → 20/20 题**。
-
-### Known Issues（列入 Backlog）
-- Q16、Q20 的 ground_truth 含两个 ID 但只召回一个（TS-05 未进 Top-5），属检索排序问题，待引入 Reranker 优化。
-- Q19 negative 题 LLM 回答措辞未命中 `reject_signals`，属评测脚本措辞覆盖不全，待扩充。
-
----
-
 ## [ui/v3.2.0] - 2026-09-14
 
 ### Added
@@ -105,6 +76,21 @@
 
 ### Fixed
 - 修复前端代码中因 base64 嵌入导致的代码可读性问题。
+
+---
+
+## [agent/v3.2.0] - 2026-09-15
+
+### Added
+- **故事 4 图片清理策略**：新增 `_cleanup_old_charts(days=30)` 函数，在 FastAPI `startup_event` 启动时自动清理 `uploads/charts/` 目录下超过 30 天的旧图表文件（仅清理 `.png`）。
+
+### Performance
+- 避免图表文件长期累积占用磁盘空间，启动时一次性清理，无需定时任务框架。
+
+### 设计说明
+- **时机选择**：放在 `startup_event`，因为后端启动频率低，一次性清理成本小。
+- **保留范围**：只清理 `.png` 图表，不触碰其它文件，避免误删。
+- **可观测**：每次启动打印 `###图片清理###` 日志，含"删除 N 个 / 失败 M 个 / 保留天数"。
 
 ---
 
@@ -151,6 +137,35 @@
 - 修复 `UnboundLocalError: tool_trace` 作用域错误。
 - 修复 `IndentationError` 缩进错误。
 - 修复 `NameError: source_prefix` 作用域错误。
+
+---
+
+## [rag/v2.5.0] - 2026-09-14
+
+### Added
+- **检索基础设施化（核心突破）**：新增 `_retrieve_background(query)` 函数，在 `chat_core` 构建 messages 前**无条件执行**企业知识库检索，检索结果作为"背景资料"注入 system prompt。检索不再依赖 LLM 决策，从根本上解决"LLM 不调 search_knowledge"的问题。
+- **意图预判函数 `_is_data_query`**：使用轻量 LLM 调用判断用户问题是否涉及数据文件查询，按需注入 schema。避免"一刀切"注入污染上下文。
+
+### Changed
+- **Schema 注入策略**：从"无条件注入所有文件 schema"改为"按意图预判分流"——数据类问题注入 schema，非数据类问题跳过，让 LLM 视野干净。
+- **`search_knowledge` 返回值结构**：附加 `[RETRIEVED_IDS]IT-01,IT-02[/RETRIEVED_IDS]` 结构化标记，供后端可靠提取真实检索 ID。
+- **`main.py` 的 contexts 提取逻辑**：从"正则从散文抠 ID"改为"从结构化标记直接提取"，彻底杜绝 UUID 映射错位。
+- **SYSTEM_PROMPT 能力边界**：从"用户问 X 就用 Y"的命令式，改为"系统已自动检索，背景资料已注入，优先基于背景资料回答"的事实陈述。
+- **`chat_core` 的 `collected_sources` 初始化**：从 `[]` 改为 `list(bg["ids"])`，与背景检索结果保持一致。
+
+### Fixed
+- 修复"20 题评估中 19 题 `tools=[]`"的决策不触发问题。
+- 修复"contexts 为空"问题（背景检索保证每道题都有上下文）。
+- 修复 `_is_data_query` 意图预判失败时的 fallback 处理（保守注入 schema）。
+
+### Performance
+- **评估集通过率：5% → 85%**（17/20 通过）。
+- **context_recall：0.325 → 0.85**（2.6 倍提升）。
+- **contexts 覆盖率：9/20 题 → 20/20 题**。
+
+### Known Issues（列入 Backlog）
+- Q16、Q20 的 ground_truth 含两个 ID 但只召回一个（TS-05 未进 Top-5），属检索排序问题，待引入 Reranker 优化。
+- Q19 negative 题 LLM 回答措辞未命中 `reject_signals`，属评测脚本措辞覆盖不全，待扩充。
 
 ---
 
