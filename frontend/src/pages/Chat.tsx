@@ -216,10 +216,10 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                     if (!props.src || props.src.trim() === '' || props.src.startsWith('![')) return null;
                     return <img {...props} style={{ maxWidth: '100%', height: 'auto', borderRadius: 6, marginTop: 8 }} />;
                   },
-                  h1: ({node, ...props}: any) => <h1 style={{ fontSize: '20px', marginTop: '16px', marginBottom: '10px', fontWeight: 'bold', borderBottom: '1px solid #eee', paddingBottom: '6px' }} {...props} />,
-                  h2: ({node, ...props}: any) => <h2 style={{ fontSize: '18px', marginTop: '14px', marginBottom: '8px', fontWeight: 'bold' }} {...props} />,
-                  h3: ({node, ...props}: any) => <h3 style={{ fontSize: '16px', marginTop: '12px', marginBottom: '6px', fontWeight: 'bold' }} {...props} />,
-                  h4: ({node, ...props}: any) => <h4 style={{ fontSize: '15px', marginTop: '10px', marginBottom: '4px', fontWeight: 'bold' }} {...props} />
+                  h1: ({node, ...props}: any) => <p style={{ fontSize: '17px', marginTop: '12px', marginBottom: '8px', fontWeight: 'bold', color: '#333' }} {...props} />,
+                  h2: ({node, ...props}: any) => <p style={{ fontSize: '16px', marginTop: '10px', marginBottom: '6px', fontWeight: 'bold', color: '#333' }} {...props} />,
+                  h3: ({node, ...props}: any) => <p style={{ fontSize: '15px', marginTop: '8px', marginBottom: '4px', fontWeight: 'bold', color: '#333' }} {...props} />,
+                  h4: ({node, ...props}: any) => <p style={{ fontSize: '14px', marginTop: '6px', marginBottom: '2px', fontWeight: 'bold', color: '#333' }} {...props} />
                 }}
               >{msg.content}</ReactMarkdown>
               <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
