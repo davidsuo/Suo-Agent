@@ -925,7 +925,7 @@ def generate_chart(
 
     # 保存为静态文件（替代 base64）
     import uuid as _uuid
-    charts_dir = os.path.join(base, "uploads", "charts")
+    charts_dir = os.path.join(BASE_DIR, "uploads", "charts")
     os.makedirs(charts_dir, exist_ok=True)
     chart_filename = f"{_uuid.uuid4().hex[:12]}.png"
     chart_path = os.path.join(charts_dir, chart_filename)
