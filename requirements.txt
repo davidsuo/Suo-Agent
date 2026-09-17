@@ -19,3 +19,5 @@ tzdata
 python-multipart
 jieba
 rank_bm25
+matplotlib
+seaborn
