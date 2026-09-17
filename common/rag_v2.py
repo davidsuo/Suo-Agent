@@ -69,11 +69,13 @@ except Exception as e:
     _vector_model = None
 
 # ==================== ChromaDB 客户端 ====================
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CHROMA_DIR = os.path.join(BASE_DIR, "chroma_db")
+RAG_DATA_FILE = os.path.join(BASE_DIR, "rag_data.json")
+
 _chroma_client = None
 try:
     import chromadb
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    CHROMA_DIR = os.path.join(BASE_DIR, "chroma_db")
     os.makedirs(CHROMA_DIR, exist_ok=True)
     _chroma_client = chromadb.PersistentClient(path=CHROMA_DIR)
     print(f"✅ ChromaDB 客户端初始化成功（路径: {CHROMA_DIR}）")
@@ -94,9 +96,6 @@ atexit.register(_shutdown_chroma)
 
 # 【性能与一致性】ChromaDB 写入的串行锁，避免并发 upsert 竞争
 _INDEX_LOCK = threading.Lock()
-
-# ==================== 常量与配置 ====================
-RAG_DATA_FILE = os.path.join(BASE_DIR, "rag_data.json")
 
 # 部门白名单（用于多 collection 分片）
 DEPARTMENTS = [
