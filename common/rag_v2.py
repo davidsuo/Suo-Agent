@@ -41,6 +41,8 @@ import pandas as pd
 import jieba
 from rank_bm25 import BM25Okapi
 
+
+
 # ==================== 性能优化：i5-1135G7 4 物理核 ====================
 try:
     import torch
@@ -51,15 +53,22 @@ except ImportError:
 
 # ==================== 向量模型加载 ====================
 _vector_model = None
+# 优先使用本地持久化磁盘缓存模型，避免每次部署重新下载
+_MODEL_CACHE_DIR = os.path.join(UPLOAD_DIR, "models")
+os.makedirs(_MODEL_CACHE_DIR, exist_ok=True)
+
 try:
     from sentence_transformers import SentenceTransformer
+    # 替换为您本地的模型名称，并指定 cache_folder 到持久化磁盘
+    # 推荐 gte-small-zh（更轻量）或 all-MiniLM-L6-v2
     _vector_model = SentenceTransformer(
-        "C:/Users/索群/.cache/huggingface/hub/models--thenlper--gte-base-zh/"
-        "snapshots/71ab7947d6fac5b64aa299e6e40e6c2b2e85976c",
-        local_files_only=True
+        "thenlper/gte-small-zh",  # 轻量级中文向量模型
+        cache_folder=_MODEL_CACHE_DIR,
+        device="cpu"  # 强制使用 CPU，避免云端环境无 CUDA 报错
     )
-    print("✅ 向量模型(GTE)加载成功！")
-    # 【性能优化】预热模型，消除首次 encode 的 30 秒冷启动
+    print("✅ 向量模型(GTE-small)加载成功！")
+    
+    # 预热模型
     import time as _t
     _t0 = _t.time()
     _vector_model.encode(["预热"], normalize_embeddings=True, show_progress_bar=False)
