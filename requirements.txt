@@ -24,4 +24,4 @@ seaborn
 chromadb
 sentence_transformers
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.2.2+cpu
+torch==2.5.0+cpu
