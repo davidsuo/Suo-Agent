@@ -182,6 +182,28 @@
 
 ---
 
+## [release/v5.6.0] - 2026-09-18
+
+### Added
+- **SSE 流式输出（打字机效果）**：后端 `chat_core_stream` 改造为异步生成器，前端 `Chat.tsx` 使用 `fetch` 对接 SSE。实现了状态提示（分析中/调用工具）和最终回答的逐字展示，彻底消除长文本等待焦虑。
+- **云端 RAG 评估闭环**：修复评估脚本兼容 SSE 格式，跑通真实云端后端评估，最终通过率达到 **95%**，`context_recall` 达到 **0.875**。
+- **RRF 分数熔断机制**：在 `rag_v2.py` 中新增 `RRF_SCORE_THRESHOLD = 0.025` 熔断，拒绝无效边缘匹配，大幅提升负样本的 `rejection_accuracy`。
+
+### Changed
+- **Render 实例升级**：从 Starter (512MB) 升级至 **Standard (2GB)**，成功支持 `GTE-small` 向量模型在云端加载。
+- **RAG 向量检索恢复**：全面恢复 `ChromaDB` + `sentence_transformers`，将向量阈值从 0.55 提升至 **0.82**，精准过滤“边缘泛化”语义噪音。
+- **全链路持久化路径统一**：所有 SQLite 数据库、RAG 索引、模型缓存、图表文件全部统一指向 `UPLOAD_DIR`，彻底解决 Render 重启数据丢失问题。
+
+### Fixed
+- **`web_search` 云端阻塞**：为 `web_search` 增加 10 秒超时熔断机制，防止云端网络限制导致整个 SSE 流假死。
+- **`rag_v2.py` 变量顺序错误**：修复 `CHROMA_DIR` 和 `RAG_DATA_FILE` 未定义导致的 `NameError`。
+- **API 路径读取错误**：修复知识库列表、用户管理 SQLite 路径读取错误，统一指向 `$UPLOAD_DIR`。
+
+### Performance
+- **模型加载提速**：模型缓存持久化至磁盘，Render 重启加载时间从 6 分钟缩短至约 10-30 秒。
+
+---
+
 ## [release/v5.5.0] - 2026-09-18
 
 ### Added
