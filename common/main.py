@@ -760,7 +760,11 @@ async def api_chat(request: ChatRequest):
     except Exception as e:
         import traceback
         print(f"###严重Bug### {traceback.format_exc()}")
-        return {"answer": f"系统处理异常: {e}", "image": ""}
+        # 发生异常时，也要返回 SSE 格式，保证前端流式解析不崩溃
+        async def error_stream():
+            yield f"data: {json.dumps({'type': 'answer', 'content': f'系统处理异常: {e}'}, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(error_stream(), media_type="text/event-stream")
 
 
 @app.post("/api/upload_temp")
