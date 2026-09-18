@@ -13,6 +13,10 @@
 
 import sqlite3
 from typing import Dict, List, Optional
+import os
+
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'uploads'))
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 DB_PATH = "users.db"
 
@@ -62,7 +66,7 @@ def _row_to_user_dict(row: tuple) -> Dict[str, str]:
 
 def init_users_db():
     import sqlite3
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "users.db"))
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
@@ -95,7 +99,7 @@ def init_users_db():
 def get_user_info(username: str):
     import sqlite3
     try:
-        conn = sqlite3.connect("users.db")
+        conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "users.db"))
         cursor = conn.cursor()
         cursor.execute("SELECT username, pin, real_name, role, department, contact, status FROM users WHERE username = ?", (username,))
         row = cursor.fetchone()
@@ -122,7 +126,7 @@ def get_user_info(username: str):
 def authenticate(username: str, pin: str):
     import sqlite3
     try:
-        conn = sqlite3.connect("users.db")
+        conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "users.db"))
         cursor = conn.cursor()
         cursor.execute("SELECT username, pin, real_name, role, department, contact, status FROM users WHERE username = ? AND pin = ?", (username, pin))
         row = cursor.fetchone()
