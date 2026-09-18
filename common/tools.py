@@ -26,6 +26,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from typing import Any, Dict, Optional
 import matplotlib.font_manager as fm
+import concurrent.futures
 
 # 优先使用环境变量 UPLOAD_DIR（Render Disk 挂载路径），本地开发时使用默认路径
 UPLOAD_DIR = os.getenv(
@@ -115,14 +116,23 @@ def send_email(to_email: str, subject: str, body: str, **kwargs) -> str:
 
 def web_search(query: str, max_results: int = 5, **kwargs) -> str:
     try:
-        with DDGS() as ddgs:
-            results = list(ddgs.text(query, max_results=max_results))
+        def _search():
+            with DDGS() as ddgs:
+                return list(ddgs.text(query, max_results=max_results))
+        
+        # 将阻塞的网络请求放到线程池中，强制 10 秒超时
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(_search)
+            results = future.result(timeout=10)  # 10秒无响应则抛出 TimeoutError
+
         if not results:
             return "未找到相关搜索结果。"
         formatted = []
         for r in results:
             formatted.append(f"标题: {r.get('title', '')}\n链接: {r.get('href', '')}\n摘要: {r.get('body', '')}\n")
         return "\n".join(formatted)
+    except concurrent.futures.TimeoutError:
+        return "搜索失败：请求超时，可能是云端网络受限。"
     except Exception as e:
         return f"搜索失败: {e}"
 
