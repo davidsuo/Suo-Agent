@@ -41,7 +41,11 @@ import pandas as pd
 import jieba
 from rank_bm25 import BM25Okapi
 
-
+# ==================== 基础路径定义 ====================
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# 优先使用持久化磁盘路径，将数据库和元数据存储在 Disk
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(BASE_DIR, 'uploads'))
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # ==================== 性能优化：i5-1135G7 4 物理核 ====================
 try:
@@ -76,14 +80,6 @@ try:
 except Exception as e:
     print(f"⚠️ 向量模型加载失败，将降级为纯 BM25 模式: {e}")
     _vector_model = None
-
-# ==================== ChromaDB 客户端 ====================
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# 优先使用持久化磁盘路径，将数据库和元数据存储在 Disk
-UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(BASE_DIR, 'uploads'))
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-CHROMA_DIR = os.path.join(UPLOAD_DIR, "chroma_db")
-RAG_DATA_FILE = os.path.join(UPLOAD_DIR, "rag_data.json")
 
 _chroma_client = None
 try:
