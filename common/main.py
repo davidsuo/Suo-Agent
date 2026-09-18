@@ -7,8 +7,6 @@ common/main.py - 核心聊天逻辑与 API 路由
 RAG 架构组件映射（标准 RAG Architecture）
 ================================================================================
 
-本系统实现了标准 RAG 架构的四个主要组件，组件位置对照如下：
-
 【1. 知识库 Knowledge Base】
     职责：系统的外部数据存储库
     位置：
@@ -20,49 +18,25 @@ RAG 架构组件映射（标准 RAG Architecture）
     职责：在知识库中搜索相关数据的 AI 模型
     位置：
       - common/rag_v2.py    双路混合检索实现
-        · 向量路：ChromaDB (HNSW)    语义相似
-        · 关键词路：BM25 + jieba      精确匹配
-        · 融合：RRF (Reciprocal Rank Fusion)
       - common/main.py::_retrieve_background    物理层检索封装
 
 【3. 集成层 Integration Layer】
     职责：协调 RAG 的整体功能
     位置：
-      - common/main.py::_route_query           语义路由（路由器/编排器）
-        · 判断问题类型：knowledge/data/schedule/realtime/chitchat
-        · 决定是否触发检索
+      - common/main.py::_route_query           语义路由
       - common/main.py::_build_schema_hint     数据文件 schema 注入
-      - common/main.py::chat_core              主流程集成
-        · 前置管线 → 路由 → 检索/schema 注入 → LLM 决策 → 工具执行 → 后置管线
+      - common/main.py::chat_core_stream       主流程集成
 
 【4. 生成器 Generator】
     职责：根据用户查询和检索数据创建输出
     位置：
       - common/main.py::client                  DeepSeek LLM 客户端
       - common/main.py::SYSTEM_PROMPT           LLM 能力边界定义
-      - common/main.py::chat_core 的工具执行循环   LLM 决策 → 工具 → 结果
+      - common/main.py::chat_core_stream 的工具执行循环   LLM 决策 -> 工具 -> 结果
 
 【其他组件】
   · 排名器 Ranker：RRF 融合 + 阈值筛选（rag_v2.py::search_knowledge_v2）
-  · 输出处理 Output Handler：output_guard + 物理层前缀（main.py::chat_core）
-
-================================================================================
-架构原则（AI 原生）
-================================================================================
-- 决策层：LLM 基于语义自主决策调什么工具
-- 执行层：工具执行 + 重试 + 审计日志
-- 确定性物理层：数据来源前缀、图片 URL、检索 ID 提取不依赖 LLM
-- 路由器层：通过语义路由决定"是否检索"，而非"每次提问都检索"
-
-================================================================================
-模块职责
-================================================================================
-1. FastAPI 应用与 API 路由（/api/chat /api/login /api/kb/* /api/users/*）
-2. chat_core：核心对话主流程
-3. 语义路由层：_route_query
-4. RAG 检索层：_retrieve_background / _build_schema_hint
-5. 前置管线：guardrails / 权限 / 临时文件 / pending 工具
-6. 后置管线：输出校验 / 物理层前缀 / 记忆存储
+  · 输出处理 Output Handler：output_guard + 物理层前缀（main.py::chat_core_stream）
 """
 
 import sys, os, json, asyncio, re, datetime, time
@@ -75,7 +49,7 @@ load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 import shutil
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -84,8 +58,9 @@ from openai import OpenAI
 import sqlite3
 from zoneinfo import ZoneInfo
 
+# 优先从环境变量读取 API Key，支持在 Render 环境变量中配置
 client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
+    api_key=os.getenv("OPENAI_API_KEY") or os.getenv("DEEPSEEK_API_KEY"),
     base_url="https://api.deepseek.com"
 )
 
@@ -107,10 +82,9 @@ from common.pending_tools import pending, save_pending
 from common.auth import authenticate, get_user_info, is_tool_allowed, ROLE_PERMISSIONS, init_users_db
 from common.memory import memory
 
-
-
 app = FastAPI()
 DIST_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'frontend', 'dist')
+
 # 【Render Disk 适配】优先用环境变量 UPLOAD_DIR（指向 Persistent Disk）
 # 本地开发时环境变量不存在，走默认路径
 UPLOAD_DIR = os.getenv(
@@ -171,14 +145,6 @@ def init_health_db():
 def _cleanup_old_charts(days: int = 30):
     """
     【故事 4】清理 uploads/charts/ 目录下超过指定天数的旧图表。
-
-    策略：
-    - 只清理 .png 文件（图表专用）
-    - 保留其它文件（如非图表文件，避免误删）
-    - 每次启动时执行一次，不引入定时任务
-
-    Args:
-        days: 保留天数，默认 30 天
     """
     import time as _t
     charts_dir = os.path.join(UPLOAD_DIR, "charts")
@@ -244,7 +210,7 @@ async def startup_event():
     init_users_db()
     init_db()
     init_health_db()
-    _cleanup_old_charts(days=30)  # 【故事 4】启动时清理超过 30 天的旧图表
+    _cleanup_old_charts(days=30)
     if _query_worker is None:
         bus = EventBus()
         query_worker_tools = {
@@ -268,7 +234,7 @@ async def startup_event():
     print("✅ FastAPI 初始化完成")
 
 
-# ================= V3 系统提示（语义边界，不规定流程） =================
+# ================= V3 系统提示 =================
 SYSTEM_PROMPT = """
 你是一个企业级AI智能助手。你拥有工具调用能力，请根据用户意图自主决策调用哪些工具。
 
@@ -325,7 +291,7 @@ def simple_log_tool(session_id, user_query, tool_name, arguments, result):
         "result": str(result)[:300], "status": status, "mode": "semantic_agent_v3"
     }
     try:
-        with open("plan_log.json", "a", encoding="utf-8") as f:
+        with open(os.path.join(UPLOAD_DIR, "plan_log.json"), "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
         write_log_to_db(entry)
     except Exception as e:
@@ -350,19 +316,6 @@ def _extract_ids_from_text(text: str) -> list:
 async def _route_query(query: str) -> str:
     """
     语义路由：判断用户问题的类型。
-
-    这是 RAG 架构的"路由器层"——决定是否查询外部数据，
-    还是直接交给 LLM 处理。避免"每次提问都检索"的过度行为。
-
-    返回 5 种类别：
-    - knowledge: 企业知识库类（触发背景检索）
-    - data:      数据文件类（触发 schema 注入）
-    - schedule:  日程类（不检索）
-    - realtime:  实时信息类（不检索）
-    - chitchat:  闲聊类（不检索）
-
-    原理：用轻量 LLM 做语义判断，不使用关键词匹配。
-    成本：每次约 0.5-1s 的额外 LLM 调用（可接受）。
     """
     try:
         resp = client.chat.completions.create(
@@ -402,7 +355,6 @@ async def _route_query(query: str) -> str:
 def _build_schema_hint() -> str:
     """
     【V3 核心】从 rag_data.json 读取所有文件的 schema，构建给 LLM 的数据描述。
-    去样本化：只告诉 LLM 有什么文件、有哪些列，不提供具体数值样本。
     """
     rag_file = os.path.join(UPLOAD_DIR, "rag_data.json")
 
@@ -446,10 +398,6 @@ def _build_schema_hint() -> str:
 def _retrieve_background(query: str) -> dict:
     """
     【检索基础设施化】物理层无条件执行企业知识库检索。
-    与 LLM 决策解耦：无论 LLM 是否调用 search_knowledge，本函数总会执行。
-
-    返回：
-        {"text": 拼接后的上下文, "ids": 结构化 ID 列表}
     """
     from common.rag_v2 import search_knowledge_v2
     try:
@@ -458,7 +406,6 @@ def _retrieve_background(query: str) -> dict:
             text = result.get("context_text", "")
             sources = result.get("sources", [])
             ids = [s.get("doc_id") for s in sources if s.get("doc_id")]
-            # 背景资料截断，避免撑爆 system prompt
             if text and len(text) > 8000:
                 text = text[:8000] + "\n...（背景资料过长，已截断）"
             return {"text": text, "ids": ids}
@@ -466,28 +413,29 @@ def _retrieve_background(query: str) -> dict:
         print(f"###背景检索### 失败: {e}")
     return {"text": "", "ids": []}
 
-async def chat_core(session_id: str, query: str, user_text: str = None,
+async def chat_core_stream(session_id: str, query: str, user_text: str = None,
     query_worker=None, command_worker=None, TOOL_ROUTER=None,
     image_base64: str = None, temp_file_path: str = None):
     """
-    V3 架构：schema 事实注入 + LLM 自主决策 + 确定性执行
+    V3 架构（流式版）：schema 事实注入 + LLM 自主决策 + 确定性执行
     """
     # ① 前置管道
     real_username = session_id.split('_')[0] if '_' in session_id else session_id
     user_info = get_user_info(real_username)
     if user_info and user_info.get("status") == "禁用":
-        return "【系统安全提示】您的账号已被管理员禁用。", []
+        yield json.dumps({"type": "status", "content": "【系统安全提示】您的账号已被管理员禁用。"}, ensure_ascii=False)
+        return
 
     original_query = query
     history_text = user_text if user_text else original_query
 
-    # 提前初始化，防止作用域报错
     tool_trace = []
     source_prefix = ""
 
     is_safe, err_msg = input_guard(query)
     if not is_safe:
-        return err_msg, []
+        yield json.dumps({"type": "status", "content": err_msg}, ensure_ascii=False)
+        return
 
     if not query_worker.is_running:
         asyncio.create_task(query_worker.run_loop())
@@ -509,7 +457,8 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
         else:
             result = f"未找到工具 {tool_name}"
         memory.append(session_id, "确认执行工具", result)
-        return output_guard(result), []
+        yield json.dumps({"type": "answer", "content": output_guard(result), "contexts": []}, ensure_ascii=False)
+        return
 
     if temp_file_path:
         _session_temp_files[session_id] = temp_file_path
@@ -524,18 +473,18 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
         answer = f"现在是 {time_result}（北京时间）。"
         simple_log_tool(session_id, original_query, "get_current_time", {}, time_result)
         memory.append(session_id, history_text, answer)
-        return output_guard(answer), []
+        yield json.dumps({"type": "answer", "content": output_guard(answer), "contexts": []}, ensure_ascii=False)
+        return
 
     # 记忆装载
     history = memory.get(session_id)[-20:]
 
-    # ② 语义路由（RAG 路由器层）
-    #    - 判断问题类型，决定是否执行检索 / 注入 schema
-    #    - 这是 AI 原生架构的"路由器/编排器"，避免一刀切
+    # ② 语义路由
+    yield json.dumps({"type": "status", "content": "正在分析问题类型..."}, ensure_ascii=False)
     route = await _route_query(query)
     system_content = SYSTEM_PROMPT
 
-    # 【数据类】注入 schema
+    # 数据类注入 schema
     if route == "data":
         schema_hint = _build_schema_hint()
         if schema_hint:
@@ -546,14 +495,7 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
     else:
         print(f"###schema### 跳过（路由={route}）")
 
-    # 【物理层数据来源】前缀按"实际数据来源"动态生成，不能硬编码
-    #   路由已经判断了问题类型，前缀应与之对应：
-    #   - knowledge → 企业知识库
-    #   - data      → 数据文件分析
-    #   - realtime  → 实时信息
-    #   - schedule  → 不加前缀（直接显示日程）
-    #   - chitchat  → 不加前缀（闲聊）
-    #   - 上传文件  → 根据上传文件
+    # 物理层数据来源前缀
     if current_temp_file:
         raw_name = os.path.basename(current_temp_file)
         if raw_name.startswith(session_id + "_"):
@@ -567,16 +509,11 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
         source_prefix = "根据数据文件分析结果，"
     elif route == "realtime":
         source_prefix = "根据实时信息，"
-    elif route == "schedule":
-        source_prefix = ""
-    else:  # chitchat
-        source_prefix = ""
 
-    # 【知识类背景检索】只有 knowledge 类问题才执行检索
-    #   - 这是 RAG 架构的"检索器层"，由路由器决定是否触发
-    #   - 检索结果注入 system prompt，作为 LLM 回答的背景资料
+    # 知识类背景检索
     bg = {"text": "", "ids": []}
     if route == "knowledge":
+        yield json.dumps({"type": "status", "content": "正在检索企业知识库..."}, ensure_ascii=False)
         bg = _retrieve_background(query)
         if bg["text"]:
             system_content += (
@@ -588,11 +525,8 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
             print(f"###背景检索### 命中 {len(bg['ids'])} 个 ID: {bg['ids']}")
         else:
             print(f"###背景检索### 无相关命中")
-    else:
-        print(f"###背景检索### 跳过（路由={route}）")
 
     system_content += "\n\n【回答要求】请不要在回答开头写任何关于数据来源的说明。直接以'以下是...'开头。系统会自动为你添加前缀。"
-    system_content += "\n【图表规则】禁止在回答中手动输出任何图片 Markdown（例如 ![图表](url) 或 ![描述]），系统会自动在正确位置插入图表。你只需负责撰写数据表格和文字分析。"
 
     # ③ 角色权限过滤
     role = user_info.get("role", "viewer") if user_info else "viewer"
@@ -610,7 +544,7 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
     messages.append({"role": "user", "content": query})
 
     image_output = None
-    collected_sources = list(bg["ids"])  # 从背景检索结果初始化
+    collected_sources = list(bg["ids"])
 
     MAX_ITERATIONS = 8
     MAX_RETRIES = 2
@@ -618,7 +552,6 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
     # ⑤ LLM 决策 + 工具执行循环
     for iteration in range(MAX_ITERATIONS):
         t_llm = time.time()
-        # 【防御性重试】LLM 调用失败时最多重试 2 次，间隔 1s
         response = None
         last_error = None
         for llm_retry in range(3):
@@ -629,40 +562,27 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
                     tools=allowed_tools,
                     tool_choice="auto"
                 )
-                # 【空值防御】API 偶尔返回 None，视为失败触发重试
                 if response is None or not getattr(response, "choices", None):
                     last_error = "API 返回空响应"
-                    print(f"###LLM重试### 第 {llm_retry+1} 次：API 返回 None，1s 后重试")
                     time.sleep(1)
                     continue
-                break  # 成功，跳出重试循环
+                break
             except Exception as e:
                 last_error = e
                 if llm_retry < 2:
-                    print(f"###LLM重试### 第 {llm_retry+1} 次失败: {type(e).__name__}: {e}，1s 后重试")
                     time.sleep(1)
 
-        # 3 次重试后仍失败 → 返回错误
         if response is None or not getattr(response, "choices", None):
             answer = f"模型调用失败（已重试 3 次）: {last_error}"
             memory.append(session_id, original_query, answer)
-            tool_trace.append({"iteration": iteration, "stage": "llm", "error": str(last_error)})
-            return output_guard(answer), collected_sources
+            yield json.dumps({"type": "answer", "content": output_guard(answer), "contexts": collected_sources}, ensure_ascii=False)
+            return
 
-        t_llm_cost = round(time.time() - t_llm, 3)
         msg = response.choices[0].message
-        tool_trace.append({
-            "iteration": iteration, "stage": "llm",
-            "cost_seconds": t_llm_cost,
-            "has_tool_calls": bool(msg.tool_calls),
-        })
 
         if not msg.tool_calls:
             answer = msg.content
 
-            # 【故事11修复】决策校验器：数据意图命中但未调工具 → 通用反思
-            # 【意图词只是"触发反思"的信号，不是"决定调用哪个工具"的规则】
-            # 最终调什么工具，完全由 LLM 基于工具描述自主决策
             data_intent_words = [
                 "趋势", "统计", "汇总", "销售额", "各月", "季度", "同比", "环比", "排名",
                 "画图", "绘制", "生成图", "折线图", "柱状图", "饼图", "可视化", "图表", "作图",
@@ -678,7 +598,6 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
             has_knowledge_intent = any(w in original_query for w in knowledge_intent_words)
 
             if (has_data_intent or has_knowledge_intent) and iteration == 0:
-                print(f"###决策校验### 意图词命中（data={has_data_intent}, knowledge={has_knowledge_intent}）但 tools=[]，触发反思重试")
                 messages.append({
                     "role": "system",
                     "content": (
@@ -689,9 +608,11 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
                 })
                 continue
 
+            # 出最终报告前发状态
+            yield json.dumps({"type": "status", "content": "正在生成最终报告..."}, ensure_ascii=False)
             break
 
-        # 将 Pydantic 对象转为 dict，保持 messages 列表类型一致
+        # 将 Pydantic 对象转为 dict
         messages.append(msg.model_dump(exclude_unset=True))
         for tool_call in msg.tool_calls:
             func_name = ""
@@ -700,8 +621,7 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
                 arguments = json.loads(tool_call.function.arguments)
                 func_name = tool_call.function.name
             except Exception as e:
-                messages.append({"role": "tool", "tool_call_id": tool_call.id,
-                                 "content": f"参数解析错误: {e}"})
+                messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": f"参数解析错误: {e}"})
                 continue
 
             if func_name in ["add_event", "delete_event", "list_events"]:
@@ -712,10 +632,12 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
                 messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": result})
                 continue
 
-            # 临时文件模式下，如果 LLM 传的 file_name 为空，用临时文件名补
             if func_name in ["aggregate", "generate_chart"] and current_temp_file and not arguments.get("file_name"):
                 arguments["file_name"] = os.path.basename(current_temp_file)
-                print(f"[Tool] {func_name} 注入 file_name（临时文件）: {arguments['file_name']}")
+
+            yield json.dumps({"type": "tool", "content": f"正在调用工具: {func_name}，请稍候..."}, ensure_ascii=False)
+            yield json.dumps({"type": "status", "content": "工具执行完毕，正在生成最终报告..."}, ensure_ascii=False)
+            await asyncio.sleep(0.1) # 给前端一点渲染时间
 
             result = None
             t_tool = time.time()
@@ -730,84 +652,54 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
                     if retry == MAX_RETRIES:
                         result = f"工具执行错误（已重试 {MAX_RETRIES} 次）: {e}"
                     else:
-                        print(f"[Tool] {func_name} 第 {retry+1} 次失败: {e}")
                         time.sleep(0.5)
-            t_tool_cost = round(time.time() - t_tool, 3)
 
-            # 【图片通道分离】generate_chart 返回的 URL 图片不经过 LLM，由后端直接拼接
+            # 图片通道分离
             if func_name == "generate_chart" and result:
-                img_match = re.search(
-                    r'!\[.*?\]\(/charts/[a-f0-9]+\.png\)',
-                    str(result)
-                )
+                img_match = re.search(r'!\[.*?\]\(/charts/[a-f0-9]+\.png\)', str(result))
                 if img_match:
                     full = img_match.group(0)
-                    # 从 ![alt](/charts/xxx.png) 中提取纯 URL
                     image_output = full[full.index('](') + 2 : -1]
-                    print(f"###图片通道### 已捕获 generate_chart 图片 URL: {image_output}")
-                    # 给 LLM 的 tool 结果中，把图片 markdown 替换成占位提示，让 LLM 不再复制
-                    result = re.sub(
-                        r'!\[.*?\]\(/charts/[a-f0-9]+\.png\)',
-                        '[图片已就绪]',
-                        str(result)
-                    )
+                    result = re.sub(r'!\[.*?\]\(/charts/[a-f0-9]+\.png\)', '[图片已就绪]', str(result))
+
             if func_name == "search_knowledge" and result:
-                # 【诊断增强】优先从结构化标记 [RETRIEVED_IDS] 提取真实检索 ID
                 ids_match = re.search(r'\[RETRIEVED_IDS\](.*?)\[/RETRIEVED_IDS\]', str(result))
                 if ids_match:
                     for doc_id in ids_match.group(1).split(','):
                         doc_id = doc_id.strip()
                         if doc_id and doc_id not in collected_sources:
                             collected_sources.append(doc_id)
-                    print(f"###contexts来源### 结构化提取 | 命中 {len(collected_sources)} 个: {collected_sources}")
                 else:
-                    # 保底：旧的文本提取逻辑
                     for m in _extract_ids_from_text(str(result)):
                         if m not in collected_sources:
                             collected_sources.append(m)
-                    if collected_sources:
-                        print(f"###contexts来源### 文本兜底提取 | 命中 {len(collected_sources)} 个: {collected_sources}")
-                    else:
-                        print(f"###contexts来源### 检索无命中 | contexts=[]")
-
-            tool_trace.append({
-                "iteration": iteration, "stage": "tool",
-                "name": func_name, "cost_seconds": t_tool_cost,
-                "result_len": len(str(result)),
-            })
 
             simple_log_tool(session_id, original_query, func_name, arguments, result)
-
             messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": str(result)})
     else:
         answer = "抱歉，处理超时，请简化您的问题。"
 
-    # ⑥ 输出
+    # ⑥ 输出与后处理
     answer = output_guard(answer)
-
-    # 物理层拼接前缀，去除 LLM 可能误带的旧前缀
     answer = re.sub(r'^(根据|基于).*?数据，', '', answer).strip()
 
-    # 【Markdown 排版修复】如果 LLM 直接以标题开头，必须在前缀和标题之间加换行
+    # 彻底清洗 LLM 写的所有图片标签
+    answer = re.sub(r'!\[.*?\](\s*\(.*?\))?', '', answer)
+
+    # 拼接前缀
     if source_prefix and answer.startswith("#"):
         answer = source_prefix + "\n\n" + answer
     else:
         answer = source_prefix + answer
 
-    # 1. 彻底清洗 LLM 自己写的无效图片标签（包括残缺的占位符）
-    answer = re.sub(r'!\[.*?\](\s*\(.*?\))?', '', answer)
-
-    # 2. 将后端捕获的图片精确插入到标题下方
-    # 注意：必须在 memory.append 之前执行，否则 memory 里存的是不含图片的旧版
+    # 图片精准插入
     if image_output:
         img_md = f"![图表]({image_output})"
-        # 优先寻找包含"柱状图"或"图表"的标题
         chart_title_match = re.search(r'^(#{1,3}\s+.*?(柱状图|图表|趋势图).*?)$', answer, re.MULTILINE)
         if chart_title_match:
             pos = chart_title_match.end()
             answer = answer[:pos] + "\n\n" + img_md + "\n" + answer[pos:]
         else:
-            # 保底方案：如果没有匹配到图表标题，插入到第一个标题下方
             title_match = re.search(r'^(#{1,3}\s+.+)$', answer, re.MULTILINE)
             if title_match:
                 pos = title_match.end()
@@ -815,7 +707,7 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
             else:
                 answer = answer.rstrip() + "\n\n" + img_md
 
-    # ⑦ 后置管道（记忆清洁）—— 此时 answer 已含图片 markdown
+    # 后置记忆
     answer_for_memory = re.sub(
         r'\n*\s*>?\s*说明：本[次轮].{0,20}资料中[^\n]*(?:\n(?!\n|如需|如果您)[^\n]*)*',
         '', answer
@@ -824,15 +716,14 @@ async def chat_core(session_id: str, query: str, user_text: str = None,
         answer_for_memory = answer
     memory.append(session_id, history_text, answer_for_memory)
 
-    llm_count = len([t for t in tool_trace if t['stage'] == 'llm'])
-    tool_names = [t['name'] for t in tool_trace if t['stage'] == 'tool']
-    print(f"###trace### session={session_id}, llm_calls={llm_count}, tools={tool_names}")
-
-    return answer, collected_sources
-
-
-async def generate_plan(user_query, history, client):
-    return None
+    # 【关键修复】将答案切成小块，真正实现打字机效果
+    chunk_size = 2  # 每次输出2个字符
+    for i in range(0, len(answer), chunk_size):
+        chunk = answer[i:i+chunk_size]
+        # 仅在第一个块时携带 contexts 信息，后续块无需重复发送
+        context_data = collected_sources if i == 0 else []
+        yield json.dumps({"type": "answer", "content": chunk, "contexts": context_data}, ensure_ascii=False)
+        await asyncio.sleep(0.01)  # 控制打字速度，0.01秒/2字符
 
 
 # ================= API 接口 =================
@@ -853,18 +744,19 @@ async def api_chat(request: ChatRequest):
         user_info = get_user_info(real_username)
         if user_info and user_info.get("status") == "禁用":
             return {"answer": "【系统提示】您的账号已被禁用。", "image": ""}
-        result = await chat_core(
+
+        generator = chat_core_stream(
             request.session_id, request.query, request.user_text,
             _query_worker, _command_worker, _tool_router,
             temp_file_path=getattr(request, 'temp_file_path', None)
         )
-        if result is None:
-            return {"answer": "系统处理异常：内部返回空。", "contexts": [], "image": ""}
-        answer, retrieved_ids = result
-        return {
-            "answer": answer,
-            "contexts": retrieved_ids,
-        }
+
+        async def event_stream():
+            async for chunk in generator:
+                yield f"data: {chunk}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
     except Exception as e:
         import traceback
         print(f"###严重Bug### {traceback.format_exc()}")
@@ -889,7 +781,6 @@ async def api_upload_temp(file: UploadFile = File(...), session_id: str = Form(.
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         _session_temp_files[session_id] = file_path
-        print(f"[Temp] 会话 {session_id} 上传临时文件: {file_path}")
         return {"status": "success", "file_name": safe_name, "file_path": file_path}
     except Exception as e:
         return {"status": "error", "message": f"临时文件保存失败: {e}"}
@@ -917,7 +808,6 @@ async def api_upload(file: UploadFile = File(...)):
 
 @app.get("/api/kb/list")
 async def api_kb_list():
-    # 修正：必须去持久化磁盘读取，而不是源码目录
     rag_file = os.path.join(UPLOAD_DIR, "rag_data.json")
     try:
         if os.path.exists(rag_file):
@@ -992,7 +882,6 @@ async def api_kb_delete(file_name: str = Form(...)):
 
 @app.get("/api/kb/download")
 async def api_kb_download(file_name: str):
-    from fastapi.responses import FileResponse
     safe_name = os.path.basename(file_name)
     file_path = os.path.join(UPLOAD_DIR, safe_name)
     if not os.path.exists(file_path):
@@ -1085,8 +974,7 @@ async def api_health():
 
 @app.get("/api/logs")
 async def api_logs():
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    plan_log_path = os.path.join(BASE_DIR, "plan_log.json")
+    plan_log_path = os.path.join(UPLOAD_DIR, "plan_log.json")
     logs = []
     if os.path.exists(plan_log_path):
         with open(plan_log_path, "rb") as f:
@@ -1114,8 +1002,7 @@ async def api_logs_export():
     import csv
     from io import StringIO
     from fastapi.responses import Response
-    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    plan_log_path = os.path.join(BASE_DIR, "plan_log.json")
+    plan_log_path = os.path.join(UPLOAD_DIR, "plan_log.json")
     output = StringIO(); output.write('\uFEFF')
     writer = csv.writer(output)
     writer.writerow(["时间戳", "操作人/窗口", "角色", "操作行为/内容", "调用工具", "状态"])
@@ -1194,8 +1081,6 @@ if os.path.exists(DIST_DIR):
     async def serve_spa(full_path: str):
         if full_path.startswith("api"):
             return {"detail": "Not Found"}
-        # 【修复】先检查 dist 里是否存在该静态文件（如 logo.png / favicon.svg）
-        # 若存在 → 直接返回文件；不存在 → 走 SPA fallback（返回 index.html）
         file_path = os.path.join(DIST_DIR, full_path)
         if os.path.isfile(file_path):
             return FileResponse(file_path)

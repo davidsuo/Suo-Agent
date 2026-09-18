@@ -17,7 +17,6 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
   const [currentProject, setCurrentProject] = useState(() => localStorage.getItem('currentProject') || '主对话');
   const [projects, setProjects] = useState(['主对话', '产品部']);
 
-  // 【架构级改动】临时文件只存 path，不再存 content
   const [pendingFile, setPendingFile] = useState<{ name: string; path: string } | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const chatFileInputRef = useRef<HTMLInputElement>(null);
@@ -40,7 +39,6 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
   const [kbFile, setKbFile] = useState<any>(null);
   const [kbTags, setKbTags] = useState('');
 
-  // 【P1-2 恢复】编辑标签相关状态
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingFile, setEditingFile] = useState<any>(null);
   const [editTags, setEditTags] = useState('');
@@ -161,7 +159,6 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     }
   };
 
-  // 【P1-2 恢复】编辑标签提交函数
   const handleEditTagsSubmit = async () => {
     if (!editingFile) return;
     const fd = new FormData();
@@ -189,9 +186,6 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     }
   }, []);
 
-  // 【性能修复】用 useMemo 缓存消息列表渲染结果
-  //   根因：input 状态变化时，Chat 组件整体重渲染，导致所有 ReactMarkdown 重新解析
-  //   解决：messages 引用不变时，缓存命中，输入时不重渲染历史消息
   const messageListJsx = useMemo(() => (
     messages.map((msg, idx) => (
       <div key={idx} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
@@ -234,8 +228,6 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
           ) : (
             <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.content}</div>
           )}
-          {/* 【故事 6.1】复制按钮（悬停显示） */}
-          {/* 【故事 6.2 增强】右上角按钮组 */}
           <div style={{
             position: 'absolute',
             top: 4,
@@ -243,7 +235,6 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
             display: 'flex',
             gap: 4,
           }}>
-            {/* AI 消息专属：下载单条 */}
             {msg.role === 'assistant' && (
               <Button
                 size="small"
@@ -251,14 +242,9 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                 icon={<DownloadOutlined />}
                 onClick={() => handleExportOne(msg, idx)}
                 title="下载该条回答"
-                style={{
-                  color: '#888888',
-                  background: 'rgba(0,0,0,0.04)',
-                  borderRadius: 4,
-                }}
+                style={{ color: '#888888', background: 'rgba(0,0,0,0.04)', borderRadius: 4 }}
               />
             )}
-            {/* 全部消息：复制 */}
             <Button
               size="small"
               type="text"
@@ -277,24 +263,17 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     ))
   ), [messages, sessionId]);
 
-  // 【故事 6.1】复制消息到剪贴板
   const handleCopy = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
       antMessage.success('已复制到剪贴板');
     } catch (err) {
-      console.error(err);
       antMessage.error('复制失败，请检查浏览器权限');
     }
   };
 
-  // 【故事 6.2】导出当前会话为 Markdown 文件
   const handleExport = () => {
-    if (messages.length === 0) {
-      antMessage.warning('当前会话为空，无需导出');
-      return;
-    }
-
+    if (messages.length === 0) { antMessage.warning('当前会话为空，无需导出'); return; }
     const lines: string[] = [];
     lines.push(`# 对话导出 - ${currentProject}`);
     lines.push('');
@@ -304,20 +283,14 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     lines.push('');
     lines.push('---');
     lines.push('');
-
     messages.forEach((msg) => {
-      if (msg.role === 'user') {
-        lines.push('## 👤 用户');
-      } else {
-        lines.push('## 🤖 AI 助手');
-      }
+      lines.push(msg.role === 'user' ? '## 👤 用户' : '## 🤖 AI 助手');
       lines.push('');
       lines.push(msg.content);
       lines.push('');
       lines.push('---');
       lines.push('');
     });
-
     const content = lines.join('\n');
     const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -332,36 +305,22 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     antMessage.success(`已导出 ${messages.length} 条消息`);
   };
 
-  // 【故事 6.2 增强】单条 AI 回答导出（带用户提问上下文）
   const handleExportOne = (msg: Message, idx: number) => {
-    // 找到上一条用户消息作为上下文
-    const prevUserMsg = idx > 0 && messages[idx - 1]?.role === 'user'
-      ? messages[idx - 1].content
-      : '';
-
+    const prevUserMsg = idx > 0 && messages[idx - 1]?.role === 'user' ? messages[idx - 1].content : '';
     const lines: string[] = [];
     lines.push('# AI 回答');
     lines.push('');
-    if (prevUserMsg) {
-      lines.push(`> 用户提问：${prevUserMsg}`);
-    }
+    if (prevUserMsg) lines.push(`> 用户提问：${prevUserMsg}`);
     lines.push(`> 会话：${currentProject}`);
     lines.push(`> 时间：${new Date().toLocaleString('zh-CN')}`);
     lines.push('');
     lines.push('---');
     lines.push('');
     lines.push(msg.content);
-
-    // 文件名：内容摘要 + 时间戳
-    const summary = msg.content
-      .replace(/[#*`\n\r>\[\]()!]/g, '')
-      .replace(/\s+/g, ' ')
-      .slice(0, 20)
-      .trim();
+    const summary = msg.content.replace(/[#*`\n\r>\[\]()!]/g, '').replace(/\s+/g, ' ').slice(0, 20).trim();
     const safeSummary = (summary || '回答').replace(/[\\/:*?"<>|]/g, '_');
     const ts = new Date().toISOString().slice(0, 16).replace(/[:T-]/g, '');
     const filename = `AI回答_${safeSummary}_${ts}.md`;
-
     const content = lines.join('\n');
     const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -375,12 +334,8 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     antMessage.success('已下载该条回答');
   };
 
-  // 【故事 6.3】清空当前对话
   const handleClear = () => {
-    if (messages.length === 0) {
-      antMessage.warning('当前会话为空，无需清空');
-      return;
-    }
+    if (messages.length === 0) { antMessage.warning('当前会话为空，无需清空'); return; }
     Modal.confirm({
       title: '确认清空当前对话？',
       content: `将永久删除"${currentProject}"的 ${messages.length} 条消息，此操作不可恢复。`,
@@ -399,7 +354,6 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
             antMessage.error(res.data.message || '清空失败');
           }
         } catch (err) {
-          console.error(err);
           antMessage.error('清空请求失败，请检查后端服务');
         }
       },
@@ -424,7 +378,6 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
 
     try {
       const query = msgText || '请分析该文件';
-
       const userTextForMemory = pendingFileData?.path
         ? `📎 上传文件：${pendingFileData.name}\n${msgText || ''}`
         : (msgText || '');
@@ -438,18 +391,82 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
         payload.temp_file_path = pendingFileData.path;
       }
 
-      const res = await api.post('/chat', payload);
-      if (res.data.answer && res.data.answer.includes('账号已被禁用')) {
-        antMessage.error('您的账号已被禁用，请重新登录！');
-        setTimeout(() => handleLogout(), 1500);
-        return;
-      }
-      const fullText = res.data.answer || '抱歉，暂时无法回答。';
-      setMessages(prev => {
-        const newMessages = [...prev];
-        newMessages[newMessages.length - 1] = { role: 'assistant', content: fullText };
-        return newMessages;
+      // 【核心】使用 fetch 替代 axios，处理 SSE 流式响应
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
       });
+
+      if (!response.body) throw new Error("浏览器不支持流式响应");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      let fullText = '';
+      let isFirstChunk = true;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunkStr = decoder.decode(value, { stream: true });
+        const lines = chunkStr.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.slice(6).trim();
+            if (dataStr === '[DONE]') continue;
+
+            try {
+              const data = JSON.parse(dataStr);
+
+              if (data.type === 'status') {
+                // 状态提示阶段，更新占位符文字
+                if (isFirstChunk) {
+                  fullText = `*${data.content}*`;
+                  setMessages(prev => {
+                    const newMessages = [...prev];
+                    newMessages[newMessages.length - 1] = { role: 'assistant', content: fullText };
+                    return newMessages;
+                  });
+                }
+              } else if (data.type === 'tool') {
+                // 工具调用提示
+                const toolText = `*${data.content}*`;
+                setMessages(prev => {
+                  const newMessages = [...prev];
+                  newMessages[newMessages.length - 1] = { role: 'assistant', content: toolText };
+                  return newMessages;
+                });
+              } else if (data.type === 'answer') {
+                // 最终答案（切片流式接收）
+                if (data.content.includes('账号已被禁用')) {
+                  antMessage.error('您的账号已被禁用，请重新登录！');
+                  setTimeout(() => handleLogout(), 1500);
+                  return;
+                }
+                
+                if (isFirstChunk) {
+                  // 收到第一个块时，替换掉之前的状态提示
+                  fullText = data.content;
+                  isFirstChunk = false;
+                } else {
+                  // 后续块累加
+                  fullText += data.content;
+                }
+                
+                setMessages(prev => {
+                  const newMessages = [...prev];
+                  newMessages[newMessages.length - 1] = { role: 'assistant', content: fullText };
+                  return newMessages;
+                });
+              }
+            } catch (err) {
+              // 忽略单行解析错误
+            }
+          }
+        }
+      }
     } catch (err) {
       console.error(err);
       antMessage.error('AI 响应超时或数据过长');
@@ -552,17 +569,13 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
       link.remove();
       antMessage.success('日志导出成功');
     } catch (error) {
-      console.error(error);
       antMessage.error('日志导出失败，请稍后重试');
     }
   };
 
   const downloadKbFile = async (fileName: string) => {
     try {
-      const response = await api.get('/kb/download', {
-        params: { file_name: fileName },
-        responseType: 'blob'
-      });
+      const response = await api.get('/kb/download', { params: { file_name: fileName }, responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -853,7 +866,6 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
 
           {activeView === 'chat' && (
             <>
-              {/* 【故事 6.2 + 6.3】顶部工具栏 */}
               <div style={{
                 display: 'flex',
                 justifyContent: 'flex-end',
@@ -952,7 +964,6 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
         </div>
       </div>
 
-      {/* 知识库上传 Modal */}
       <Modal title="上传文档到知识库" open={isKbUploadOpen} onCancel={() => { setIsKbUploadOpen(false); setKbFile(null); setKbTags(''); }} onOk={handleKbSubmit} okText="提交索引">
         <div style={{ marginBottom: 12, padding: '10px', border: '1px dashed #d9d9d9', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span>{kbFile ? kbFile.name : '未选择文件'}</span>
@@ -961,7 +972,6 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
         <Input placeholder="输入标签（用逗号分隔，可选）" value={kbTags} onChange={(e) => setKbTags(e.target.value)} />
       </Modal>
 
-      {/* 【P1-2 恢复】编辑标签 Modal */}
       <Modal title={`编辑标签：${editingFile?.file_name}`} open={isEditModalOpen}
         onCancel={() => setIsEditModalOpen(false)} onOk={handleEditTagsSubmit}>
         <Input placeholder="输入新标签（用逗号分隔）" value={editTags} onChange={(e) => setEditTags(e.target.value)} />
