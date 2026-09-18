@@ -610,7 +610,7 @@ def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
                 except Exception as e:
                     print(f"⚠️ 查询 collection {cname} 失败: {e}")
 
-            ABSOLUTE_THRESHOLD = 0.65  # 从 0.55 提高到 0.65，过滤掉低质量的“边缘相似”噪音
+            ABSOLUTE_THRESHOLD = 0.82  # 从 0.55 提高到 0.65，过滤掉低质量的“边缘相似”噪音，从 0.65 提高到 0.82，彻底过滤“下午茶”这类边缘泛化语义
             if collection_stats:
                 best_sim = max(s["max_sim"] for s in collection_stats.values())
                 summary = {c: round(s["max_sim"], 3) for c, s in collection_stats.items()}
@@ -682,7 +682,15 @@ def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
         return {"context_text": "", "sources": []}
 
     # 组装 Top K
-    top_k = filtered[:RETRIEVAL_CONFIG["final_top_k"]]
+    # 【核心修复】RRF 分数低于 0.025 的视为无效命中，强制返回空，触发 LLM 拒答
+    RRF_SCORE_THRESHOLD = 0.025
+    valid_filtered = [(doc_id, score) for doc_id, score in filtered if score >= RRF_SCORE_THRESHOLD]
+
+    if not valid_filtered:
+        print(f"【诊断-rag_v2】RRF 分数均低于绝对阈值 {RRF_SCORE_THRESHOLD}，判定为无相关结果，返回空")
+        return {"context_text": "", "sources": []}
+
+    top_k = valid_filtered[:RETRIEVAL_CONFIG["final_top_k"]]
     doc_map = {d["id"]: d for d in _bm25_docs}
     context_parts = []
     sources = []
