@@ -57,29 +57,28 @@ except ImportError:
 
 # ==================== 向量模型加载 ====================
 _vector_model = None
-# 优先使用本地持久化磁盘缓存模型，避免每次部署重新下载
 _MODEL_CACHE_DIR = os.path.join(UPLOAD_DIR, "models")
 os.makedirs(_MODEL_CACHE_DIR, exist_ok=True)
 
-try:
-    from sentence_transformers import SentenceTransformer
-    # 替换为您本地的模型名称，并指定 cache_folder 到持久化磁盘
-    # 推荐 gte-small-zh（更轻量）或 all-MiniLM-L6-v2
-    _vector_model = SentenceTransformer(
-        "thenlper/gte-small-zh",  # 轻量级中文向量模型
-        cache_folder=_MODEL_CACHE_DIR,
-        device="cpu"  # 强制使用 CPU，避免云端环境无 CUDA 报错
-    )
-    print("✅ 向量模型(GTE-small)加载成功！")
-    
-    # 预热模型
-    import time as _t
-    _t0 = _t.time()
-    _vector_model.encode(["预热"], normalize_embeddings=True, show_progress_bar=False)
-    print(f"✅ 模型预热完成，耗时 {_t.time() - _t0:.2f}s")
-except Exception as e:
-    print(f"⚠️ 向量模型加载失败，将降级为纯 BM25 模式: {e}")
-    _vector_model = None
+# 优先检查环境变量，允许用户在云端禁用模型加载，保证服务存活
+if os.getenv("DISABLE_VECTOR_MODEL", "false").lower() == "true":
+    print("⚠️ 检测到 DISABLE_VECTOR_MODEL=true，已跳过向量模型加载，降级为纯 BM25。")
+else:
+    try:
+        from sentence_transformers import SentenceTransformer
+        _vector_model = SentenceTransformer(
+            "thenlper/gte-small-zh",
+            cache_folder=_MODEL_CACHE_DIR,
+            device="cpu"
+        )
+        print("✅ 向量模型(GTE-small)加载成功！")
+        import time as _t
+        _t0 = _t.time()
+        _vector_model.encode(["预热"], normalize_embeddings=True, show_progress_bar=False)
+        print(f"✅ 模型预热完成，耗时 {_t.time() - _t0:.2f}s")
+    except Exception as e:
+        print(f"⚠️ 向量模型加载失败，将降级为纯 BM25 模式: {e}")
+        _vector_model = None
 
 _chroma_client = None
 try:
