@@ -1002,7 +1002,7 @@ async def api_kb_download(file_name: str):
 
 @app.get("/api/users/list")
 async def api_users_list():
-    conn = ssqlite3.connect(os.path.join(UPLOAD_DIR, "users.db"))
+    conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "users.db"))
     cursor = conn.cursor()
     cursor.execute("SELECT username, real_name, role, department, contact, status FROM users")
     users = [{"username": r[0], "real_name": r[1], "role": r[2], "department": r[3], "contact": r[4], "status": r[5]} for r in cursor.fetchall()]
