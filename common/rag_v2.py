@@ -47,6 +47,10 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(BASE_DIR, 'uploads'))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# 【修复】补全 ChromaDB 和 RAG 元数据路径定义，解决 NameError
+CHROMA_DIR = os.path.join(UPLOAD_DIR, "chroma_db")
+RAG_DATA_FILE = os.path.join(UPLOAD_DIR, "rag_data.json")
+
 # ==================== 性能优化：i5-1135G7 4 物理核 ====================
 try:
     import torch
