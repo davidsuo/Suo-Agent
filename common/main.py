@@ -516,12 +516,14 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
         yield json.dumps({"type": "status", "content": "正在检索企业知识库..."}, ensure_ascii=False)
         bg = _retrieve_background(query)
         if bg["text"]:
-            system_content += (
-                f"\n\n【企业知识库背景资料】\n{bg['text']}\n\n"
-                "【背景资料说明】以上是系统自动检索到的企业知识库内容。"
-                "请优先基于这些资料回答用户问题。"
-                "如果资料与问题无关，请忽略，不要强行引用。"
-            )
+        system_content += (
+            f"\n\n【企业知识库背景资料】\n{bg['text']}\n\n"
+            "【背景资料说明】以上是系统自动检索到的企业知识库内容。"
+            "请优先基于这些资料回答用户问题。"
+            "【极其重要】如果背景资料为空，或资料与用户问题完全不相关，"
+            "请务必直接回答：“根据企业知识库文档，未能找到关于该问题的具体说明。”"
+            "绝对禁止基于无关资料强行推测或编造答案。"
+        )
             print(f"###背景检索### 命中 {len(bg['ids'])} 个 ID: {bg['ids']}")
         else:
             print(f"###背景检索### 无相关命中")

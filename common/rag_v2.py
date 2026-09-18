@@ -610,7 +610,7 @@ def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
                 except Exception as e:
                     print(f"⚠️ 查询 collection {cname} 失败: {e}")
 
-            ABSOLUTE_THRESHOLD = 0.55
+            ABSOLUTE_THRESHOLD = 0.65  # 从 0.55 提高到 0.65，过滤掉低质量的“边缘相似”噪音
             if collection_stats:
                 best_sim = max(s["max_sim"] for s in collection_stats.values())
                 summary = {c: round(s["max_sim"], 3) for c, s in collection_stats.items()}
