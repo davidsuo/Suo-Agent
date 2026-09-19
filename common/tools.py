@@ -911,16 +911,26 @@ def generate_chart(
         # 柱状图：使用 viridis 渐变色
         colors = sns.color_palette("viridis", len(x_data))
         bars = ax.bar(x_data, y_data, color=colors, width=0.6)
-        # 在柱子上方标注数值
         for bar, val in zip(bars, y_data):
             if val > 0:
                 ax.text(bar.get_x() + bar.get_width()/2, bar.get_height(), f'{val}',
                         ha='center', va='bottom', fontsize=9, color='#333333')
+    elif chart_type == "pie":
+        # 饼图
+        colors = sns.color_palette("viridis", len(y_data))
+        wedges, texts, autotexts = ax.pie(
+            y_data, labels=x_labels, autopct='%1.1f%%',
+            colors=colors, startangle=140, pctdistance=0.85
+        )
+        # 让百分比文字更易读
+        for autotext in autotexts:
+            autotext.set_color('white')
+            autotext.set_fontsize(9)
+        ax.axis('equal')  # 保证饼图是正圆形
     else:
         # 折线图：使用明亮蓝色，并填充区域
         ax.plot(x_data, y_data, marker='o', markersize=7, linewidth=2.5, color='#2196F3')
         ax.fill_between(x_data, y_data, alpha=0.12, color='#2196F3')
-        # 标注数据点
         for x, y in zip(x_data, y_data):
             if y > 0:
                 ax.annotate(f'{y}', (x, y), textcoords="offset points", xytext=(0, 10),
@@ -990,7 +1000,7 @@ TOOLS_METADATA = [
         "agg_column": {"type": "string", "description": "要聚合的列名，如 price"},
         "agg_func": {"type": "string", "description": "聚合函数：sum/avg/count", "enum": ["sum", "avg", "count"]},
         "group_by": {"type": "string", "description": "分组列，画时间趋势图固定传 'month'", "default": "month"},
-        "chart_type": {"type": "string", "description": "图表类型：line/bar", "enum": ["line", "bar"], "default": "bar"},
+        "chart_type": {"type": "string", "description": "图表类型：line/bar/pie", "enum": ["line", "bar", "pie"], "default": "bar"},
         "title": {"type": "string", "description": "图表标题"}
     }, "required": ["file_name", "filter_json", "agg_column", "agg_func", "group_by", "chart_type"]}}},
     {"type": "function", "function": {"name": "search_knowledge", "description": "从企业知识库检索相关文档。适用于询问企业内部知识、技术文档、FAQ、故障排查等。", "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "department": {"type": "string"}}, "required": ["query"]}}},

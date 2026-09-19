@@ -681,18 +681,23 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
     else:
         answer = "抱歉，处理超时，请简化您的问题。"
 
-    # ⑥ 输出与后处理
-    answer = output_guard(answer)
-    answer = re.sub(r'^(根据|基于).*?数据，', '', answer).strip()
-
-    # 彻底清洗 LLM 写的所有图片标签
-    answer = re.sub(r'!\[.*?\](\s*\(.*?\))?', '', answer)
-
-    # 拼接前缀
-    if source_prefix and answer.startswith("#"):
-        answer = source_prefix + "\n\n" + answer
+    # 物理层拼接前缀，强化正则清洗，彻底去除 LLM 可能误带的“根据...数据，”前缀
+    answer = re.sub(r'^(根据|基于).*?数据，|根据数据文件[^\n]*?，', '', answer).strip()
+    
+    # 【核心修复】统一数据来源前缀，清晰区分两种数据来源
+    if current_temp_file:
+        # 用户临时上传的文件
+        source_prefix = f"根据上传文件 {raw_name} 和工具返回的真实数据，"
+    elif route == "knowledge":
+        # 企业知识库检索
+        source_prefix = "根据企业知识库和工具返回的真实数据，"
+    elif route == "data":
+        # 正式数据文件分析
+        source_prefix = "根据数据文件分析结果，"
     else:
-        answer = source_prefix + answer
+        source_prefix = ""
+
+    answer = source_prefix + answer
 
     # 图片精准插入
     if image_output:
