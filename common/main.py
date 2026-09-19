@@ -248,6 +248,11 @@ SYSTEM_PROMPT = """
 - 涉及图表可视化（折线图/柱状图/饼图等）→ 使用 generate_chart
 如果知识库和工具都无法解决，请坦诚告知用户。
 
+【极其重要的规则】
+- 当用户问题被识别为“实时信息”时，你**必须**调用 web_search 工具，禁止以任何理由（包括“网络受限”、“无法访问”）跳过调用。
+- 如果你调用了工具，但工具返回了错误，请如实转述工具的错误内容，而不是自行编造。
+- 你**必须**使用 system 消息中提供的【系统时间信息】作为今天的日期，严禁使用你的训练数据或历史记录中的日期。
+
 【few-shot 参考】
 用户问："各月咖啡销售趋势"
 思考：这需要按月统计销售额。我应该调用 aggregate，传入 group_by="month"。
@@ -265,6 +270,7 @@ SYSTEM_PROMPT = """
 4. 在此标题下方，输出 Markdown 表格（包含“月份”、“销售额”、“订单数(杯)”等列）。
 5. 最后输出你的文字洞察分析。
 严禁直接把原始 JSON 或文本格式的工具返回结果直接粘贴给用户！你必须对数据进行提炼和总结。
+
 
 【工具说明】
 - `execute_python` 是纯计算沙箱，不支持绘图库。画图请用 `generate_chart`。
@@ -548,8 +554,10 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
                          if t["function"]["name"] not in ["web_search", "fetch_webpage"]]
 
     # ④ 构建 messages
+    # 【核心修复】如果是实时搜索，清空历史记录，防止大模型被前几次“搜索失败”的记录污染，导致跳过工具调用
     messages = [{"role": "system", "content": system_content}]
-    messages.extend(history)
+    if route != "realtime":
+        messages.extend(history)
     messages.append({"role": "user", "content": query})
 
     image_output = None
