@@ -78,7 +78,8 @@ else:
 
 # ==================== Reranker 精排模型加载 ====================
 _reranker_model = None
-if os.getenv("DISABLE_VECTOR_MODEL", "false").lower() != "true":
+# 【核心修复】使用独立开关，彻底解耦！不再受 DISABLE_VECTOR_MODEL 干扰
+if os.getenv("DISABLE_RERANKER_MODEL", "false").lower() != "true":
     try:
         from sentence_transformers import CrossEncoder
         _reranker_model = CrossEncoder(
