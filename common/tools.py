@@ -905,24 +905,33 @@ def generate_chart(
     plt.rcParams['font.sans-serif'] = [font_name]
     plt.rcParams['axes.unicode_minus'] = False
     
-    fig, ax = plt.subplots(figsize=(7, 3.5), dpi=100)
+    # 【核心修复】根据图表类型动态设置画布尺寸（饼图需要正方形，柱状/折线需要长方形）
+    if chart_type == "pie":
+        fig, ax = plt.subplots(figsize=(3, 3), dpi=100)
+    else:
+        fig, ax = plt.subplots(figsize=(7, 3.5), dpi=100)
 
     if chart_type == "bar":
         # 柱状图：使用 viridis 渐变色
         colors = sns.color_palette("viridis", len(x_data))
         bars = ax.bar(x_data, y_data, color=colors, width=0.6)
+        # 在柱子上方标注数值
         for bar, val in zip(bars, y_data):
             if val > 0:
                 ax.text(bar.get_x() + bar.get_width()/2, bar.get_height(), f'{val}',
                         ha='center', va='bottom', fontsize=9, color='#333333')
     elif chart_type == "pie":
-        # 饼图
+        # 饼图：使用 viridis 渐变色，过滤掉数值为0的月份
         colors = sns.color_palette("viridis", len(y_data))
+        valid_data = [(label, val) for label, val in zip(x_labels, y_data) if val > 0]
+        if not valid_data:
+            return "错误：数据全为0，无法绘制饼图"
+        pie_labels, pie_values = zip(*valid_data)
+        
         wedges, texts, autotexts = ax.pie(
-            y_data, labels=x_labels, autopct='%1.1f%%',
-            colors=colors, startangle=140, pctdistance=0.85
+            pie_values, labels=pie_labels, autopct='%1.1f%%',
+            colors=colors[:len(pie_values)], startangle=140, pctdistance=0.85
         )
-        # 让百分比文字更易读
         for autotext in autotexts:
             autotext.set_color('white')
             autotext.set_fontsize(9)
@@ -936,13 +945,15 @@ def generate_chart(
                 ax.annotate(f'{y}', (x, y), textcoords="offset points", xytext=(0, 10),
                             ha='center', fontsize=9, color='#333333')
 
-    # 设置轴标签
-    ax.set_xticks(x_data)
-    ax.set_xticklabels(x_labels, fontsize=10)
+    # 【核心修复】仅对柱状图和折线图设置 X/Y 轴标签，饼图不设置，防止底部出现奇怪的坐标轴
+    if chart_type in ["bar", "line"]:
+        ax.set_xticks(x_data)
+        ax.set_xticklabels(x_labels, fontsize=10)
+        ax.set_xlabel("", fontsize=12)
+        ax.set_ylabel(agg_column, fontsize=12)
+        sns.despine(left=True, bottom=True)  # 去掉上、右边框，更简洁
+
     ax.set_title(title or f"{agg_func}({agg_column}) 趋势图", fontsize=16, fontweight='bold', pad=15)
-    ax.set_xlabel("", fontsize=12)
-    ax.set_ylabel(agg_column, fontsize=12)
-    sns.despine(left=True, bottom=True)  # 去掉上、右边框，更简洁
 
     plt.tight_layout()
 
