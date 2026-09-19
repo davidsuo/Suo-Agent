@@ -210,7 +210,13 @@ async def startup_event():
     init_users_db()
     init_db()
     init_health_db()
-    _cleanup_old_charts(days=30)
+    _cleanup_old_charts(days=30)  # 【故事 4】启动时清理超过 30 天的旧图表
+    
+    # 【核心修复】强制在启动时导入 rag_v2，触发 torch、向量模型和 Reranker 的加载与预热
+    print("###启动加载### 正在初始化 RAG 向量模型和 Reranker 模型...")
+    from common.rag_v2 import search_knowledge_v2
+    print("###启动加载### RAG 模块初始化完成！")
+    
     if _query_worker is None:
         bus = EventBus()
         query_worker_tools = {
