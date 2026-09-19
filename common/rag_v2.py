@@ -76,6 +76,24 @@ else:
         print(f"⚠️ 向量模型加载失败，将降级为纯 BM25 模式: {e}")
         _vector_model = None
 
+# ==================== Reranker 精排模型加载 ====================
+_reranker_model = None
+if os.getenv("DISABLE_VECTOR_MODEL", "false").lower() != "true":
+    try:
+        from sentence_transformers import CrossEncoder
+        _reranker_model = CrossEncoder(
+            "BAAI/bge-reranker-base",
+            cache_folder=_MODEL_CACHE_DIR,
+            device="cpu"
+        )
+        print("✅ Reranker 精排模型加载成功！")
+        # 预热
+        _reranker_model.predict([("预热查询", "预热文档")])
+        print("✅ Reranker 预热完成")
+    except Exception as e:
+        print(f"⚠️ Reranker 模型加载失败，降级为纯 RRF 融合: {e}")
+        _reranker_model = None
+
 # ==================== ChromaDB 客户端 ====================
 _chroma_client = None
 try:
@@ -690,8 +708,37 @@ def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
         print(f"【诊断-rag_v2】RRF 分数均低于绝对阈值 {RRF_SCORE_THRESHOLD}，判定为无相关结果，返回空")
         return {"context_text": "", "sources": []}
 
-    top_k = valid_filtered[:RETRIEVAL_CONFIG["final_top_k"]]
+    # 组装 Top K（先取 Top 10 供 Reranker 精排，然后再取 Top 5）
     doc_map = {d["id"]: d for d in _bm25_docs}
+    
+    if _reranker_model and filtered:
+        try:
+            # 1. 取出 RRF 融合后的 Top 10 候选池
+            candidates = filtered[:10]
+            
+            # 2. 构建 (query, doc_text) 对
+            rerank_pairs = []
+            for doc_id, _ in candidates:
+                doc = doc_map.get(doc_id)
+                text = doc["text"] if doc else vector_meta.get(doc_id, {}).get("text", "")
+                rerank_pairs.append((query, text))
+            
+            # 3. Reranker 打分精排
+            if rerank_pairs:
+                rerank_scores = _reranker_model.predict(rerank_pairs)
+                # 按精排分数降序排序
+                reranked = sorted(zip(candidates, rerank_scores), key=lambda x: x[1], reverse=True)
+                top_k = [item[0] for item in reranked[:RETRIEVAL_CONFIG["final_top_k"]]]
+                print(f"【诊断-rerank】精排完成，Top 5 得分: {[round(item[1], 4) for item in reranked[:5]]}")
+            else:
+                top_k = candidates[:RETRIEVAL_CONFIG["final_top_k"]]
+        except Exception as e:
+            print(f"⚠️ Reranker 精排异常，降级为 RRF: {e}")
+            top_k = filtered[:RETRIEVAL_CONFIG["final_top_k"]]
+    else:
+        # 无 Reranker 模型时，退化为纯 RRF 排序
+        top_k = filtered[:RETRIEVAL_CONFIG["final_top_k"]]
+
     context_parts = []
     sources = []
 

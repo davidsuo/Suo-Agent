@@ -2,7 +2,7 @@ import os
 import json
 import time
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any
 
 try:
@@ -150,7 +150,7 @@ class RAGV2Evaluator:
         passed_count = sum(1 for r in self.results if r["passed"])
         total_count = len(self.results)
         return {
-            "evaluation_time": datetime.utcnow().isoformat(),
+            "evaluation_time": datetime.now(timezone.utc).isoformat(),
             "total_samples": total_count,
             "passed_samples": passed_count,
             "pass_rate": round(passed_count / total_count, 4) if total_count else 0,
@@ -167,19 +167,38 @@ class RealRAGClient:
     async def generate(self, query: str):
         if not HTTPX_AVAILABLE:
             return {"answer": "httpx未安装", "contexts": []}
+        
         payload = {"session_id": "evaluate_session", "query": query, "user_text": query}
+        answer_content = ""
+        context_list = []
+
         async with httpx.AsyncClient(timeout=180) as client:
             try:
-                response = await client.post(f"{self.base_url}/api/chat", json=payload)
-                if response.status_code == 200:
-                    data = response.json()
-                    answer = data.get("answer", "")
-                    contexts = data.get("contexts", [])
-                    print(f"【诊断-评估器】问题: {query[:30]}...")
-                    print(f"【诊断-评估器】后端返回的contexts: {contexts}")
-                    return {"answer": answer, "contexts": contexts}
-                else:
-                    return {"answer": f"请求失败: {response.status_code}", "contexts": []}
+                # 使用 stream 方法接收 SSE 流
+                async with client.stream("POST", f"{self.base_url}/api/chat", json=payload) as response:
+                    if response.status_code != 200:
+                        return {"answer": f"请求失败: {response.status_code}", "contexts": []}
+
+                    # 逐行读取流数据
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            data_str = line[6:].strip()
+                            if data_str == "[DONE]":
+                                continue
+                            try:
+                                data = json.loads(data_str)
+                                if data.get("type") == "answer":
+                                    answer_content += data.get("content", "")
+                                    # 如果返回中有 contexts，则提取
+                                    if data.get("contexts"):
+                                        context_list = data.get("contexts")
+                            except Exception:
+                                pass
+                
+                print(f"【诊断-评估器】问题: {query[:30]}...")
+                print(f"【诊断-评估器】后端返回的contexts: {context_list}")
+                return {"answer": answer_content, "contexts": context_list}
+                
             except Exception as e:
                 print(f"【诊断-评估器】连接失败: {type(e).__name__}: {e}")
                 return {"answer": f"网络错误: {e}", "contexts": []}
@@ -204,7 +223,16 @@ async def main():
     parser.add_argument("--real", action="store_true", help="使用真实 FastAPI 后端")
     args = parser.parse_args()
     dataset_path = args.dataset or "test_set.json"
-    rag_client = RealRAGClient() if args.real else MockRAGClient()
+    # 修改后（指向您的 Render 域名）
+    import argparse
+    parser = argparse.ArgumentParser(description="RAGV2 文档ID检索评估")
+    parser.add_argument("dataset", nargs="?", help="数据集路径")
+    parser.add_argument("--real", action="store_true", help="使用真实 FastAPI 后端")
+    parser.add_argument("--local", action="store_true", help="测试本地后端（默认测试 Render 云端）") # 新增参数
+    args = parser.parse_args()
+
+    target_url = "http://127.0.0.1:10000" if args.local else "https://suo-agent.onrender.com"
+    rag_client = RealRAGClient(base_url=target_url) if args.real else MockRAGClient()
     if args.real:
         print("⚠️ 警告：正在连接真实后端服务...")
     evaluator = RAGV2Evaluator(rag_client=rag_client)
@@ -212,7 +240,9 @@ async def main():
     print("\n=== 评估报告 ===")
     print(json.dumps(report["average_metrics"], indent=2, ensure_ascii=False))
     print(f"通过率: {report['pass_rate']}")
-    output_path = f"eval_report_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+    # 新代码：强制保存到脚本所在的 rag_test 目录下
+    SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+    output_path = os.path.join(SCRIPT_DIR, f"eval_report_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json")
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=2)
     print(f"报告已保存至 {output_path}")
