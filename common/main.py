@@ -428,8 +428,16 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
     # ① 前置管道
     real_username = session_id.split('_')[0] if '_' in session_id else session_id
     user_info = get_user_info(real_username)
-    if user_info and user_info.get("status") == "禁用":
-        yield json.dumps({"type": "status", "content": "【系统安全提示】您的账号已被管理员禁用。"}, ensure_ascii=False)
+    
+    # 【核心修复】恢复安全拦截逻辑
+    if not user_info:
+        print(f"###系统安全### 用户 {real_username} 不存在，拒绝访问")
+        yield json.dumps({"type": "answer", "content": "【系统安全提示】用户不存在。"}, ensure_ascii=False)
+        return
+
+    if user_info.get("status") == "禁用":
+        print(f"###系统安全### 用户 {real_username} 已被禁用，拒绝访问")
+        yield json.dumps({"type": "answer", "content": "【系统安全提示】您的账号已被管理员禁用。"}, ensure_ascii=False)
         return
 
     original_query = query
@@ -789,12 +797,20 @@ async def api_login(request: LoginRequest):
 
 @app.post("/api/chat")
 async def api_chat(request: ChatRequest):
-    try:
-        real_username = request.session_id.split('_')[0] if '_' in request.session_id else request.session_id
-        user_info = get_user_info(real_username)
-        if user_info and user_info.get("status") == "禁用":
-            return {"answer": "【系统提示】您的账号已被禁用。", "image": ""}
+    # 1. 前置鉴权
+    real_username = request.session_id.split('_')[0] if '_' in request.session_id else request.session_id
+    user_info = get_user_info(real_username)
 
+    # 【核心修复】禁用/不存在用户，也必须以 SSE 流的形式返回，防止前端流解析卡死
+    if not user_info or user_info.get("status") == "禁用":
+        async def block_stream():
+            msg = "【系统安全提示】您的账号已被管理员禁用或不存在。"
+            yield f"data: {json.dumps({'type': 'answer', 'content': msg}, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(block_stream(), media_type="text/event-stream")
+
+    # 2. 正常业务流程
+    try:
         generator = chat_core_stream(
             request.session_id, request.query, request.user_text,
             _query_worker, _command_worker, _tool_router,
@@ -810,7 +826,7 @@ async def api_chat(request: ChatRequest):
     except Exception as e:
         import traceback
         print(f"###严重Bug### {traceback.format_exc()}")
-        # 发生异常时，也要返回 SSE 格式，保证前端流式解析不崩溃
+        # 异常也必须返回 SSE 格式
         async def error_stream():
             yield f"data: {json.dumps({'type': 'answer', 'content': f'系统处理异常: {e}'}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
