@@ -645,9 +645,9 @@ def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
             else:
                 all_hits = []
 
+            # 【核心修复】向量检索为空时，不能直接返回！必须放行让 BM25 接力。
             if not all_hits:
-                print(f"【US-01】无相关领域 → 跳过 BM25，整体返回空")
-                return {"context_text": "", "sources": []}
+                print(f"【US-01】向量路无相关命中，不跳过 BM25，继续执行关键词检索...")
 
             all_hits.sort(key=lambda x: x[0], reverse=True)
             for rank, (sim, doc_id, meta, doc_text) in enumerate(all_hits[:RETRIEVAL_CONFIG["vector_top_k"]]):
@@ -700,12 +700,17 @@ def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
         return {"context_text": "", "sources": []}
 
     # 组装 Top K
-    # 【核心修复】RRF 分数低于 0.025 的视为无效命中，强制返回空，触发 LLM 拒答
+    # 【核心修复】动态熔断机制：防止纯 BM25 时的 RRF 分数（约 0.016）被硬编码阈值误杀
     RRF_SCORE_THRESHOLD = 0.025
     valid_filtered = [(doc_id, score) for doc_id, score in filtered if score >= RRF_SCORE_THRESHOLD]
 
     if not valid_filtered:
-        print(f"【诊断-rag_v2】RRF 分数均低于绝对阈值 {RRF_SCORE_THRESHOLD}，判定为无相关结果，返回空")
+        # 如果没有分数超过 0.025 的，尝试放宽阈值到 0.01（保底机制，确保纯 BM25 也能工作）
+        print(f"【诊断-rag_v2】RRF 分数均低于 {RRF_SCORE_THRESHOLD}，尝试放宽阈值至 0.01 保底")
+        valid_filtered = [(doc_id, score) for doc_id, score in filtered if score >= 0.01]
+
+    if not valid_filtered:
+        print(f"【诊断-rag_v2】RRF 分数极低，判定为无相关结果，返回空")
         return {"context_text": "", "sources": []}
 
     # 组装 Top K（先取 Top 10 供 Reranker 精排，然后再取 Top 5）
