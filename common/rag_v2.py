@@ -689,9 +689,19 @@ def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
             
             if rerank_pairs:
                 rerank_scores = _reranker_model.predict(rerank_pairs)
+                
+                # 【核心修复】增加 Reranker 分数过滤，并修复 NumPy 数组歧义报错
+                RERANKER_SCORE_THRESHOLD = 7.0
+                
+                # 使用 len() 和 float() 安全处理 NumPy 数组
+                if len(rerank_scores) == 0 or float(max(rerank_scores)) < RERANKER_SCORE_THRESHOLD:
+                    print(f"【诊断-rerank】最高分低于 {RERANKER_SCORE_THRESHOLD}（最高分: {max(rerank_scores) if len(rerank_scores) > 0 else 'N/A'}），判定为无相关结果，返回空")
+                    return {"context_text": "", "sources": []}
+
+                # 通过阈值后，正常排序并取最终的 Top K
                 reranked = sorted(zip(candidates, rerank_scores), key=lambda x: x[1], reverse=True)
                 top_k = [item[0] for item in reranked[:RETRIEVAL_CONFIG["final_top_k"]]]
-                print(f"【诊断-rerank】精排完成，Top 5 得分: {[round(item[1], 4) for item in reranked[:5]]}")
+                print(f"【诊断-rerank】精排完成，有效文档 {len(top_k)} 条，最高分: {reranked[0][1]:.4f}")
             else:
                 top_k = candidates[:RETRIEVAL_CONFIG["final_top_k"]]
         except Exception as e:
