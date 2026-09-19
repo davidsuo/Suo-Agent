@@ -417,7 +417,7 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
     query_worker=None, command_worker=None, TOOL_ROUTER=None,
     image_base64: str = None, temp_file_path: str = None):
     """
-    V3 架构（流式版）：schema 事实注入 + LLM 自主决策 + 确定性执行
+    V3 架构（最终稳定版）：流式输出 + 工具调用 + 异常捕获 + 日期注入
     """
     # ① 前置管道
     real_username = session_id.split('_')[0] if '_' in session_id else session_id
@@ -530,6 +530,13 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
 
     system_content += "\n\n【回答要求】请不要在回答开头写任何关于数据来源的说明。直接以'以下是...'开头。系统会自动为你添加前缀。"
 
+    # 【核心修复】强制注入当前日期，解决 LLM 编造日期的问题
+    import datetime
+    from zoneinfo import ZoneInfo
+    # 强制使用上海时区，避免 UTC 时间导致日期错乱
+    current_date_str = datetime.datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y年%m月%d日 %H:%M:%S")
+    system_content += f"\n\n【系统时间信息】当前系统时间是 {current_date_str}。请以此时间为准，不要依赖你的内部知识库或历史记忆。"
+
     # ③ 角色权限过滤
     role = user_info.get("role", "viewer") if user_info else "viewer"
     if role not in ROLE_PERMISSIONS:
@@ -566,24 +573,41 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
                 )
                 if response is None or not getattr(response, "choices", None):
                     last_error = "API 返回空响应"
+                    print(f"###LLM重试### 第 {llm_retry+1} 次：API 返回空，1s 后重试")
                     time.sleep(1)
                     continue
                 break
             except Exception as e:
+                import traceback
                 last_error = e
+                print(f"###LLM重试### 第 {llm_retry+1} 次失败: {type(e).__name__}: {e}")
+                traceback.print_exc()  # 打印详细堆栈，方便定位网络/API Key问题
                 if llm_retry < 2:
                     time.sleep(1)
 
         if response is None or not getattr(response, "choices", None):
-            answer = f"模型调用失败（已重试 3 次）: {last_error}"
+            answer = f"模型调用失败（已重试 3 次）: {last_error}，请检查本地网络或 API Key 配置。"
+            print(f"###严重Bug### 模型调用彻底失败: {last_error}")
             memory.append(session_id, original_query, answer)
             yield json.dumps({"type": "answer", "content": output_guard(answer), "contexts": collected_sources}, ensure_ascii=False)
             return
 
+        t_llm_cost = round(time.time() - t_llm, 3)
         msg = response.choices[0].message
+        tool_trace.append({
+            "iteration": iteration, "stage": "llm",
+            "cost_seconds": t_llm_cost,
+            "has_tool_calls": bool(msg.tool_calls),
+        })
 
         if not msg.tool_calls:
             answer = msg.content
+            # 【容错修复】防止 LLM 返回空内容导致程序崩溃
+            if not answer or not answer.strip():
+                print(f"###警告### LLM 返回了空内容，触发重试")
+                if iteration < MAX_ITERATIONS - 1:
+                    continue
+                answer = "抱歉，模型未能生成有效回答，请稍后重试。"
 
             data_intent_words = [
                 "趋势", "统计", "汇总", "销售额", "各月", "季度", "同比", "环比", "排名",
@@ -638,7 +662,6 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
                 arguments["file_name"] = os.path.basename(current_temp_file)
 
             yield json.dumps({"type": "tool", "content": f"正在调用工具: {func_name}，请稍候..."}, ensure_ascii=False)
-            yield json.dumps({"type": "status", "content": "工具执行完毕，正在生成最终报告..."}, ensure_ascii=False)
             await asyncio.sleep(0.1) # 给前端一点渲染时间
 
             result = None
@@ -646,7 +669,8 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
             for retry in range(MAX_RETRIES + 1):
                 try:
                     if func_name in AVAILABLE_TOOLS:
-                        result = AVAILABLE_TOOLS[func_name](**arguments)
+                        # 【核心修复】将同步工具调用放入线程池中执行，避免阻塞异步事件循环
+                        result = await asyncio.to_thread(AVAILABLE_TOOLS[func_name], **arguments)
                     else:
                         result = f"未找到工具 {func_name}"
                     break
@@ -654,7 +678,8 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
                     if retry == MAX_RETRIES:
                         result = f"工具执行错误（已重试 {MAX_RETRIES} 次）: {e}"
                     else:
-                        time.sleep(0.5)
+                        # 异步环境下的重试等待需使用 asyncio.sleep
+                        await asyncio.sleep(0.5)
 
             # 图片通道分离
             if func_name == "generate_chart" and result:
@@ -676,33 +701,41 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
                         if m not in collected_sources:
                             collected_sources.append(m)
 
+            # 【核心修复】补上遗漏的工具追踪记录，解决 tools=[] 的误报
+            tool_trace.append({
+                "iteration": iteration, "stage": "tool",
+                "name": func_name, "cost_seconds": round(time.time() - t_tool, 3),
+                "result_len": len(str(result)),
+            })
+
             simple_log_tool(session_id, original_query, func_name, arguments, result)
             messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": str(result)})
     else:
         answer = "抱歉，处理超时，请简化您的问题。"
 
-    # 物理层拼接前缀，强化正则清洗，彻底去除 LLM 可能误带的“根据...数据，”前缀
+    # ⑥ 输出与后处理
+    answer = output_guard(answer)
+
+    # 1. 彻底清洗 LLM 写的所有无效图片标签
+    answer = re.sub(r'!\[.*?\]\(.*?\)', '', answer)  # 清除 ![标题](url) 形式
+    answer = re.sub(r'!\[.*?\]', '', answer)         # 清除 ![标题] 形式
+
+    # 2. 前缀清洗，去除 LLM 可能误带的旧前缀
     answer = re.sub(r'^(根据|基于).*?数据，|根据数据文件[^\n]*?，', '', answer).strip()
-    
-    # 【核心修复】统一数据来源前缀，清晰区分两种数据来源
-    if current_temp_file:
-        # 用户临时上传的文件
-        source_prefix = f"根据上传文件 {raw_name} 和工具返回的真实数据，"
-    elif route == "knowledge":
-        # 企业知识库检索
-        source_prefix = "根据企业知识库和工具返回的真实数据，"
-    elif route == "data":
-        # 正式数据文件分析
-        source_prefix = "根据数据文件分析结果，"
+
+    # 3. 统一数据来源前缀
+    if source_prefix and answer.startswith(source_prefix):
+        answer = answer[len(source_prefix):].strip()
+    # 【核心修复】强制拼接换行，确保 # 标题独占一行，正则表达式能正确匹配
+    if source_prefix and answer.startswith("#"):
+        answer = source_prefix + "\n\n" + answer
     else:
-        source_prefix = ""
+        answer = source_prefix + answer
 
-    answer = source_prefix + answer
-
-    # 图片精准插入
+    # 4. 图片精准插入（支持饼图标题）
     if image_output:
         img_md = f"![图表]({image_output})"
-        chart_title_match = re.search(r'^(#{1,3}\s+.*?(柱状图|图表|趋势图).*?)$', answer, re.MULTILINE)
+        chart_title_match = re.search(r'^(#{1,3}\s+.*?(柱状图|饼图|图表|趋势图).*?)$', answer, re.MULTILINE)
         if chart_title_match:
             pos = chart_title_match.end()
             answer = answer[:pos] + "\n\n" + img_md + "\n" + answer[pos:]
@@ -714,7 +747,7 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
             else:
                 answer = answer.rstrip() + "\n\n" + img_md
 
-    # 后置记忆
+    # ⑦ 后置记忆
     answer_for_memory = re.sub(
         r'\n*\s*>?\s*说明：本[次轮].{0,20}资料中[^\n]*(?:\n(?!\n|如需|如果您)[^\n]*)*',
         '', answer
@@ -723,15 +756,17 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
         answer_for_memory = answer
     memory.append(session_id, history_text, answer_for_memory)
 
-    # 【关键修复】将答案切成小块，真正实现打字机效果
-    chunk_size = 2  # 每次输出2个字符
+    llm_count = len([t for t in tool_trace if t['stage'] == 'llm'])
+    tool_names = [t['name'] for t in tool_trace if t['stage'] == 'tool']
+    print(f"###trace### session={session_id}, llm_calls={llm_count}, tools={tool_names}")
+
+    # 打字机效果
+    chunk_size = 2
     for i in range(0, len(answer), chunk_size):
         chunk = answer[i:i+chunk_size]
-        # 仅在第一个块时携带 contexts 信息，后续块无需重复发送
         context_data = collected_sources if i == 0 else []
         yield json.dumps({"type": "answer", "content": chunk, "contexts": context_data}, ensure_ascii=False)
-        await asyncio.sleep(0.01)  # 控制打字速度，0.01秒/2字符
-
+        await asyncio.sleep(0.01)
 
 # ================= API 接口 =================
 @app.post("/api/login")
