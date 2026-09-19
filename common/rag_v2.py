@@ -78,17 +78,17 @@ else:
 
 # ==================== Reranker 精排模型加载 ====================
 _reranker_model = None
-# 【核心修复】使用独立开关，彻底解耦！不再受 DISABLE_VECTOR_MODEL 干扰
+# 使用独立开关，彻底解耦！不再受 DISABLE_VECTOR_MODEL 干扰
 if os.getenv("DISABLE_RERANKER_MODEL", "false").lower() != "true":
     try:
         from sentence_transformers import CrossEncoder
+        # 【核心修复】替换为轻量级模型，约 80MB，极大节省磁盘和内存
         _reranker_model = CrossEncoder(
-            "BAAI/bge-reranker-base",
+            "cross-encoder/ms-marco-MiniLM-L-6-v2",
             cache_folder=_MODEL_CACHE_DIR,
             device="cpu"
         )
-        print("✅ Reranker 精排模型加载成功！")
-        # 预热
+        print("✅ Reranker 轻量级模型加载成功！")
         _reranker_model.predict([("预热查询", "预热文档")])
         print("✅ Reranker 预热完成")
     except Exception as e:
