@@ -595,19 +595,23 @@ _build_bm25()
 
 # ==================== 混合检索 ====================
 def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
+    """
+    双路混合检索【极简稳定版】：彻底移除硬编码阈值过滤，只保留分数排序和 Top K。
+    确保只要知识库有内容，就一定能返回结果，避免因为“分数不达标”而被全部拦截。
+    """
     global _vector_model, _chroma_client, _bm25_index, _bm25_docs
 
     vector_results: Dict[str, int] = {}
     vector_meta: Dict[str, dict] = {}
 
-    # 路 1：向量检索
+    # 路 1：向量检索（如果可用）
     if _chroma_client and _vector_model:
         try:
             t0 = time.time()
             query_emb = _vector_model.encode([query], normalize_embeddings=True, show_progress_bar=False).tolist()
             collection_names = _list_all_collections()
 
-            collection_stats = {}
+            all_hits = []
             for cname in collection_names:
                 try:
                     col = _chroma_client.get_collection(name=cname)
@@ -616,40 +620,15 @@ def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
                         n_results=RETRIEVAL_CONFIG["vector_top_k"],
                         include=["documents", "metadatas", "distances"],
                     )
-                    hits = []
-                    max_sim = 0.0
                     if res and res["ids"] and res["ids"][0]:
                         for i, doc_id in enumerate(res["ids"][0]):
                             sim = 1.0 - res["distances"][0][i]
-                            if sim > max_sim:
-                                max_sim = sim
-                            if sim >= RETRIEVAL_CONFIG["vector_threshold"]:
-                                hits.append((sim, doc_id, res["metadatas"][0][i], res["documents"][0][i]))
-                    collection_stats[cname] = {"max_sim": max_sim, "hits": hits}
+                            # 不设绝对阈值，把所有候选交给 RRF 去排序
+                            all_hits.append((sim, doc_id, res["metadatas"][0][i], res["documents"][0][i]))
                 except Exception as e:
                     print(f"⚠️ 查询 collection {cname} 失败: {e}")
 
-            ABSOLUTE_THRESHOLD = 0.82  # 从 0.55 提高到 0.65，过滤掉低质量的“边缘相似”噪音，从 0.65 提高到 0.82，彻底过滤“下午茶”这类边缘泛化语义
-            if collection_stats:
-                best_sim = max(s["max_sim"] for s in collection_stats.values())
-                summary = {c: round(s["max_sim"], 3) for c, s in collection_stats.items()}
-
-                if best_sim < ABSOLUTE_THRESHOLD:
-                    print(f"###RAG检索### 阈值判定 | best_sim={best_sim:.4f} | 阈值={ABSOLUTE_THRESHOLD} | 判定=拒绝 | all={summary}")
-                    all_hits = []
-                else:
-                    selected = [c for c, s in collection_stats.items() if best_sim - s["max_sim"] < 0.05]
-                    print(f"###RAG检索### 阈值判定 | best_sim={best_sim:.4f} | 阈值={ABSOLUTE_THRESHOLD} | 判定=通过 | selected={selected} | all={summary}")
-                    all_hits = []
-                    for cname in selected:
-                        all_hits.extend(collection_stats[cname]["hits"])
-            else:
-                all_hits = []
-
-            # 【核心修复】向量空结果时，绝不能连坐杀死 BM25，必须放行
-            if not all_hits:
-                print(f"【US-01】向量路无命中，放行 BM25 关键词检索...")
-
+            # 按相似度排序，取 Top K
             all_hits.sort(key=lambda x: x[0], reverse=True)
             for rank, (sim, doc_id, meta, doc_text) in enumerate(all_hits[:RETRIEVAL_CONFIG["vector_top_k"]]):
                 vector_results[doc_id] = rank
@@ -684,55 +663,32 @@ def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
         rrf_scores[doc_id] = rrf_scores.get(doc_id, 0) + 1.0 / (k + rank + 1)
 
     if not rrf_scores:
-        print("【诊断-rag_v2】两路均无命中，返回空（负样本正确处理）")
+        print("【诊断-rag_v2】两路均无命中，返回空")
         return {"context_text": "", "sources": []}
 
+    # 按 RRF 分数降序排序
     sorted_docs = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
-    
-    print(f"【诊断-rrf】融合后 Top 5:")
+    print(f"【诊断-rrf】融合后 Top 5 分数:")
     for doc_id, score in sorted_docs[:5]:
         print(f"    score={score:.4f} | doc_id={doc_id[:8]}")
-    
-    threshold = RETRIEVAL_CONFIG["rrf_threshold"]
-    filtered = [(doc_id, score) for doc_id, score in sorted_docs if score > threshold]
-
-    if not filtered:
-        print("【诊断-rag_v2】RRF 分数低于阈值，返回空（负样本正确处理）")
-        return {"context_text": "", "sources": []}
-
-    # 组装 Top K
-    # 【核心修复】动态熔断机制：防止纯 BM25 时的 RRF 分数被硬编码阈值误杀
-    RRF_SCORE_THRESHOLD = 0.025
-    valid_filtered = [(doc_id, score) for doc_id, score in filtered if score >= RRF_SCORE_THRESHOLD]
-
-    if not valid_filtered:
-        # 保底机制：放宽阈值到 0.01，确保纯 BM25 正常工作
-        print(f"【诊断-rag_v2】RRF 分数均低于 {RRF_SCORE_THRESHOLD}，尝试放宽阈值至 0.01 保底")
-        valid_filtered = [(doc_id, score) for doc_id, score in filtered if score >= 0.01]
-
-    if not valid_filtered:
-        print(f"【诊断-rag_v2】RRF 分数极低，判定为无相关结果，返回空")
-        return {"context_text": "", "sources": []}
 
     # 组装 Top K（先取 Top 10 供 Reranker 精排，然后再取 Top 5）
     doc_map = {d["id"]: d for d in _bm25_docs}
     
-    if _reranker_model and filtered:
+    # 直接取前 10 作为 Reranker 候选池，绝对不设阈值过滤！
+    candidates = sorted_docs[:10]
+    
+    if _reranker_model and candidates:
         try:
-            # 1. 取出 RRF 融合后的 Top 10 候选池
-            candidates = filtered[:10]
-            
-            # 2. 构建 (query, doc_text) 对
+            # 构建 (query, doc_text) 对
             rerank_pairs = []
             for doc_id, _ in candidates:
                 doc = doc_map.get(doc_id)
                 text = doc["text"] if doc else vector_meta.get(doc_id, {}).get("text", "")
                 rerank_pairs.append((query, text))
             
-            # 3. Reranker 打分精排
             if rerank_pairs:
                 rerank_scores = _reranker_model.predict(rerank_pairs)
-                # 按精排分数降序排序
                 reranked = sorted(zip(candidates, rerank_scores), key=lambda x: x[1], reverse=True)
                 top_k = [item[0] for item in reranked[:RETRIEVAL_CONFIG["final_top_k"]]]
                 print(f"【诊断-rerank】精排完成，Top 5 得分: {[round(item[1], 4) for item in reranked[:5]]}")
@@ -740,10 +696,9 @@ def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
                 top_k = candidates[:RETRIEVAL_CONFIG["final_top_k"]]
         except Exception as e:
             print(f"⚠️ Reranker 精排异常，降级为 RRF: {e}")
-            top_k = filtered[:RETRIEVAL_CONFIG["final_top_k"]]
+            top_k = candidates[:RETRIEVAL_CONFIG["final_top_k"]]
     else:
-        # 无 Reranker 模型时，退化为纯 RRF 排序
-        top_k = filtered[:RETRIEVAL_CONFIG["final_top_k"]]
+        top_k = candidates[:RETRIEVAL_CONFIG["final_top_k"]]
 
     context_parts = []
     sources = []
