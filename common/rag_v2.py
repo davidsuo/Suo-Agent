@@ -1,19 +1,6 @@
 # common/rag_v2.py
 """
 RAGV2 - ChromaDB(HNSW) + BM25 双路混合检索（企业级，多部门分片）
-
-【架构】
-- 向量路：ChromaDB PersistentClient + HNSW 索引，按部门分片（dept_{department}）
-- 关键词路：BM25，从 rag_data.json 加载文本，jieba 分词
-- 融合：RRF（k=60）+ 阈值过滤
-- 返回：结构化对象 {context_text, sources}
-
-【设计原则】
-1. 语义优先：向量检索为主，BM25 补充专有名词/错误码精确匹配
-2. 数据驱动：列角色识别基于数据特征，不依赖列名硬编码
-3. 幂等写入：ChromaDB 用 upsert，避免 delete_collection 引发的索引崩溃
-4. 优雅关闭：atexit 清理 ChromaDB 缓存
-5. CPU 优化：torch 4 线程 + batch_size=32 + 增量编码
 """
 
 import os
@@ -78,11 +65,11 @@ else:
 
 # ==================== Reranker 精排模型加载 ====================
 _reranker_model = None
-# 使用独立开关，彻底解耦！不再受 DISABLE_VECTOR_MODEL 干扰
+# 独立开关，不再受 DISABLE_VECTOR_MODEL 干扰
 if os.getenv("DISABLE_RERANKER_MODEL", "false").lower() != "true":
     try:
         from sentence_transformers import CrossEncoder
-        # 【核心修复】替换为轻量级模型，约 80MB，极大节省磁盘和内存
+        # 替换为轻量级模型，约 80MB，极大节省磁盘和内存
         _reranker_model = CrossEncoder(
             "cross-encoder/ms-marco-MiniLM-L-6-v2",
             cache_folder=_MODEL_CACHE_DIR,
@@ -121,13 +108,11 @@ atexit.register(_shutdown_chroma)
 _INDEX_LOCK = threading.Lock()
 
 # ==================== 常量与配置 ====================
-# 部门白名单（用于多 collection 分片）
 DEPARTMENTS = [
     "IT", "HR", "Finance", "Sales", "Marketing",
     "Operations", "Legal", "Admin", "Product", "Engineering"
 ]
 
-# 【US-01 追加】部门中英文别名 → 统一 canonical 名
 DEPARTMENT_ALIASES = {
     "it": "it", "信息技术": "it", "技术": "it", "技术部": "it",
     "sales": "sales", "销售": "sales", "销售部": "sales", "业务": "sales",
@@ -141,29 +126,25 @@ DEPARTMENT_ALIASES = {
     "engineering": "engineering", "研发": "engineering", "研发部": "engineering",
 }
 
-# 分块参数（参考《切片原理》：400 token，15% overlap）
 CHUNK_CONFIG = {
     "target_chars": 570,       # ≈ 400 token
     "overlap_chars": 85,       # ≈ 60 token
     "min_chunk_chars": 50,
 }
 
-# 检索参数
 RETRIEVAL_CONFIG = {
-    "vector_top_k": 20,       # 扩大候选池
-    "bm25_top_k": 20,         # 扩大候选池
+    "vector_top_k": 20,
+    "bm25_top_k": 20,
     "rrf_k": 60,
-    "rrf_threshold": 0.001,   # 由两路各自阈值把关
-    "vector_threshold": 0.30, # 向量相似度门槛
+    "rrf_threshold": 0.001,
+    "vector_threshold": 0.30,
     "final_top_k": 5,
 }
 
-# ==================== 分层索引策略 ====================
 VECTOR_ENABLED_EXTENSIONS = {".md", ".txt", ".pdf", ".docx"}
 
 # ==================== 部门分片工具 ====================
 def _extract_department(tags: str) -> str:
-    """从 tags 中提取部门，支持中英文别名。匹配不到则落到 'general'。"""
     if not tags:
         return "general"
     tags_lower = tags.lower()
@@ -173,7 +154,6 @@ def _extract_department(tags: str) -> str:
     return "general"
 
 def _get_collection(department: str):
-    """获取或创建部门对应的 collection（幂等）"""
     if not _chroma_client:
         return None
     name = f"dept_{department.lower()}"
@@ -205,9 +185,7 @@ def _load_store() -> dict:
 def _tokenize(text: str) -> List[str]:
     return [t for t in jieba.lcut(text) if t.strip()]
 
-# ==================== 数据驱动的日期列识别 ====================
 def _find_date_column(df: pd.DataFrame) -> Optional[str]:
-    """数据驱动地找日期列"""
     for col in df.columns:
         series = df[col].dropna()
         if len(series) == 0:
@@ -301,7 +279,6 @@ def _chunk_table(text: str) -> List[str]:
 
     date_col = _find_date_column(df)
 
-    # 无日期列：回退到固定行数切
     if not date_col:
         print(f"【诊断-chunk】未检测到日期列，按固定行数（50行/块）切分")
         header = ",".join(df.columns)
@@ -326,7 +303,6 @@ def _chunk_table(text: str) -> List[str]:
             i += rows_per_chunk - overlap_rows
         return chunks
 
-    # 有日期列：按月份切
     print(f"【诊断-chunk】检测到日期列: '{date_col}'，按月切分")
     df["_parsed_date_"] = pd.to_datetime(df[date_col], errors="coerce", format="mixed")
     df["_period_"] = df["_parsed_date_"].dt.to_period("M")
@@ -404,7 +380,6 @@ def index_document_v2(file_path: str, tags: str = "") -> str:
             ext = os.path.splitext(file_path)[1].lower()
             content = ""
 
-            # 解析文件
             if ext in [".txt", ".md"]:
                 with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                     content = f.read()
@@ -447,15 +422,12 @@ def index_document_v2(file_path: str, tags: str = "") -> str:
             if not content.strip():
                 return "❌ 文件内容为空。"
 
-            # 分块
             chunks = _smart_chunk_text(content, file_ext=ext)
             file_name = os.path.basename(file_path)
             current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
-            # 部门分片
             department = _extract_department(tags)
 
-            # 写入 rag_data.json
             store = _load_store()
             store["files"] = [f for f in store.get("files", []) if f.get("file_name") != file_name]
             for key in list(store.get("store", {}).keys()):
@@ -477,7 +449,6 @@ def index_document_v2(file_path: str, tags: str = "") -> str:
                 store["store"][target_key].append(doc)
                 new_docs.append(doc)
 
-            # 提取 schema
             file_schema = None
             try:
                 if ext in [".csv", ".xlsx", ".xls"]:
@@ -505,7 +476,6 @@ def index_document_v2(file_path: str, tags: str = "") -> str:
             with open(RAG_DATA_FILE, "w", encoding="utf-8") as f:
                 json.dump(store, f, ensure_ascii=False, indent=2)
 
-            # 分层写入 ChromaDB
             use_vector = ext in VECTOR_ENABLED_EXTENSIONS
             is_csv_like = ext in [".csv", ".xlsx", ".xls"]
 
@@ -513,7 +483,7 @@ def index_document_v2(file_path: str, tags: str = "") -> str:
                 vector_docs = new_docs
                 print(f"【诊断-index】{ext} 语义类 → 编码全部 {len(new_docs)} 块")
             elif is_csv_like and new_docs:
-                vector_docs = new_docs[:1]   # 表格类只取摘要块
+                vector_docs = new_docs[:1]
                 print(f"【诊断-index】{ext} 表格类 → 只编码摘要块 1 条")
             else:
                 vector_docs = []
@@ -553,7 +523,6 @@ def index_document_v2(file_path: str, tags: str = "") -> str:
                 else:
                     print(f"【诊断-index】{ext} 跳过向量索引（仅 BM25）")
 
-            # 重建 BM25
             t0 = time.time()
             _build_bm25()
             print(f"✅ BM25 重建完成，耗时 {time.time() - t0:.2f}s")
@@ -590,28 +559,24 @@ def _build_bm25():
     else:
         _bm25_index = None
 
-# 模块启动时构建一次
 _build_bm25()
 
 # ==================== 混合检索 ====================
 def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
-    """
-    双路混合检索【极简稳定版】：彻底移除硬编码阈值过滤，只保留分数排序和 Top K。
-    确保只要知识库有内容，就一定能返回结果，避免因为“分数不达标”而被全部拦截。
-    """
     global _vector_model, _chroma_client, _bm25_index, _bm25_docs
 
     vector_results: Dict[str, int] = {}
     vector_meta: Dict[str, dict] = {}
+    vector_passed = False  # 【核心修复】标记向量路径是否通过
 
-    # 路 1：向量检索（如果可用）
+    # 路 1：向量检索
     if _chroma_client and _vector_model:
         try:
             t0 = time.time()
             query_emb = _vector_model.encode([query], normalize_embeddings=True, show_progress_bar=False).tolist()
             collection_names = _list_all_collections()
 
-            all_hits = []
+            collection_stats = {}
             for cname in collection_names:
                 try:
                     col = _chroma_client.get_collection(name=cname)
@@ -620,20 +585,45 @@ def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
                         n_results=RETRIEVAL_CONFIG["vector_top_k"],
                         include=["documents", "metadatas", "distances"],
                     )
+                    hits = []
+                    max_sim = 0.0
                     if res and res["ids"] and res["ids"][0]:
                         for i, doc_id in enumerate(res["ids"][0]):
                             sim = 1.0 - res["distances"][0][i]
-                            # 不设绝对阈值，把所有候选交给 RRF 去排序
-                            all_hits.append((sim, doc_id, res["metadatas"][0][i], res["documents"][0][i]))
+                            if sim > max_sim:
+                                max_sim = sim
+                            if sim >= RETRIEVAL_CONFIG["vector_threshold"]:
+                                hits.append((sim, doc_id, res["metadatas"][0][i], res["documents"][0][i]))
+                    collection_stats[cname] = {"max_sim": max_sim, "hits": hits}
                 except Exception as e:
                     print(f"⚠️ 查询 collection {cname} 失败: {e}")
 
-            # 按相似度排序，取 Top K
-            all_hits.sort(key=lambda x: x[0], reverse=True)
-            for rank, (sim, doc_id, meta, doc_text) in enumerate(all_hits[:RETRIEVAL_CONFIG["vector_top_k"]]):
-                vector_results[doc_id] = rank
-                vector_meta[doc_id] = {"meta": meta, "text": doc_text, "similarity": sim}
-            print(f"【诊断-rag_v2】向量路命中 {len(vector_results)} 条，耗时 {time.time() - t0:.3f}s")
+            ABSOLUTE_THRESHOLD = 0.82
+            if collection_stats:
+                best_sim = max(s["max_sim"] for s in collection_stats.values())
+                summary = {c: round(s["max_sim"], 3) for c, s in collection_stats.items()}
+
+                if best_sim < ABSOLUTE_THRESHOLD:
+                    print(f"###RAG检索### 阈值判定 | best_sim={best_sim:.4f} | 阈值={ABSOLUTE_THRESHOLD} | 判定=拒绝 | all={summary}")
+                    all_hits = []
+                else:
+                    vector_passed = True
+                    selected = [c for c, s in collection_stats.items() if best_sim - s["max_sim"] < 0.05]
+                    print(f"###RAG检索### 阈值判定 | best_sim={best_sim:.4f} | 阈值={ABSOLUTE_THRESHOLD} | 判定=通过 | selected={selected} | all={summary}")
+                    all_hits = []
+                    for cname in selected:
+                        all_hits.extend(collection_stats[cname]["hits"])
+            else:
+                all_hits = []
+
+            if not all_hits:
+                print(f"【US-01】向量路无命中，放行 BM25 关键词检索...")
+            else:
+                all_hits.sort(key=lambda x: x[0], reverse=True)
+                for rank, (sim, doc_id, meta, doc_text) in enumerate(all_hits[:RETRIEVAL_CONFIG["vector_top_k"]]):
+                    vector_results[doc_id] = rank
+                    vector_meta[doc_id] = {"meta": meta, "text": doc_text, "similarity": sim}
+                print(f"【诊断-rag_v2】向量路命中 {len(vector_results)} 条，耗时 {time.time() - t0:.3f}s")
         except Exception as e:
             print(f"⚠️ 向量检索失败: {e}")
 
@@ -663,24 +653,31 @@ def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
         rrf_scores[doc_id] = rrf_scores.get(doc_id, 0) + 1.0 / (k + rank + 1)
 
     if not rrf_scores:
-        print("【诊断-rag_v2】两路均无命中，返回空")
+        print("【诊断-rag_v2】两路均无命中，返回空（负样本正确处理）")
         return {"context_text": "", "sources": []}
 
-    # 按 RRF 分数降序排序
     sorted_docs = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
     print(f"【诊断-rrf】融合后 Top 5 分数:")
     for doc_id, score in sorted_docs[:5]:
         print(f"    score={score:.4f} | doc_id={doc_id[:8]}")
 
-    # 组装 Top K（先取 Top 10 供 Reranker 精排，然后再取 Top 5）
+    # 动态熔断机制：防止纯 BM25 时的 RRF 分数被硬编码阈值误杀
+    RRF_SCORE_THRESHOLD = 0.025
+    valid_filtered = [(doc_id, score) for doc_id, score in sorted_docs if score >= RRF_SCORE_THRESHOLD]
+
+    if not valid_filtered:
+        print(f"【诊断-rag_v2】RRF 分数均低于 {RRF_SCORE_THRESHOLD}，尝试放宽阈值至 0.01 保底")
+        valid_filtered = [(doc_id, score) for doc_id, score in sorted_docs if score >= 0.01]
+
+    if not valid_filtered:
+        print(f"【诊断-rag_v2】RRF 分数极低，判定为无相关结果，返回空")
+        return {"context_text": "", "sources": []}
+
     doc_map = {d["id"]: d for d in _bm25_docs}
-    
-    # 直接取前 10 作为 Reranker 候选池，绝对不设阈值过滤！
-    candidates = sorted_docs[:10]
+    candidates = valid_filtered[:10]
     
     if _reranker_model and candidates:
         try:
-            # 构建 (query, doc_text) 对
             rerank_pairs = []
             for doc_id, _ in candidates:
                 doc = doc_map.get(doc_id)
@@ -690,15 +687,21 @@ def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
             if rerank_pairs:
                 rerank_scores = _reranker_model.predict(rerank_pairs)
                 
-                # 【核心修复】增加 Reranker 分数过滤，并修复 NumPy 数组歧义报错
-                RERANKER_SCORE_THRESHOLD = 7.0
+                # 【核心修复】双重门控机制：解决 Reranker 对中文细微差别区分度不足的问题
+                if len(rerank_scores) == 0:
+                    return {"context_text": "", "sources": []}
+                    
+                max_rerank_score = float(max(rerank_scores))
                 
-                # 使用 len() 和 float() 安全处理 NumPy 数组
-                if len(rerank_scores) == 0 or float(max(rerank_scores)) < RERANKER_SCORE_THRESHOLD:
-                    print(f"【诊断-rerank】最高分低于 {RERANKER_SCORE_THRESHOLD}（最高分: {max(rerank_scores) if len(rerank_scores) > 0 else 'N/A'}），判定为无相关结果，返回空")
+                if vector_passed:
+                    RERANKER_SCORE_THRESHOLD = 7.0
+                else:
+                    RERANKER_SCORE_THRESHOLD = 8.0
+                    
+                if max_rerank_score < RERANKER_SCORE_THRESHOLD:
+                    print(f"【诊断-rerank】最高分低于 {RERANKER_SCORE_THRESHOLD}（最高分: {max_rerank_score:.4f}，向量通过: {vector_passed}），判定为无相关结果，返回空")
                     return {"context_text": "", "sources": []}
 
-                # 通过阈值后，正常排序并取最终的 Top K
                 reranked = sorted(zip(candidates, rerank_scores), key=lambda x: x[1], reverse=True)
                 top_k = [item[0] for item in reranked[:RETRIEVAL_CONFIG["final_top_k"]]]
                 print(f"【诊断-rerank】精排完成，有效文档 {len(top_k)} 条，最高分: {reranked[0][1]:.4f}")
