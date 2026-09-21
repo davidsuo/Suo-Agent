@@ -1,1 +1,2 @@
 *.ttc binary
+*.sh text eol=lf
