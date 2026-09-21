@@ -1,12 +1,20 @@
 # common/tools.py
-"""
-智能体工具函数库
 
-【V3 架构】
-- 后端只提供"原子能力"（如 aggregate 执行确定性聚合）
-- 意图理解、参数选择全部由 LLM 通过 function calling 完成
-- 不包含任何 "if '月' in query" 这类关键词匹配
 """
+common/tools.py - 智能体工具函数库
+
+模块职责：
+1. 提供原子的确定性工具能力（如数学计算、数据库查询、网络搜索、图表绘制）。
+2. 意图理解、参数选择全部由 LLM 通过 function calling 自主决策。
+3. 数据处理函数（如 aggregate、generate_chart）负责执行确定性的逻辑，不负责猜测意图。
+
+架构说明：
+- 基础组件：HTTP 请求重试、文件分析、Schema 提取。
+- 数据与图表：确定性聚合执行、Seaborn 图表渲染。
+- 知识库与搜索：Tavily 联网搜索、ChromaDB + BM25 知识检索。
+- 辅助功能：语音转写、OCR 识别、日程管理、Saga 补偿。
+"""
+
 import sqlite3
 import smtplib
 import os
@@ -28,15 +36,28 @@ from typing import Any, Dict, Optional
 import matplotlib.font_manager as fm
 import concurrent.futures
 
-# 优先使用环境变量 UPLOAD_DIR（Render Disk 挂载路径），本地开发时使用默认路径
+# 【Render Disk 适配】优先使用环境变量 UPLOAD_DIR（指向 Persistent Disk）
+# 本地开发时环境变量不存在，走默认路径
 UPLOAD_DIR = os.getenv(
     "UPLOAD_DIR",
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'uploads')
 )
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # 仅用于字体文件定位
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) # 仅用于定位项目内置字体等静态资源
 
 # ==================== 通用辅助函数 ====================
 def _request_with_retry(method: str, url: str, retries: int = 2, **kwargs):
+    """
+    带重试机制的网络请求执行器。
+
+    Args:
+        method: HTTP 请求方法 (GET / POST 等)。
+        url: 请求地址。
+        retries: 最大重试次数。
+        **kwargs: 传递给 requests.request 的其它参数。
+
+    Returns:
+        requests.Response 对象，若重试耗尽则返回 None。
+    """
     for attempt in range(retries + 1):
         try:
             resp = requests.request(method, url, timeout=kwargs.pop("timeout", 15), **kwargs)
@@ -49,6 +70,12 @@ def _request_with_retry(method: str, url: str, retries: int = 2, **kwargs):
 
 # ==================== 基础工具 ====================
 def get_current_time(**kwargs) -> str:
+    """
+    获取当前的北京时间（Asia/Shanghai）。
+
+    Returns:
+        格式为 "%Y-%m-%d %H:%M:%S" 的字符串。
+    """
     try:
         now = datetime.now(ZoneInfo("Asia/Shanghai"))
     except Exception:
@@ -56,6 +83,15 @@ def get_current_time(**kwargs) -> str:
     return now.strftime("%Y-%m-%d %H:%M:%S")
 
 def calculator(expression: str, **kwargs) -> str:
+    """
+    数学计算器，支持四则运算、括号、百分号等。
+
+    Args:
+        expression: 数学表达式（支持单行及多行求和）。
+
+    Returns:
+        计算结果字符串，保留两位小数。
+    """
     try:
         if '\n' in expression:
             lines = expression.strip().split('\n')
@@ -81,6 +117,15 @@ def calculator(expression: str, **kwargs) -> str:
         return f"计算出错: {e}"
 
 def query_database(sql: str, **kwargs) -> str:
+    """
+    执行 SQLite 数据库查询（仅限 SELECT 语句）。
+
+    Args:
+        sql: 安全合法的 SELECT 查询语句。
+
+    Returns:
+        查询结果的文本表格格式。
+    """
     if not sql.strip().upper().startswith("SELECT"):
         return "错误：仅允许执行 SELECT 查询"
     try:
@@ -98,6 +143,17 @@ def query_database(sql: str, **kwargs) -> str:
         return f"数据库查询错误: {e}"
 
 def send_email(to_email: str, subject: str, body: str, **kwargs) -> str:
+    """
+    通过 Mailgun API 发送电子邮件。
+
+    Args:
+        to_email: 收件人邮箱。
+        subject: 邮件主题。
+        body: 邮件正文。
+
+    Returns:
+        发送结果描述。
+    """
     api_key = os.getenv("MAILGUN_API_KEY")
     domain = os.getenv("MAILGUN_DOMAIN")
     from_email = os.getenv("EMAIL_FROM")
@@ -115,28 +171,60 @@ def send_email(to_email: str, subject: str, body: str, **kwargs) -> str:
         return f"邮件发送错误: {e}"
 
 def web_search(query: str, max_results: int = 5, **kwargs) -> str:
-    try:
-        def _search():
-            with DDGS() as ddgs:
-                return list(ddgs.text(query, max_results=max_results))
-        
-        # 将阻塞的网络请求放到线程池中，强制 10 秒超时
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            future = executor.submit(_search)
-            results = future.result(timeout=10)  # 10秒无响应则抛出 TimeoutError
+    """
+    纯 Tavily 联网搜索工具，保证高可用和稳定性。
+    带有明确的 Trace 打印，便于观测执行状态。
+    """
+    print(f"###WebSearch### 正在调用 Tavily API | 查询: {query[:30]}...")
+    
+    api_key = os.getenv("TAVILY_API_KEY")
+    if not api_key:
+        print("###WebSearch### 错误：TAVILY_API_KEY 未配置")
+        return "错误：未配置 TAVILY_API_KEY，请在 .env 文件中添加。"
 
-        if not results:
-            return "未找到相关搜索结果。"
-        formatted = []
-        for r in results:
-            formatted.append(f"标题: {r.get('title', '')}\n链接: {r.get('href', '')}\n摘要: {r.get('body', '')}\n")
-        return "\n".join(formatted)
-    except concurrent.futures.TimeoutError:
-        return "搜索失败：请求超时，可能是云端网络受限。"
+    url = "https://api.tavily.com/search"
+    payload = {
+        "api_key": api_key,
+        "query": query,
+        "max_results": max_results,
+        "search_depth": "basic"
+    }
+    
+    try:
+        print(f"###WebSearch### 发起请求: {url}")
+        resp = requests.post(url, json=payload, timeout=15)
+        print(f"###WebSearch### 响应状态码: {resp.status_code}")
+
+        if resp.status_code == 200:
+            data = resp.json()
+            results = data.get("results", [])
+            if not results:
+                return "未找到相关搜索结果。"
+            
+            formatted = []
+            for r in results:
+                formatted.append(f"标题: {r.get('title', '')}\n链接: {r.get('url', '')}\n摘要: {r.get('content', '')}\n")
+            
+            print(f"###WebSearch### Tavily 成功返回 {len(formatted)} 条结果")
+            return "\n".join(formatted)
+        else:
+            return f"搜索失败：Tavily 返回状态码 {resp.status_code}。详情: {resp.text[:200]}"
+            
     except Exception as e:
-        return f"搜索失败: {e}"
+        print(f"###WebSearch### Tavily 请求异常: {type(e).__name__}: {e}")
+        return f"搜索失败：请求 Tavily API 发生异常: {e}"
 
 def execute_python(code: str, **kwargs) -> str:
+    """
+    沙箱内执行 Python 代码，支持部分计算与数据处理库。
+    【重要】此沙箱不包含绘图库，禁止用于生成图表。
+
+    Args:
+        code: 需要执行的 Python 代码字符串。
+
+    Returns:
+        代码执行后的标准输出文本。
+    """
     import matplotlib
     matplotlib.use('Agg')  # 无界面渲染
     safe_builtins = {
@@ -144,9 +232,9 @@ def execute_python(code: str, **kwargs) -> str:
         "str": str, "list": list, "dict": dict, "abs": abs, "min": min,
         "max": max, "sum": sum, "round": round, "sorted": sorted,
         "enumerate": enumerate, "zip": zip, "type": type, "isinstance": isinstance,
-        "__import__": __import__,  # 允许导入
+        "__import__": __import__,  # 允许导入白名单模块
     }
-    # 允许本地导入的模块白名单
+    # 允许本地导入的模块白名单，防止安全漏洞
     allowed_modules = ["matplotlib", "pandas", "numpy", "json", "base64", "io", "datetime"]
     def safe_import(name, *args, **kwargs):
         if name.split('.')[0] not in allowed_modules:
@@ -157,7 +245,6 @@ def execute_python(code: str, **kwargs) -> str:
     old_stdout = sys.stdout
     sys.stdout = captured = StringIO()
     try:
-        # 注入必要的命名空间
         exec(code, {"__builtins__": safe_builtins, "pd": __import__("pandas"), "plt": __import__("matplotlib.pyplot")}, {})
         output = captured.getvalue()
         if not output.strip():
@@ -170,6 +257,7 @@ def execute_python(code: str, **kwargs) -> str:
 
 # ==================== 百度语音转写 ====================
 def get_baidu_access_token() -> str:
+    """获取百度语音/OCR 相关的 Access Token"""
     api_key = os.getenv("BAIDU_ASR_API_KEY")
     secret_key = os.getenv("BAIDU_ASR_SECRET_KEY")
     if not api_key or not secret_key:
@@ -185,6 +273,15 @@ def get_baidu_access_token() -> str:
         return ""
 
 def speech_to_text(audio_file_path: str) -> str:
+    """
+    使用百度语音识别 API 将音频转写为文本。
+
+    Args:
+        audio_file_path: 音频文件路径（支持 webm 自动转 wav）。
+
+    Returns:
+        识别出的文本内容。
+    """
     if audio_file_path.endswith('.webm'):
         try:
             from pydub import AudioSegment
@@ -244,30 +341,73 @@ def speech_to_text(audio_file_path: str) -> str:
 
 # ==================== 文件分析（兼容保留） ====================
 def analyze_file(file_path: str, _tenant: str = "default", **kwargs) -> str:
+    """
+    分析上传文件的概况，支持 CSV、Excel、Markdown、TXT、PDF、DOCX 格式。
+
+    Args:
+        file_path: 文件路径。
+
+    Returns:
+        文件分析的文本摘要。
+    """
     if not file_path:
         return "错误：请提供文件路径。"
     try:
         import pandas as pd
+        
+        # ---------- 结构化数据：CSV / Excel ----------
         if file_path.endswith('.csv'):
             df = pd.read_csv(file_path)
         elif file_path.endswith(('.xlsx', '.xls')):
             df = pd.read_excel(file_path)
         else:
-            return "不支持的文件格式，请上传 CSV 或 Excel 文件。"
-        rows = len(df)
-        info = f"文件分析结果：\n- 行数: {rows}\n- 列数: {len(df.columns)}\n"
-        info += f"- 列名: {', '.join(df.columns.tolist())}\n"
-        if rows > 500:
-            info += "\n⚠️ 文件较大，仅展示前3行。\n"
-            info += df.head(3).to_string(index=False)
+            df = None
+
+        if df is not None:
+            rows = len(df)
+            info = f"文件分析结果：\n- 行数: {rows}\n- 列数: {len(df.columns)}\n"
+            info += f"- 列名: {', '.join(df.columns.tolist())}\n"
+            if rows > 500:
+                info += "\n⚠️ 文件较大，仅展示前3行。\n"
+                info += df.head(3).to_string(index=False)
+            else:
+                info += "\n前5行数据:\n"
+                info += df.head(5).to_string(index=False)
+            num_cols = df.select_dtypes(include='number')
+            if not num_cols.empty:
+                info += "\n\n数值列统计:\n"
+                info += num_cols.describe().to_string()
+            return info
+
+        # ---------- 文本文件：Markdown / TXT ----------
+        elif file_path.endswith(('.md', '.txt')):
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+            return f"文本文件分析结果：\n- 总字符数: {len(content)}\n- 内容预览(前500字符):\n{content[:500]}..."
+
+        # ---------- PDF 文件 ----------
+        elif file_path.endswith('.pdf'):
+            try:
+                from pypdf import PdfReader
+                reader = PdfReader(file_path)
+                content = "".join([page.extract_text() or "" for page in reader.pages])
+                return f"PDF文件分析结果：\n- 页数: {len(reader.pages)}\n- 总字符数: {len(content)}\n- 内容预览(前500字符):\n{content[:500]}..."
+            except Exception as e:
+                return f"PDF 解析失败（请确认已安装 pypdf）: {e}"
+
+        # ---------- DOCX 文件 ----------
+        elif file_path.endswith('.docx'):
+            try:
+                from docx import Document
+                doc = Document(file_path)
+                content = "\n".join([para.text for para in doc.paragraphs if para.text.strip()])
+                return f"DOCX文件分析结果：\n- 段落数: {len(doc.paragraphs)}\n- 总字符数: {len(content)}\n- 内容预览(前500字符):\n{content[:500]}..."
+            except Exception as e:
+                return f"DOCX 解析失败（请确认已安装 python-docx）: {e}"
+
         else:
-            info += "\n前5行数据:\n"
-            info += df.head(5).to_string(index=False)
-        num_cols = df.select_dtypes(include='number')
-        if not num_cols.empty:
-            info += "\n\n数值列统计:\n"
-            info += num_cols.describe().to_string()
-        return info
+            return "不支持的文件格式，请上传 CSV、Excel、PDF、DOCX 或文本文件。"
+            
     except Exception as e:
         return f"文件分析失败: {e}"
 
@@ -294,12 +434,11 @@ def extract_schema(df) -> dict:
         if len(series) == 0:
             continue
         samples = series.head(3).tolist()
-        # 类型判断完全由数据驱动
+        # 【数据驱动】判断列的数据类型，识别日期、数值、分类或文本
         col_type = "text"
         if pd.api.types.is_numeric_dtype(series):
             col_type = "numeric"
         else:
-            # 尝试日期
             sample = series.head(min(50, len(series)))
             try:
                 parsed = pd.to_datetime(sample, errors="coerce", format="mixed")
@@ -344,19 +483,23 @@ def aggregate(
       - quarter: 3
       - start_date: "2024-01-01"
       - end_date: "2024-06-30"
-      - <column_name>: <value>  直接按分类列过滤，如 {"coffee_name": "Latte"}
+      - <column_name>: <value>  直接按分类列过滤
 
-    agg_func 支持：sum / avg / count / max / min
+    Args:
+        file_name: 文件名。
+        filter_json: JSON 字符串格式的过滤条件。
+        agg_column: 需要聚合的列名。
+        agg_func: 聚合方法，支持 sum / avg / count / max / min。
+        group_by: 分组列名，若按时间维度可传 month / year / quarter。
+
+    Returns:
+        聚合结果的文本描述。
     """
     import pandas as pd
     import numpy as np
 
     # ---- 1. 定位文件（uploads/temp 或 uploads） ----
-    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    candidates_dirs = [
-        os.path.join(base, "uploads", "temp"),
-        os.path.join(base, "uploads"),
-    ]
+    candidates_dirs = [os.path.join(UPLOAD_DIR, "temp"), UPLOAD_DIR]
     file_path = None
     for d in candidates_dirs:
         if not os.path.exists(d):
@@ -370,7 +513,7 @@ def aggregate(
     if not file_path:
         return f"错误：未找到文件 {file_name}"
 
-    # ---- 2. 读取 ----
+    # ---- 2. 读取文件 ----
     try:
         if file_path.endswith(".csv"):
             df = pd.read_csv(file_path)
@@ -381,13 +524,13 @@ def aggregate(
     except Exception as e:
         return f"读取文件失败: {e}"
 
-    # ---- 3. 解析 filter_json ----
+    # ---- 3. 解析过滤条件 ----
     try:
         filters = json.loads(filter_json) if filter_json and filter_json.strip() else {}
     except Exception as e:
         return f"filter_json 解析失败: {e}"
 
-    # ---- 4. 找到日期列（数据驱动：可被 pd.to_datetime 解析的列） ----
+    # ---- 4. 数据驱动查找日期列（用于时间维度过滤） ----
     date_col = None
     for col in df.columns:
         if pd.api.types.is_numeric_dtype(df[col]):
@@ -402,7 +545,7 @@ def aggregate(
         except Exception:
             continue
 
-    # ---- 5. 应用过滤 ----
+    # ---- 5. 应用时间与分类过滤 ----
     if date_col and any(k in filters for k in ["year", "month", "quarter", "start_date", "end_date"]):
         df[date_col] = pd.to_datetime(df[date_col], errors="coerce", format="mixed")
         if "year" in filters:
@@ -426,7 +569,7 @@ def aggregate(
     if len(df) == 0:
         return "未找到符合条件的数据"
 
-    # ---- 6. 聚合 ----
+    # ---- 6. 执行聚合 ----
     if agg_column not in df.columns:
         return f"错误：列 {agg_column} 不存在"
 
@@ -440,7 +583,7 @@ def aggregate(
     if agg_func not in agg_map:
         return f"错误：不支持的聚合函数 {agg_func}"
 
-    # ---- 7. 分组或整体 ----
+    # ---- 7. 分组或整体聚合 ----
     filter_desc = ",".join(f"{k}={v}" for k, v in filters.items()) or "无过滤"
     if group_by:
         is_time_group = False
@@ -465,8 +608,8 @@ def aggregate(
 
         grouped = df.groupby(group_by)[agg_column].apply(agg_map[agg_func])
         
+        # 【时间维度补齐】防止 LLM 因数据缺失而编造月份的数据
         if is_time_group:
-            # 【核心修复】补齐缺失的时间维度，防止 LLM 因数据缺失而编造
             if time_group_label == "month":
                 grouped = grouped.reindex(range(1, 13), fill_value=0)
                 month_map = {1:"1月", 2:"2月", 3:"3月", 4:"4月", 5:"5月", 6:"6月", 7:"7月", 8:"8月", 9:"9月", 10:"10月", 11:"11月", 12:"12月"}
@@ -483,7 +626,7 @@ def aggregate(
         for name, val in grouped.items():
             lines.append(f"- {name}: {val}")
             
-        # 【新增】自动生成统计摘要，避免 LLM 自己算均值触发幻觉校验
+        # 自动生成统计摘要，避免 LLM 自己算均值产生幻觉
         try:
             total_count = len(df)
             total_sum = float(df[agg_column].sum()) if agg_column in df.columns else 0
@@ -498,7 +641,16 @@ def aggregate(
 
 # ==================== 知识库检索工具 ====================
 def search_knowledge(query: str, department: str = "", **kwargs) -> str:
-    """从企业知识库检索相关文档。返回时附带结构化 ID 列表供后端可靠提取。"""
+    """
+    从企业知识库检索相关文档，返回文本上下文与结构化 ID 列表。
+
+    Args:
+        query: 用户问题。
+        department: 部门约束（可选）。
+
+    Returns:
+        检索到的上下文文本，包含 [RETRIEVED_IDS] 标记用于溯源。
+    """
     from common.rag_v2 import search_knowledge_v2
     try:
         result = search_knowledge_v2(query, department)
@@ -512,7 +664,7 @@ def search_knowledge(query: str, department: str = "", **kwargs) -> str:
             return "企业知识库中未找到相关内容。"
         if len(text) > 30000:
             text = text[:30000] + "\n...（内容过长，已截断）"
-        # 【诊断增强】附加结构化 ID 列表
+        # 附加结构化 ID 列表供后端可靠提取
         real_ids = [s.get("doc_id") for s in sources if s.get("doc_id")]
         if real_ids:
             text += f"\n\n[RETRIEVED_IDS]{','.join(real_ids)}[/RETRIEVED_IDS]"
@@ -522,6 +674,9 @@ def search_knowledge(query: str, department: str = "", **kwargs) -> str:
 
 # ==================== 图像生成 ====================
 def generate_image(prompt: str, negative_prompt: str = "") -> str:
+    """
+    通过 Stability AI 生成图像（返回 base64 图片数据）。
+    """
     api_key = os.getenv("STABILITY_API_KEY")
     if not api_key:
         return "图像生成未配置（缺少 STABILITY_API_KEY）"
@@ -544,6 +699,9 @@ def generate_image(prompt: str, negative_prompt: str = "") -> str:
         return f"图像生成错误: {e}"
 
 def fetch_webpage(url: str) -> str:
+    """
+    抓取网页文本并返回前 3000 字符。
+    """
     try:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
         resp = _request_with_retry("GET", url, retries=1, headers=headers, timeout=10)
@@ -560,6 +718,7 @@ def fetch_webpage(url: str) -> str:
 
 # ==================== OCR ====================
 def get_ocr_token() -> str:
+    """获取百度 OCR Access Token"""
     api_key = os.getenv("BAIDU_OCR_API_KEY") or os.getenv("BAIDU_ASR_API_KEY")
     secret_key = os.getenv("BAIDU_OCR_SECRET_KEY") or os.getenv("BAIDU_ASR_SECRET_KEY")
     if not api_key or not secret_key:
@@ -575,6 +734,9 @@ def get_ocr_token() -> str:
         return ""
 
 def ocr_image(image_path: str) -> str:
+    """
+    使用百度 OCR API 识别图片中的文字。
+    """
     token = get_ocr_token()
     if not token:
         return "OCR 鉴权失败（缺少百度 OCR 凭据）"
@@ -598,6 +760,9 @@ def ocr_image(image_path: str) -> str:
         return f"OCR 请求错误: {e}"
 
 def recognize_table(image_path: str) -> str:
+    """
+    使用百度 OCR API 识别图片中的表格结构。
+    """
     token = get_ocr_token()
     if not token:
         return "表格识别未配置或鉴权失败"
@@ -648,6 +813,7 @@ def recognize_table(image_path: str) -> str:
 
 # ==================== 日程管理 ====================
 def init_calendar() -> None:
+    """初始化日程数据库表"""
     with sqlite3.connect(os.path.join(UPLOAD_DIR, "calendar.db")) as conn:
         c = conn.cursor()
         c.execute('''CREATE TABLE IF NOT EXISTS events (
@@ -662,6 +828,9 @@ def init_calendar() -> None:
         conn.commit()
 
 def add_event(title: str, start_time: str, end_time: str = "", description: str = "", _tenant: str = "default") -> str:
+    """
+    添加日程事件，支持"明天"、"后天"等自然语言时间解析。
+    """
     time_match = re.search(r'(\d{1,2}):(\d{2})', start_time)
     if not time_match:
         return f"添加日程失败: 无法识别时间。实际收到: {start_time}"
@@ -691,6 +860,9 @@ def add_event(title: str, start_time: str, end_time: str = "", description: str 
         return f"添加日程失败: {e}"
 
 def list_events(date: str = "", _tenant: str = "default") -> str:
+    """
+    查询日程列表，可按日期过滤。
+    """
     init_calendar()
     if date:
         match = re.match(r'(\d{4}-\d{2}-\d{2})', date)
@@ -713,6 +885,9 @@ def list_events(date: str = "", _tenant: str = "default") -> str:
         return f"查询日程失败: {e}"
 
 def delete_event(event_id: int, _tenant: str = "default") -> str:
+    """
+    删除指定 ID 的日程。
+    """
     init_calendar()
     try:
         with sqlite3.connect(os.path.join(UPLOAD_DIR, "calendar.db")) as conn:
@@ -730,10 +905,12 @@ def delete_event(event_id: int, _tenant: str = "default") -> str:
 
 # ==================== Saga 补偿函数 ====================
 def compensate_add_event(title: str, start_time: str, end_time: str = "", description: str = "", **kwargs):
+    """添加日程失败时的补偿函数（即删除刚添加的日程）"""
     match = re.search(r'ID:(\d+)', kwargs.get("result", ""))
     return delete_event(int(match.group(1))) if match else f"无法找到日程ID"
 
 def compensate_send_email(to_email: str, subject: str, body: str, **kwargs):
+    """发送邮件失败时的补偿函数（记录日志）"""
     try:
         with open("email_failures.log", "a", encoding="utf-8") as f:
             f.write(f"[{datetime.now()}] 邮件失败: {to_email}, {subject}\n")
@@ -742,6 +919,7 @@ def compensate_send_email(to_email: str, subject: str, body: str, **kwargs):
         return f"补偿记录失败: {e}"
 
 def compensate_execute_python(code: str, **kwargs):
+    """执行 Python 代码失败时的补偿函数（记录日志）"""
     try:
         with open("code_failures.log", "a", encoding="utf-8") as f:
             f.write(f"[{datetime.now()}] 代码失败:\n{code}\n")
@@ -750,6 +928,7 @@ def compensate_execute_python(code: str, **kwargs):
         return f"补偿记录失败: {e}"
 
 def compensate_delete_event(event_id: int, **kwargs):
+    """删除日程失败时的补偿函数（即恢复被删除的日程）"""
     match = re.search(r'原始数据: ({.*})', kwargs.get("result", ""))
     if match:
         data = json.loads(match.group(1))
@@ -757,6 +936,7 @@ def compensate_delete_event(event_id: int, **kwargs):
     return f"补偿：无法恢复日程 {event_id}"
 
 def compensate_generate_image(prompt: str, **kwargs):
+    """图像生成失败时的补偿函数（记录日志）"""
     try:
         with open("image_failures.log", "a", encoding="utf-8") as f:
             f.write(f"[{datetime.now()}] 图像失败: {prompt}\n")
@@ -765,6 +945,7 @@ def compensate_generate_image(prompt: str, **kwargs):
         return f"补偿记录失败: {e}"
 
 def execute_workflow_tool(name: str, extra_params: Optional[Dict[str, Any]] = None) -> str:
+    """执行工作流工具"""
     from common.workflows import execute_workflow
     return execute_workflow(name, extra_params=extra_params)
 
@@ -781,15 +962,57 @@ def generate_chart(
     """
     【V3 核心 · Seaborn 版】确定性绘图工具。
     LLM 只需指定文件和过滤条件，后端内部完成：
-    读取 -> 过滤 -> 聚合 -> 按时间对齐 -> Seaborn 渲染 -> 返回 URL 图片 + 统计摘要。
+    读取 -> 过滤 -> 聚合 -> 按时间对齐 -> Seaborn 渲染 -> 返回图片URL + 统计摘要。
+
+    Args:
+        file_name: 文件名。
+        filter_json: JSON 字符串格式的过滤条件。
+        agg_column: 需要聚合的列名。
+        agg_func: 聚合方法，支持 sum / avg / count。
+        group_by: 分组列名，通常为 month / year / quarter。
+        chart_type: 图表类型，支持 line / bar / pie。
+        title: 图表标题。
+
+    Returns:
+        包含图片URL和统计摘要的 Markdown 文本。
     """
     import pandas as pd
     import numpy as np
     import os, json, io, base64
     import matplotlib
-    matplotlib.use('Agg')  # 必须放在 pyplot 之前
+    matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     import seaborn as sns
+
+    # ---------- 参数防呆兜底与诊断日志 (最高优先级) ----------
+    # 打印进入函数的原始参数，方便前后端联调排查
+    print(f"###generate_chart### 接收参数 | chart_type: '{chart_type}' | title: '{title}' | file_name: '{file_name}'")
+    
+    # 【工程兜底】如果 LLM 标题写对了（如"饼图"），但参数传错，这里强制修正
+    if title:
+        if "饼图" in title:
+            chart_type = "pie"
+        elif "柱状图" in title:
+            chart_type = "bar"
+        elif "折线图" in title:
+            chart_type = "line"
+        else:
+            # 如果标题没提，再看 _user_query 的内容
+            if _user_query and "饼图" in _user_query:
+                chart_type = "pie"
+            elif _user_query and "柱状图" in _user_query:
+                chart_type = "bar"
+    else:
+        # 如果 title 为空，只靠 _user_query
+        if _user_query and "饼图" in _user_query:
+            chart_type = "pie"
+
+    # 最终安全兜底（如果还是空，默认折线图）
+    if not chart_type:
+        chart_type = "line"
+
+    # 【诊断流程规范】此处打印最终执行的图表类型，确保前端预期与后端诊断完美配对
+    print(f"###图表类型修正### 最终执行图表类型: {chart_type}")
 
     # ---------- 1. 定位文件 ----------
     candidates_dirs = [os.path.join(UPLOAD_DIR, "temp"), UPLOAD_DIR]
@@ -833,6 +1056,7 @@ def generate_chart(
         except Exception:
             continue
 
+    # 应用过滤条件
     if date_col and any(k in filters for k in ["year", "month", "quarter", "start_date", "end_date"]):
         df[date_col] = pd.to_datetime(df[date_col], errors="coerce", format="mixed")
         if "year" in filters:
@@ -876,7 +1100,7 @@ def generate_chart(
     grouped = df.groupby(group_by)[agg_column].apply(agg_map[agg_func])
 
     if group_by == "_time_group_":
-        # 强制补齐 1~12 月，缺失月份填充 0
+        # 强制补齐 1~12 月，缺失月份填充 0（保证图表完整性）
         grouped = grouped.reindex(range(1, 13), fill_value=0)
         month_map = {1:"1月", 2:"2月", 3:"3月", 4:"4月", 5:"5月", 6:"6月", 7:"7月", 8:"8月", 9:"9月", 10:"10月", 11:"11月", 12:"12月"}
         x_labels = [month_map.get(m, str(m)) for m in grouped.index]
@@ -907,6 +1131,7 @@ def generate_chart(
     
     fig, ax = plt.subplots(figsize=(7, 3.5), dpi=100)
 
+    # ---------- 5. 根据 chart_type 渲染图表 ----------
     if chart_type == "bar":
         # 柱状图：使用 viridis 渐变色
         colors = sns.color_palette("viridis", len(x_data))
@@ -916,6 +1141,37 @@ def generate_chart(
             if val > 0:
                 ax.text(bar.get_x() + bar.get_width()/2, bar.get_height(), f'{val}',
                         ha='center', va='bottom', fontsize=9, color='#333333')
+        
+        ax.set_xticks(x_data)
+        ax.set_xticklabels(x_labels, fontsize=10)
+        ax.set_xlabel("", fontsize=12)
+        ax.set_ylabel(agg_column, fontsize=12)
+        sns.despine(left=True, bottom=True)
+
+    elif chart_type == "pie":
+        # 饼图：过滤掉数值为0的月份，避免 ax.pie 崩溃
+        valid_data = [(label, val) for label, val in zip(x_labels, y_data) if val > 0]
+        if not valid_data:
+            return "错误：数据全为0，无法绘制饼图"
+            
+        pie_labels, pie_values = zip(*valid_data)
+        colors = sns.color_palette("viridis", len(pie_values))
+        
+        wedges, texts, autotexts = ax.pie(
+            pie_values, 
+            labels=pie_labels, 
+            autopct='%1.1f%%',
+            colors=colors, 
+            startangle=140, 
+            pctdistance=0.85
+        )
+        # 设置百分比文字颜色和大小，使其在深色切片上可见
+        for autotext in autotexts:
+            autotext.set_color('white')
+            autotext.set_fontsize(9)
+            
+        ax.axis('equal')  # 保证饼图是正圆形，不拉伸
+
     else:
         # 折线图：使用明亮蓝色，并填充区域
         ax.plot(x_data, y_data, marker='o', markersize=7, linewidth=2.5, color='#2196F3')
@@ -925,18 +1181,17 @@ def generate_chart(
             if y > 0:
                 ax.annotate(f'{y}', (x, y), textcoords="offset points", xytext=(0, 10),
                             ha='center', fontsize=9, color='#333333')
+        
+        ax.set_xticks(x_data)
+        ax.set_xticklabels(x_labels, fontsize=10)
+        ax.set_xlabel("", fontsize=12)
+        ax.set_ylabel(agg_column, fontsize=12)
+        sns.despine(left=True, bottom=True)
 
-    # 设置轴标签
-    ax.set_xticks(x_data)
-    ax.set_xticklabels(x_labels, fontsize=10)
     ax.set_title(title or f"{agg_func}({agg_column}) 趋势图", fontsize=16, fontweight='bold', pad=15)
-    ax.set_xlabel("", fontsize=12)
-    ax.set_ylabel(agg_column, fontsize=12)
-    sns.despine(left=True, bottom=True)  # 去掉上、右边框，更简洁
-
     plt.tight_layout()
 
-    # 保存为静态文件（替代 base64）
+    # ---------- 6. 保存为静态文件 ----------
     import uuid as _uuid
     charts_dir = os.path.join(UPLOAD_DIR, "charts")
     os.makedirs(charts_dir, exist_ok=True)
@@ -946,7 +1201,7 @@ def generate_chart(
     plt.close(fig)
     chart_url = f"/charts/{chart_filename}"
 
-    # ---------- 5. 统计摘要 ----------
+    # ---------- 7. 统计摘要 ----------
     total_count = len(df)
     total_sum = float(df[agg_column].sum()) if agg_column in df.columns else 0
     avg_val = round(total_sum / total_count, 2) if total_count > 0 else 0
@@ -984,15 +1239,15 @@ TOOLS_METADATA = [
         "agg_func": {"type": "string", "description": "聚合函数：sum/avg/count/max/min", "enum": ["sum", "avg", "count", "max", "min"]},
         "group_by": {"type": "string", "description": "可选分组列名，如 coffee_name。若需按时间维度分组，可传入 'month'、'year' 或 'quarter'。留空则整体聚合"}
     }, "required": ["file_name", "filter_json", "agg_column", "agg_func"]}}},
-    {"type": "function", "function": {"name": "generate_chart", "description": "根据数据生成图表。当用户要求画图、绘制折线图/柱状图/饼图、生成可视化图表时，必须调用此工具。此工具会自动完成数据读取、聚合、渲染，返回高质量的彩色图片。禁止使用 execute_python 手写绘图代码。", "parameters": {"type": "object", "properties": {
-        "file_name": {"type": "string", "description": "数据文件名，如 coffee_sales.csv"},
-        "filter_json": {"type": "string", "description": "过滤条件的JSON字符串。可选键：year, month, quarter, start_date, end_date。无条件时传 '{}'"},
+    {"type": "function", "function": {"name": "generate_chart", "description": "根据数据生成图表。当用户要求画图时使用。", "parameters": {"type": "object", "properties": {
+        "file_name": {"type": "string", "description": "数据文件名。必须从系统提供的【可用数据文件】列表中选择"},
+        "filter_json": {"type": "string", "description": "过滤条件的JSON字符串。如果用户没有明确指定年份、月份或季度，必须传 '{}'，严禁捏造过滤条件"},
         "agg_column": {"type": "string", "description": "要聚合的列名，如 price"},
         "agg_func": {"type": "string", "description": "聚合函数：sum/avg/count", "enum": ["sum", "avg", "count"]},
-        "group_by": {"type": "string", "description": "分组列，画时间趋势图固定传 'month'", "default": "month"},
-        "chart_type": {"type": "string", "description": "图表类型：line/bar", "enum": ["line", "bar"], "default": "bar"},
-        "title": {"type": "string", "description": "图表标题"}
-    }, "required": ["file_name", "filter_json", "agg_column", "agg_func", "group_by", "chart_type"]}}},
+        "group_by": {"type": "string", "description": "分组列，画时间趋势图固定传 'month'"},
+        "chart_type": {"type": "string", "description": "图表类型：line/bar/pie。严格根据用户提问填写", "enum": ["line", "bar", "pie"]},
+        "title": {"type": "string", "description": "图表标题，根据用户提问动态生成"}
+    }, "required": ["file_name", "filter_json", "agg_column", "agg_func", "group_by", "chart_type", "title"]}}},
     {"type": "function", "function": {"name": "search_knowledge", "description": "从企业知识库检索相关文档。适用于询问企业内部知识、技术文档、FAQ、故障排查等。", "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "department": {"type": "string"}}, "required": ["query"]}}},
     {"type": "function", "function": {"name": "fetch_webpage", "description": "抓取网页文本", "parameters": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]}}},
     {"type": "function", "function": {"name": "generate_image", "description": "生成图片", "parameters": {"type": "object", "properties": {"prompt": {"type": "string"}}, "required": ["prompt"]}}},
