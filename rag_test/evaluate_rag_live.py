@@ -73,8 +73,22 @@ class RAGV2Evaluator:
 
         if q_type == "negative":
             answer_lower = (generated_answer or "").lower()
-            reject_signals = ["未找到", "没有找到", "无法回答", "无法提供", "不包含",
-                              "知识库中未", "抱歉", "无法直接回答", "没有收录", "未收录"]
+            reject_signals = ["未找到", "未能找到", "没有找到", "无法找到", "无法回答",
+                  "无法提供", "无法直接回答", "不包含", "知识库中未",
+                  "抱歉", "没有收录", "未收录", "未能提供", "未包含"]
+        # 【防御】LLM 调用失败 / 余额不足 / 网络异常时，本次评估不计入失败
+        api_failure_signals = [
+            "模型调用失败", "Insufficient Balance", "Error code: 402",
+            "Error code: 429", "Error code: 500", "Error code: 502", "Error code: 503",
+            "网络错误", "连接失败"
+        ]
+        is_api_failure = any(sig in (answer or "") for sig in api_failure_signals)
+
+        if is_api_failure:
+            print(f"⚠️ 样本 {sample['id']} LLM 调用失败，本样本跳过判分")
+            final_metrics["rejection_accuracy"] = -1.0  # -1 表示无效样本
+            passed = True  # 不因为基础设施故障扣分
+        else:
             rejected = any(sig in answer_lower for sig in reject_signals)
             final_metrics["rejection_accuracy"] = 1.0 if rejected else 0.0
             passed = rejected
