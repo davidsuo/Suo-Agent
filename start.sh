@@ -2,6 +2,14 @@
 # start.sh - Render 部署启动脚本
 # 作用：自动下载 Reranker 模型（如未下载），然后启动 uvicorn
 
+#!/bin/bash
+# 强制切到仓库根目录（Render 的 Root Directory 是 bus_memory，需要切回 src）
+cd /opt/render/project/src || exit 1
+
+# start.sh - Render 部署启动脚本
+# 自动下载 Reranker 模型（如未下载），然后启动 uvicorn
+...
+
 set -e
 
 MODEL_NAME="${RERANKER_MODEL:-BAAI/bge-reranker-base}"
