@@ -37,6 +37,20 @@ RAG 架构组件映射（标准 RAG Architecture）
 【其他组件】
   · 排名器 Ranker：RRF 融合 + 阈值筛选（rag_v2.py::search_knowledge_v2）
   · 输出处理 Output Handler：output_guard + 物理层前缀（main.py::chat_core_stream）
+
+模块职责：
+1. FastAPI 路由定义（api_chat / api_login / ...）
+2. chat_core_stream：LLM 决策 + 工具执行 + 输出管线
+3. _retrieve_background：物理层无条件知识库检索
+4. _route_query：语义路由（判断问题类型）
+5. _build_schema_hint：从 rag_data.json 构建数据文件 schema
+6. SYSTEM_PROMPT：LLM 能力边界定义
+
+架构说明：
+- 前 置：guardrails 安全过滤 → 用户权限 → 临时文件处理
+- 决策层：LLM 自主决策调什么工具
+- 执行层：工具执行 + 重试 + 审计日志
+- 后 置：输出校验 → 记忆写入 → SSE 流式拼接
 """
 
 import sys, os, json, asyncio, re, datetime, time
@@ -120,6 +134,7 @@ class ChatRequest(BaseModel):
 
 
 def init_db():
+    """初始化示例 SQLite 数据库（sample.db）"""
     db_path = os.path.join(UPLOAD_DIR, "sample.db")
     if not os.path.exists(db_path):
         conn = sqlite3.connect(db_path)
@@ -133,6 +148,7 @@ def init_db():
 
 
 def init_health_db():
+    """初始化健康日志数据库（health.db），用于记录工具调用审计日志"""
     conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "health.db"))
     cursor = conn.cursor()
     cursor.execute('''CREATE TABLE IF NOT EXISTS logs (
@@ -145,6 +161,9 @@ def init_health_db():
 def _cleanup_old_charts(days: int = 30):
     """
     【故事 4】清理 uploads/charts/ 目录下超过指定天数的旧图表。
+
+    Args:
+        days: 保留天数，默认 30 天
     """
     import time as _t
     charts_dir = os.path.join(UPLOAD_DIR, "charts")
@@ -175,6 +194,7 @@ def _cleanup_old_charts(days: int = 30):
 
 
 def write_log_to_db(entry):
+    """将工具调用审计日志写入 SQLite 数据库"""
     try:
         conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "health.db"))
         cursor = conn.cursor()
@@ -198,6 +218,7 @@ _tool_router = None
 
 
 def set_workers(query_worker, command_worker, tool_router):
+    """全局注册 QueryWorker、CommandWorker 和工具路由器"""
     global _query_worker, _command_worker, _tool_router
     _query_worker = query_worker
     _command_worker = command_worker
@@ -206,17 +227,23 @@ def set_workers(query_worker, command_worker, tool_router):
 
 @app.on_event("startup")
 async def startup_event():
+    """
+    FastAPI 启动事件：初始化数据库、清理旧图表、加载 RAG 模型、启动 Worker 循环
+    """
     global _query_worker, _command_worker, _tool_router
     init_users_db()
     init_db()
     init_health_db()
-    _cleanup_old_charts(days=30)  # 【故事 4】启动时清理超过 30 天的旧图表
-    
-    # 【核心修复】强制在启动时导入 rag_v2，触发 torch、向量模型和 Reranker 的加载与预热
+    _cleanup_old_charts(days=30)
+
+    # 【核心修复】强制在启动时加载 RAG 和 Reranker 模型，消灭首次请求的冷启动延迟
+    # 注意：必须先清空 sys.modules 缓存，否则 Python 会跳过模块的顶层加载代码
     print("###启动加载### 正在初始化 RAG 向量模型和 Reranker 模型...")
-    from common.rag_v2 import search_knowledge_v2
+    if 'common.rag_v2' in sys.modules:
+        del sys.modules['common.rag_v2']
+    import common.rag_v2
     print("###启动加载### RAG 模块初始化完成！")
-    
+
     if _query_worker is None:
         bus = EventBus()
         query_worker_tools = {
@@ -254,29 +281,25 @@ SYSTEM_PROMPT = """
 - 涉及图表可视化（折线图/柱状图/饼图等）→ 使用 generate_chart
 如果知识库和工具都无法解决，请坦诚告知用户。
 
-【极其重要的规则】
-- 当用户问题被识别为“实时信息”时，你**必须**调用 web_search 工具，禁止以任何理由（包括“网络受限”、“无法访问”）跳过调用。
-- 如果你调用了工具，但工具返回了错误，请如实转述工具的错误内容，而不是自行编造。
-- 你**必须**使用 system 消息中提供的【系统时间信息】作为今天的日期，严禁使用你的训练数据或历史记录中的日期。
+【图表生成绝对规则（最高优先级，违反将导致系统错误）】
+- 如果用户提问中明确包含“饼图”，调用 generate_chart 时，chart_type 参数**必须填写 "pie"**，严禁填入 "line" 或 "bar"。
+- 如果用户提问中明确包含“柱状图”，chart_type 参数**必须填写 "bar"**。
+- 如果用户提问中明确包含“折线图”，chart_type 参数**必须填写 "line"**。
+- 如果用户只提了“趋势”，没有明确图表类型，才可以使用 "line"。
 
-【few-shot 参考】
-用户问："各月咖啡销售趋势"
-思考：这需要按月统计销售额。我应该调用 aggregate，传入 group_by="month"。
-调用：aggregate(file_name="coffee_sales.csv", filter_json="{}", agg_column="price", agg_func="sum", group_by="month")
-
-用户问："将趋势绘制成柱状图"
-思考：这需要生成柱状图。我应该调用 generate_chart，传入聚合参数。
-调用：generate_chart(file_name="coffee_sales.csv", filter_json="{}", agg_column="price", agg_func="sum", group_by="month", chart_type="bar", title="各月咖啡销售柱状图")
+【few-shot 参考】（仅展示逻辑，严禁照抄示例中的字符串）
+用户问："将趋势绘制成饼图"
+思考：用户明确要求饼图，chart_type 必须填 "pie"。
+调用：generate_chart(file_name="<实际文件>", filter_json="{}", agg_column="<实际金额列>", agg_func="sum", group_by="month", chart_type="pie", title="<根据上下文生成的标题>")
 
 【输出风格与结构模板】
 为了确保最佳的可视化报告体验，你的回答必须严格遵守以下结构（使用 Markdown）：
-1. 首先输出一级标题：`# 各月咖啡销售趋势柱状图`（或类似包含“柱状图/图表”的标题）
+1. 首先输出一级标题：`# 各月咖啡销售趋势柱状图`（或类似包含“柱状图/饼图/图表”的标题）
 2. 无需手动写图片，系统会自动在该标题下方插入图表。
 3. 接着输出一级标题：`# 各月咖啡销售趋势分析`
 4. 在此标题下方，输出 Markdown 表格（包含“月份”、“销售额”、“订单数(杯)”等列）。
 5. 最后输出你的文字洞察分析。
 严禁直接把原始 JSON 或文本格式的工具返回结果直接粘贴给用户！你必须对数据进行提炼和总结。
-
 
 【工具说明】
 - `execute_python` 是纯计算沙箱，不支持绘图库。画图请用 `generate_chart`。
@@ -285,10 +308,14 @@ SYSTEM_PROMPT = """
 
 
 def _is_error_result(result) -> bool:
+    """判断工具执行结果是否包含错误标识"""
     return ("错误" in str(result)) or ("失败" in str(result))
 
 
 def simple_log_tool(session_id, user_query, tool_name, arguments, result):
+    """
+    记录工具调用审计日志到本地文件（plan_log.json）和 SQLite 数据库
+    """
     real_username = session_id.split('_')[0] if '_' in session_id else session_id
     user_info = get_user_info(real_username) if real_username else None
     username = user_info.get("username", "unknown") if user_info else "unknown"
@@ -314,6 +341,7 @@ log_lock = threading.Lock()
 
 
 def _extract_ids_from_text(text: str) -> list:
+    """从工具返回的文本中提取结构化文档 ID（如 IT-01, TS-02）"""
     if not text:
         return []
     ids, seen = [], set()
@@ -328,6 +356,16 @@ def _extract_ids_from_text(text: str) -> list:
 async def _route_query(query: str) -> str:
     """
     语义路由：判断用户问题的类型。
+
+    返回类别：
+    - knowledge: 企业知识库类（触发背景检索）
+    - data: 数据文件类（触发 schema 注入）
+    - schedule: 日程类
+    - realtime: 实时信息类
+    - chitchat: 闲聊类
+
+    原理：
+    用轻量 LLM 调用做语义判断，不使用关键词匹配。
     """
     try:
         resp = client.chat.completions.create(
@@ -338,10 +376,8 @@ async def _route_query(query: str) -> str:
                     "content": (
                         "你是一个语义路由器。根据用户问题，判断其类型，"
                         "只返回以下 5 个类别之一，不要任何解释：\n\n"
-                        "- knowledge: 企业内部的故障排查、IT 支持、文档查询、"
-                        "FAQ、流程规定、行政政策\n"
-                        "- data: 对数据文件（CSV/Excel）进行统计、查询、"
-                        "聚合、可视化\n"
+                        "- knowledge: 企业内部的故障排查、IT 支持、文档查询、FAQ、流程规定、行政政策\n"
+                        "- data: 对数据文件（CSV/Excel）进行统计、查询、聚合、可视化\n"
                         "- schedule: 日程管理（查询/添加/删除日程、会议提醒）\n"
                         "- realtime: 需要实时互联网信息（新闻、天气、股价）\n"
                         "- chitchat: 闲聊、常识问答、计算题、不涉及企业专属信息"
@@ -364,12 +400,13 @@ async def _route_query(query: str) -> str:
         return "knowledge"
 
 # ================= V3：从 rag_data.json 构建 schema 提示 ====================
-def _build_schema_hint() -> str:
+def _build_schema_hint(query: str = "") -> str:
     """
-    【V3 核心】从 rag_data.json 读取所有文件的 schema，构建给 LLM 的数据描述。
+    【V3 核心】基于向量语义匹配，挑选 Top 3 最相关文件的 schema 注入。
+    【核心修复】只匹配结构化数据文件（含 schema），过滤掉 Markdown、PDF 等文本文件。
     """
+    import numpy as np
     rag_file = os.path.join(UPLOAD_DIR, "rag_data.json")
-
     store = {}
 
     if not os.path.exists(rag_file):
@@ -383,8 +420,48 @@ def _build_schema_hint() -> str:
         print(f"###schema### 读取 rag_data.json 失败: {e}")
         return ""
 
-    lines = ["【可用数据文件】", "⚠️ 注意：以下仅为文件概况，因为你不知道具体数值，任何涉及数值的查询都必须调用 `aggregate` 或 `generate_chart` 工具获取真实数据："]
-    for item in store.get("files", []):
+    all_files = store.get("files", [])
+    # 【核心修复】只过滤出含 schema 的结构化数据文件，排除 PDF/MD 文档
+    structured_files = [f for f in all_files if f.get("schema")]
+    if not structured_files:
+        return ""
+
+    matched_files = []
+    try:
+        from common.rag_v2 import _vector_model
+        if _vector_model and query:
+            # 1. 构建每个结构化文件的文本描述（包含文件名、标签、列名）
+            file_descriptions = []
+            for item in structured_files:
+                fname = item.get("file_name", "")
+                tags = item.get("tags", "")
+                schema = item.get("schema", {})
+                col_names = [c.get("name", "") for c in schema.get("columns", [])]
+                desc = f"文件：{fname}，标签：{tags}，包含列：{','.join(col_names)}"
+                file_descriptions.append(desc)
+
+            # 2. 计算 Query 与文件描述的语义相似度
+            query_emb = _vector_model.encode([query], normalize_embeddings=True)
+            file_embs = _vector_model.encode(file_descriptions, normalize_embeddings=True)
+            similarities = np.dot(file_embs, query_emb.T).flatten()
+
+            # 3. 排序并匹配，使用 0.3 的合理阈值
+            top_indices = np.argsort(similarities)[::-1]
+            for idx in top_indices[:3]:
+                score = similarities[idx]
+                if score > 0.3:
+                    matched_files.append(structured_files[idx])
+                    print(f"###schema### 向量匹配文件: {structured_files[idx]['file_name']}，相似度: {score:.4f}")
+        else:
+            matched_files = structured_files[:3]
+    except Exception as e:
+        print(f"###schema### 向量匹配异常，降级为前 3 个结构化文件: {e}")
+        matched_files = structured_files[:3]
+
+    files_to_inject = matched_files[:3] if matched_files else structured_files[:3]
+
+    lines = ["【可用数据文件】", "⚠️ 注意：以下仅为文件概况。你必须根据用户提问，从这些文件中选择最合适的一个来调用工具。"]
+    for item in files_to_inject:
         fname = item.get("file_name", "")
         schema = item.get("schema")
         if not schema:
@@ -393,23 +470,19 @@ def _build_schema_hint() -> str:
         for col in schema.get("columns", []):
             col_name = col.get("name")
             col_type = col.get("type")
-            type_hint = {
-                "date": "日期",
-                "numeric": "数值",
-                "category": "分类",
-                "text": "文本",
-            }.get(col_type, col_type)
+            type_hint = {"date": "日期", "numeric": "数值", "category": "分类", "text": "文本"}.get(col_type, col_type)
             lines.append(f"  - {col_name}（{type_hint}）")
 
-    if len(lines) == 2:
-        return ""
-
-    print(f"###schema### 构建成功，包含 {len(lines) - 2} 列信息")
+    print(f"###schema### 动态构建成功，最终注入文件数: {len(files_to_inject)}")
     return "\n".join(lines)
 
 def _retrieve_background(query: str) -> dict:
     """
     【检索基础设施化】物理层无条件执行企业知识库检索。
+    与 LLM 决策解耦：无论 LLM 是否调用 search_knowledge，本函数总会执行。
+
+    返回：
+        {"text": 拼接后的上下文, "ids": 结构化 ID 列表}
     """
     from common.rag_v2 import search_knowledge_v2
     try:
@@ -418,6 +491,7 @@ def _retrieve_background(query: str) -> dict:
             text = result.get("context_text", "")
             sources = result.get("sources", [])
             ids = [s.get("doc_id") for s in sources if s.get("doc_id")]
+            # 背景资料截断，避免撑爆 system prompt
             if text and len(text) > 8000:
                 text = text[:8000] + "\n...（背景资料过长，已截断）"
             return {"text": text, "ids": ids}
@@ -429,13 +503,19 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
     query_worker=None, command_worker=None, TOOL_ROUTER=None,
     image_base64: str = None, temp_file_path: str = None):
     """
-    V3 架构（最终稳定版）：流式输出 + 工具调用 + 异常捕获 + 日期注入
+    V3 架构（流式版）：schema 事实注入 + LLM 自主决策 + 确定性执行
+
+    输入：
+        session_id: 会话ID（包含用户名和窗口名）
+        query: 用户当前提问
+        user_text: 用户原始输入（用于记忆）
+        temp_file_path: 临时上传文件的路径（可选）
     """
-    # ① 前置管道
+    # ① 前置管道：用户状态校验与安全过滤
     real_username = session_id.split('_')[0] if '_' in session_id else session_id
     user_info = get_user_info(real_username)
     
-    # 【核心修复】恢复安全拦截逻辑
+    # 【核心修复】恢复用户不存在/已被禁用的安全拦截逻辑
     if not user_info:
         print(f"###系统安全### 用户 {real_username} 不存在，拒绝访问")
         yield json.dumps({"type": "answer", "content": "【系统安全提示】用户不存在。"}, ensure_ascii=False)
@@ -452,11 +532,13 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
     tool_trace = []
     source_prefix = ""
 
+    # 【安全过滤】输入安全检查
     is_safe, err_msg = input_guard(query)
     if not is_safe:
         yield json.dumps({"type": "status", "content": err_msg}, ensure_ascii=False)
         return
 
+    # 启动 Worker 循环（确保 QueryWorker / CommandWorker 处于运行状态）
     if not query_worker.is_running:
         asyncio.create_task(query_worker.run_loop())
         query_worker.is_running = True
@@ -464,6 +546,7 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
         asyncio.create_task(command_worker.run_loop())
         command_worker.is_running = True
 
+    # 【工具确认机制】若存在待确认工具且用户输入“确认”，则直接执行
     if session_id in pending and "确认" in query.strip():
         tool_info = pending.pop(session_id)
         save_pending(pending)
@@ -480,6 +563,7 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
         yield json.dumps({"type": "answer", "content": output_guard(result), "contexts": []}, ensure_ascii=False)
         return
 
+    # 【临时文件处理】挂载当前会话关联的临时文件，支持多轮对话携带文件
     if temp_file_path:
         _session_temp_files[session_id] = temp_file_path
         current_temp_file = temp_file_path
@@ -487,7 +571,7 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
         _session_temp_files.pop(session_id, None)
         current_temp_file = None
 
-    # 时间快路径
+    # 【时间快路径】高频问题无需走 RAG，直接返回
     if any(kw in query for kw in ["现在几点", "现在时间", "几点了", "什么时间", "当前时间"]):
         time_result = get_current_time()
         answer = f"现在是 {time_result}（北京时间）。"
@@ -496,17 +580,17 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
         yield json.dumps({"type": "answer", "content": output_guard(answer), "contexts": []}, ensure_ascii=False)
         return
 
-    # 记忆装载
+    # 记忆装载：获取最近 20 轮对话历史
     history = memory.get(session_id)[-20:]
 
-    # ② 语义路由
+    # ② 语义路由层：判断问题类型
     yield json.dumps({"type": "status", "content": "正在分析问题类型..."}, ensure_ascii=False)
     route = await _route_query(query)
     system_content = SYSTEM_PROMPT
 
-    # 数据类注入 schema
+    # 数据类问题注入数据文件的 schema 提示
     if route == "data":
-        schema_hint = _build_schema_hint()
+        schema_hint = _build_schema_hint(query)
         if schema_hint:
             system_content = SYSTEM_PROMPT + "\n\n" + schema_hint
             print(f"###schema### 注入 {len(schema_hint)} 字符的数据 schema")
@@ -515,7 +599,7 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
     else:
         print(f"###schema### 跳过（路由={route}）")
 
-    # 物理层数据来源前缀
+    # 【物理层数据来源前缀】根据实际数据来源生成前缀，保证最终输出对用户透明
     if current_temp_file:
         raw_name = os.path.basename(current_temp_file)
         if raw_name.startswith(session_id + "_"):
@@ -530,7 +614,7 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
     elif route == "realtime":
         source_prefix = "根据实时信息，"
 
-    # 知识类背景检索
+    # 【知识类背景检索】仅当路由为 knowledge 时才触发
     bg = {"text": "", "ids": []}
     if route == "knowledge":
         yield json.dumps({"type": "status", "content": "正在检索企业知识库..."}, ensure_ascii=False)
@@ -549,26 +633,21 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
             print(f"###背景检索### 无相关命中")
 
     system_content += "\n\n【回答要求】请不要在回答开头写任何关于数据来源的说明。直接以'以下是...'开头。系统会自动为你添加前缀。"
-
-    # 【核心修复】强制注入当前日期，解决 LLM 编造日期的问题
-    import datetime
-    from zoneinfo import ZoneInfo
-    # 强制使用上海时区，避免 UTC 时间导致日期错乱
+    
+    # 【系统时间注入】防止 LLM 编造日期
     current_date_str = datetime.datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y年%m月%d日 %H:%M:%S")
     system_content += f"\n\n【系统时间信息】当前系统时间是 {current_date_str}。请以此时间为准，不要依赖你的内部知识库或历史记忆。"
 
-    # ③ 角色权限过滤
+    # ③ 角色权限过滤：基于 RBAC 过滤工具
     role = user_info.get("role", "viewer") if user_info else "viewer"
     if role not in ROLE_PERMISSIONS:
         role = "manager"
 
     allowed_tools = TOOLS_METADATA
     if role == "viewer":
-        allowed_tools = [t for t in TOOLS_METADATA
-                         if t["function"]["name"] not in ["web_search", "fetch_webpage"]]
+        allowed_tools = [t for t in TOOLS_METADATA if t["function"]["name"] not in ["web_search", "fetch_webpage"]]
 
-    # ④ 构建 messages
-    # 【核心修复】如果是实时搜索，清空历史记录，防止大模型被前几次“搜索失败”的记录污染，导致跳过工具调用
+    # ④ 构建 messages（实时类问题跳过历史记录，防止历史污染）
     messages = [{"role": "system", "content": system_content}]
     if route != "realtime":
         messages.extend(history)
@@ -585,6 +664,8 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
         t_llm = time.time()
         response = None
         last_error = None
+        
+        # 【防御性重试】LLM 调用失败时最多重试 2 次，间隔 1s
         for llm_retry in range(3):
             try:
                 response = client.chat.completions.create(
@@ -603,19 +684,21 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
                 import traceback
                 last_error = e
                 print(f"###LLM重试### 第 {llm_retry+1} 次失败: {type(e).__name__}: {e}")
-                traceback.print_exc()  # 打印详细堆栈，方便定位网络/API Key问题
+                traceback.print_exc()
                 if llm_retry < 2:
                     time.sleep(1)
 
         if response is None or not getattr(response, "choices", None):
-            answer = f"模型调用失败（已重试 3 次）: {last_error}，请检查本地网络或 API Key 配置。"
+            answer = f"模型调用失败（已重试 3 次）: {last_error}"
             print(f"###严重Bug### 模型调用彻底失败: {last_error}")
             memory.append(session_id, original_query, answer)
             yield json.dumps({"type": "answer", "content": output_guard(answer), "contexts": collected_sources}, ensure_ascii=False)
             return
 
-        t_llm_cost = round(time.time() - t_llm, 3)
         msg = response.choices[0].message
+
+        # 【核心修复】将 trace 记录提前到 LLM 响应后，无论是否调用工具都记录
+        t_llm_cost = round(time.time() - t_llm, 3)
         tool_trace.append({
             "iteration": iteration, "stage": "llm",
             "cost_seconds": t_llm_cost,
@@ -624,13 +707,14 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
 
         if not msg.tool_calls:
             answer = msg.content
-            # 【容错修复】防止 LLM 返回空内容导致程序崩溃
+            # 容错：如果模型输出空内容，触发重试
             if not answer or not answer.strip():
                 print(f"###警告### LLM 返回了空内容，触发重试")
                 if iteration < MAX_ITERATIONS - 1:
                     continue
                 answer = "抱歉，模型未能生成有效回答，请稍后重试。"
 
+            # 【决策校验器】数据意图命中但未调工具时，触发反思重试
             data_intent_words = [
                 "趋势", "统计", "汇总", "销售额", "各月", "季度", "同比", "环比", "排名",
                 "画图", "绘制", "生成图", "折线图", "柱状图", "饼图", "可视化", "图表", "作图",
@@ -648,20 +732,17 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
             if (has_data_intent or has_knowledge_intent) and iteration == 0:
                 messages.append({
                     "role": "system",
-                    "content": (
-                        "你刚才的回答没有调用任何工具。请重新审视用户的问题，"
-                        "判断是否需要调用工具。可用工具及其适用场景见工具描述，"
-                        "请根据用户意图自主选择最合适的工具。"
-                    )
+                    "content": "你刚才的回答没有调用任何工具。请重新审视用户的问题，判断是否需要调用工具。可用工具及其适用场景见工具描述，请根据用户意图自主选择最合适的工具。"
                 })
                 continue
 
-            # 出最终报告前发状态
             yield json.dumps({"type": "status", "content": "正在生成最终报告..."}, ensure_ascii=False)
             break
 
-        # 将 Pydantic 对象转为 dict
+        # 将 Pydantic 对象转为 dict，并追加到 messages
         messages.append(msg.model_dump(exclude_unset=True))
+        
+        # 执行多个工具调用
         for tool_call in msg.tool_calls:
             func_name = ""
             arguments = {}
@@ -672,26 +753,35 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
                 messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": f"参数解析错误: {e}"})
                 continue
 
+            # 【租户隔离】日程相关工具注入租户 ID
             if func_name in ["add_event", "delete_event", "list_events"]:
                 arguments["_tenant"] = memory.get_tenant(session_id)
 
+            # 【权限拦截】viewer 角色禁止调用联网工具
             if role == "viewer" and func_name in ["web_search", "fetch_webpage"]:
                 result = "无权限执行此操作。"
                 messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": result})
                 continue
 
+            # 【临时文件注入】图表或数据聚合工具自动注入当前会话的临时文件
             if func_name in ["aggregate", "generate_chart"] and current_temp_file and not arguments.get("file_name"):
                 arguments["file_name"] = os.path.basename(current_temp_file)
+            
+            # 【核心修复】将原始用户的提问传进参数中，供工具内部做“参数防呆纠正”
+            if func_name == "generate_chart":
+                arguments["_user_query"] = original_query
 
             yield json.dumps({"type": "tool", "content": f"正在调用工具: {func_name}，请稍候..."}, ensure_ascii=False)
-            await asyncio.sleep(0.1) # 给前端一点渲染时间
+            await asyncio.sleep(0.1)
 
             result = None
             t_tool = time.time()
+            
+            # 【工具重试】最多重试 2 次
             for retry in range(MAX_RETRIES + 1):
                 try:
                     if func_name in AVAILABLE_TOOLS:
-                        # 【核心修复】将同步工具调用放入线程池中执行，避免阻塞异步事件循环
+                        # 【性能与稳定性】工具执行放入线程池，防止阻塞 asyncio 事件循环
                         result = await asyncio.to_thread(AVAILABLE_TOOLS[func_name], **arguments)
                     else:
                         result = f"未找到工具 {func_name}"
@@ -700,10 +790,16 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
                     if retry == MAX_RETRIES:
                         result = f"工具执行错误（已重试 {MAX_RETRIES} 次）: {e}"
                     else:
-                        # 异步环境下的重试等待需使用 asyncio.sleep
                         await asyncio.sleep(0.5)
 
-            # 图片通道分离
+            # 记录工具执行 trace
+            tool_trace.append({
+                "iteration": iteration, "stage": "tool",
+                "name": func_name, "cost_seconds": round(time.time() - t_tool, 3),
+                "result_len": len(str(result)),
+            })
+
+            # 【图片通道分离】generate_chart 返回的 URL 图片不经过 LLM，由后端直接拼接
             if func_name == "generate_chart" and result:
                 img_match = re.search(r'!\[.*?\]\(/charts/[a-f0-9]+\.png\)', str(result))
                 if img_match:
@@ -711,6 +807,7 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
                     image_output = full[full.index('](') + 2 : -1]
                     result = re.sub(r'!\[.*?\]\(/charts/[a-f0-9]+\.png\)', '[图片已就绪]', str(result))
 
+            # 【检索ID提取】提取结构化标记 [RETRIEVED_IDS] 中的真实 ID
             if func_name == "search_knowledge" and result:
                 ids_match = re.search(r'\[RETRIEVED_IDS\](.*?)\[/RETRIEVED_IDS\]', str(result))
                 if ids_match:
@@ -723,13 +820,6 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
                         if m not in collected_sources:
                             collected_sources.append(m)
 
-            # 【核心修复】补上遗漏的工具追踪记录，解决 tools=[] 的误报
-            tool_trace.append({
-                "iteration": iteration, "stage": "tool",
-                "name": func_name, "cost_seconds": round(time.time() - t_tool, 3),
-                "result_len": len(str(result)),
-            })
-
             simple_log_tool(session_id, original_query, func_name, arguments, result)
             messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": str(result)})
     else:
@@ -738,23 +828,22 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
     # ⑥ 输出与后处理
     answer = output_guard(answer)
 
-    # 1. 彻底清洗 LLM 写的所有无效图片标签
-    answer = re.sub(r'!\[.*?\]\(.*?\)', '', answer)  # 清除 ![标题](url) 形式
-    answer = re.sub(r'!\[.*?\]', '', answer)         # 清除 ![标题] 形式
+    # 清理 LLM 写的无效图片标签
+    answer = re.sub(r'!\[.*?\]\(.*?\)', '', answer)
+    answer = re.sub(r'!\[.*?\]', '', answer)
 
-    # 2. 前缀清洗，去除 LLM 可能误带的旧前缀
+    # 去除 LLM 可能误带的前缀
     answer = re.sub(r'^(根据|基于).*?数据，|根据数据文件[^\n]*?，', '', answer).strip()
 
-    # 3. 统一数据来源前缀
+    # 物理层拼接前缀，并去除 LLM 可能误带的旧前缀
     if source_prefix and answer.startswith(source_prefix):
         answer = answer[len(source_prefix):].strip()
-    # 【核心修复】强制拼接换行，确保 # 标题独占一行，正则表达式能正确匹配
     if source_prefix and answer.startswith("#"):
         answer = source_prefix + "\n\n" + answer
     else:
         answer = source_prefix + answer
 
-    # 4. 图片精准插入（支持饼图标题）
+    # 【图片插入】将图片精准插入到带有"柱状图/饼图/图表/趋势图"的标题下方
     if image_output:
         img_md = f"![图表]({image_output})"
         chart_title_match = re.search(r'^(#{1,3}\s+.*?(柱状图|饼图|图表|趋势图).*?)$', answer, re.MULTILINE)
@@ -769,7 +858,7 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
             else:
                 answer = answer.rstrip() + "\n\n" + img_md
 
-    # ⑦ 后置记忆
+    # ⑦ 后置管道：记忆清洗与写入
     answer_for_memory = re.sub(
         r'\n*\s*>?\s*说明：本[次轮].{0,20}资料中[^\n]*(?:\n(?!\n|如需|如果您)[^\n]*)*',
         '', answer
@@ -782,7 +871,7 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
     tool_names = [t['name'] for t in tool_trace if t['stage'] == 'tool']
     print(f"###trace### session={session_id}, llm_calls={llm_count}, tools={tool_names}")
 
-    # 打字机效果
+    # 【打字机效果】将答案切成小块（每次2个字符）流式推送给前端
     chunk_size = 2
     for i in range(0, len(answer), chunk_size):
         chunk = answer[i:i+chunk_size]
@@ -790,9 +879,11 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
         yield json.dumps({"type": "answer", "content": chunk, "contexts": context_data}, ensure_ascii=False)
         await asyncio.sleep(0.01)
 
+
 # ================= API 接口 =================
 @app.post("/api/login")
 async def api_login(request: LoginRequest):
+    """用户登录接口，验证用户名和 PIN 码"""
     user = authenticate(request.username.strip().lower(), request.pin)
     if user and isinstance(user, dict) and user.get("status") == "disabled":
         return {"status": "error", "message": "该账号已被禁用，请联系管理员"}
@@ -803,11 +894,14 @@ async def api_login(request: LoginRequest):
 
 @app.post("/api/chat")
 async def api_chat(request: ChatRequest):
-    # 1. 前置鉴权
+    """
+    核心聊天接口，返回 SSE 流式响应。
+    包含前置安全拦截，防止已禁用账号进行对话。
+    """
     real_username = request.session_id.split('_')[0] if '_' in request.session_id else request.session_id
     user_info = get_user_info(real_username)
 
-    # 【核心修复】禁用/不存在用户，也必须以 SSE 流的形式返回，防止前端流解析卡死
+    # 【核心修复】禁用或不存在用户，返回 SSE 流格式的错误信息，防止前端流式解析卡死
     if not user_info or user_info.get("status") == "禁用":
         async def block_stream():
             msg = "【系统安全提示】您的账号已被管理员禁用或不存在。"
@@ -815,7 +909,6 @@ async def api_chat(request: ChatRequest):
             yield "data: [DONE]\n\n"
         return StreamingResponse(block_stream(), media_type="text/event-stream")
 
-    # 2. 正常业务流程
     try:
         generator = chat_core_stream(
             request.session_id, request.query, request.user_text,
@@ -832,7 +925,6 @@ async def api_chat(request: ChatRequest):
     except Exception as e:
         import traceback
         print(f"###严重Bug### {traceback.format_exc()}")
-        # 异常也必须返回 SSE 格式
         async def error_stream():
             yield f"data: {json.dumps({'type': 'answer', 'content': f'系统处理异常: {e}'}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
@@ -841,6 +933,7 @@ async def api_chat(request: ChatRequest):
 
 @app.post("/api/upload_temp")
 async def api_upload_temp(file: UploadFile = File(...), session_id: str = Form(...)):
+    """上传临时文件接口，文件保存在 temp 目录，有效期 1 小时"""
     import time as _t
     now = _t.time()
     for f in os.listdir(TEMP_UPLOAD_DIR):
@@ -864,6 +957,7 @@ async def api_upload_temp(file: UploadFile = File(...), session_id: str = Form(.
 
 @app.post("/api/upload")
 async def api_upload(file: UploadFile = File(...)):
+    """通用文件上传接口，支持图片 OCR、CSV 分析、语音转写"""
     file_path = os.path.join(os.getcwd(), file.filename)
     try:
         with open(file_path, "wb") as buffer:
@@ -884,6 +978,7 @@ async def api_upload(file: UploadFile = File(...)):
 
 @app.get("/api/kb/list")
 async def api_kb_list():
+    """获取知识库文件列表"""
     rag_file = os.path.join(UPLOAD_DIR, "rag_data.json")
     try:
         if os.path.exists(rag_file):
@@ -898,6 +993,7 @@ async def api_kb_list():
 
 @app.post("/api/kb/update_tags")
 async def api_kb_update_tags(file_name: str = Form(...), tags: str = Form("")):
+    """更新知识库文档的标签"""
     rag_file = os.path.join(UPLOAD_DIR, "rag_data.json")
     if os.path.exists(rag_file):
         try:
@@ -921,6 +1017,7 @@ async def api_kb_update_tags(file_name: str = Form(...), tags: str = Form("")):
 
 @app.post("/api/kb/index")
 async def api_kb_index(file: UploadFile = File(...), tags: str = Form("")):
+    """上传文档并建立索引，调用 RAG V2 的分块和向量化逻辑"""
     import asyncio
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     file_path = os.path.join(UPLOAD_DIR, os.path.basename(file.filename))
@@ -940,6 +1037,7 @@ async def api_kb_index(file: UploadFile = File(...), tags: str = Form("")):
 
 @app.post("/api/kb/delete")
 async def api_kb_delete(file_name: str = Form(...)):
+    """从知识库中删除文档"""
     rag_file = os.path.join(UPLOAD_DIR, "rag_data.json")
     if os.path.exists(rag_file):
         try:
@@ -958,6 +1056,7 @@ async def api_kb_delete(file_name: str = Form(...)):
 
 @app.get("/api/kb/download")
 async def api_kb_download(file_name: str):
+    """下载知识库中的文档"""
     safe_name = os.path.basename(file_name)
     file_path = os.path.join(UPLOAD_DIR, safe_name)
     if not os.path.exists(file_path):
@@ -967,6 +1066,7 @@ async def api_kb_download(file_name: str):
 
 @app.get("/api/users/list")
 async def api_users_list():
+    """获取用户列表（管理员）"""
     conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "users.db"))
     cursor = conn.cursor()
     cursor.execute("SELECT username, real_name, role, department, contact, status FROM users")
@@ -977,6 +1077,7 @@ async def api_users_list():
 
 @app.post("/api/users/add")
 async def api_users_add(username: str = Form(...), pin: str = Form(...), real_name: str = Form(""), role: str = Form("viewer"), department: str = Form(""), contact: str = Form(""), status: str = Form("正常")):
+    """添加新用户（管理员）"""
     try:
         conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "users.db"))
         cursor = conn.cursor()
@@ -992,6 +1093,7 @@ async def api_users_add(username: str = Form(...), pin: str = Form(...), real_na
 
 @app.post("/api/users/delete")
 async def api_users_delete(username: str = Form(...)):
+    """删除用户（管理员）"""
     conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "users.db"))
     cursor = conn.cursor()
     cursor.execute("DELETE FROM users WHERE username = ?", (username,))
@@ -1002,6 +1104,7 @@ async def api_users_delete(username: str = Form(...)):
 
 @app.post("/api/users/update")
 async def api_users_update(username: str = Form(...), role: str = Form(...), status: str = Form("正常")):
+    """更新用户角色或状态（管理员）"""
     conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "users.db"))
     cursor = conn.cursor()
     cursor.execute("UPDATE users SET role = ?, status = ? WHERE username = ?", (role, status, username))
@@ -1012,6 +1115,7 @@ async def api_users_update(username: str = Form(...), role: str = Form(...), sta
 
 @app.get("/api/health")
 async def api_health():
+    """获取系统健康指标（总任务数、成功率、活跃用户、工具调用分布）"""
     total_tasks = 0; success_tasks = 0; failed_tasks = 0; total_users = 0; active_users = 0; sorted_tools = {}
     try:
         conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "users.db"))
@@ -1050,6 +1154,7 @@ async def api_health():
 
 @app.get("/api/logs")
 async def api_logs():
+    """获取操作日志列表"""
     plan_log_path = os.path.join(UPLOAD_DIR, "plan_log.json")
     logs = []
     if os.path.exists(plan_log_path):
@@ -1075,6 +1180,7 @@ async def api_logs():
 
 @app.get("/api/logs/export")
 async def api_logs_export():
+    """导出操作日志为 CSV 文件"""
     import csv
     from io import StringIO
     from fastapi.responses import Response
@@ -1099,6 +1205,7 @@ async def api_logs_export():
 
 @app.get("/api/history/{session_id}")
 async def get_history(session_id: str):
+    """获取指定会话的历史对话记录"""
     try:
         hist = memory.get_history(session_id)
         return {"status": "success", "data": hist if hist else []}
@@ -1108,7 +1215,7 @@ async def get_history(session_id: str):
 
 @app.post("/api/history/clear")
 async def api_history_clear(session_id: str = Form(...)):
-    """【故事 6.3】清空指定 session 的所有历史消息"""
+    """清空指定会话的所有历史消息"""
     try:
         memory.clear(session_id)
         print(f"###历史清空### session={session_id}")
@@ -1120,6 +1227,7 @@ async def api_history_clear(session_id: str = Form(...)):
 
 @app.post("/api/feedback")
 async def api_feedback(session_id: str = Form(...), feedback_type: str = Form(...), feedback_text: str = Form("")):
+    """用户反馈接口（点赞/点踩）"""
     try:
         conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "feedback.db"))
         cursor = conn.cursor()
@@ -1134,6 +1242,7 @@ async def api_feedback(session_id: str = Form(...), feedback_type: str = Form(..
 
 @app.get("/api/status")
 async def api_status():
+    """获取 QueryWorker 和 CommandWorker 的运行状态"""
     workers = []
     try:
         if _query_worker: workers.append(_query_worker.get_stats())
