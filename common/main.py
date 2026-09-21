@@ -264,12 +264,29 @@ async def startup_event():
         for name in _query_worker.tools: _tool_router[name] = _query_worker
         for name in _command_worker.tools: _tool_router[name] = _command_worker
         set_workers(_query_worker, _command_worker, _tool_router)
+
+    # 【US-03 修复】在服务启动时立即启动 Worker 循环，确保状态监控正常显示
+    if _query_worker and not _query_worker.is_running:
+        asyncio.create_task(_query_worker.run_loop())
+        _query_worker.is_running = True
+    if _command_worker and not _command_worker.is_running:
+        asyncio.create_task(_command_worker.run_loop())
+        _command_worker.is_running = True
+
     print("✅ FastAPI 初始化完成")
 
 
 # ================= V3 系统提示 =================
 SYSTEM_PROMPT = """
 你是一个企业级AI智能助手。你拥有工具调用能力，请根据用户意图自主决策调用哪些工具。
+
+【最高优先级：回答边界与拒答规则（绝对禁令）】
+1. **必须且只能基于【企业知识库背景资料】和工具返回的真实数据回答**，严禁使用模型自身常识、经验或推测补充任何未在资料中出现的内容。
+2. **若【企业知识库背景资料】为空，或资料与用户问题完全无关**（如财务报销、发票开具、保修期查询、行政政策等知识库未覆盖的领域），**必须直接回答：**
+   「根据企业知识库文档，未能找到关于该问题的具体说明，建议咨询相关部门。」
+   **严禁编造、严禁套用无关资料强行作答。**
+3. **若背景资料中包含与用户问题症状相近、机理相似的文档**（例如用户描述"系统升级后打印中断"，而资料中是"重装系统后打印机失踪"，二者都属于系统变动导致打印异常），**必须基于该相近文档给出处理建议**，并在回答中说明"这与 [XX-XX] 描述的场景相近，可参考其处理方式"。**不得因字面措辞不同就拒答。**
+4. **回答中必须引用命中的文档编号**（如 [IT-01]、[TS-06]）。
 
 【能力边界】
 - **系统已自动检索企业知识库，背景资料已注入 system prompt**。请优先基于背景资料回答。
@@ -279,6 +296,13 @@ SYSTEM_PROMPT = """
 - 涉及实时信息 → 使用 web_search
 - 涉及文件概况 → 使用 analyze_file
 - 涉及图表可视化（折线图/柱状图/饼图等）→ 使用 generate_chart
+- 涉及企业内部员工/薪资的SQL查询 → 使用 query_database
+
+【内置数据库说明】
+系统内置了一个 SQLite 数据库（sample.db），其中包含一个 employees 表。
+表结构：id (INTEGER), name (TEXT), position (TEXT), salary (INTEGER)。
+当用户询问员工信息、工资、薪资总和、最高/最低薪资时，请直接使用 query_database 工具执行 SELECT 语句来获取真实数据。
+
 如果知识库和工具都无法解决，请坦诚告知用户。
 
 【图表生成绝对规则（最高优先级，违反将导致系统错误）】
@@ -644,8 +668,11 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
         role = "manager"
 
     allowed_tools = TOOLS_METADATA
-    if role == "viewer":
-        allowed_tools = [t for t in TOOLS_METADATA if t["function"]["name"] not in ["web_search", "fetch_webpage"]]
+    # 【核心修复】不删除工具，保留其定义，让 LLM 尝试调用，从而触发物理层拦截逻辑。
+    # 之前因为删除了工具，导致 LLM 没有工具可用，只能长篇大论地解释自己没有联网能力。
+    # if role == "viewer":
+    #     allowed_tools = [t for t in TOOLS_METADATA
+    #                      if t["function"]["name"] not in ["web_search", "fetch_webpage"]]
 
     # ④ 构建 messages（实时类问题跳过历史记录，防止历史污染）
     messages = [{"role": "system", "content": system_content}]
@@ -759,7 +786,8 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
 
             # 【权限拦截】viewer 角色禁止调用联网工具
             if role == "viewer" and func_name in ["web_search", "fetch_webpage"]:
-                result = "无权限执行此操作。"
+                # 【物理层拦截】强制中断并返回不可逾越的提示，要求 LLM 不得解释
+                result = "【物理层安全拦截】当前账号（观察者）没有互联网访问权限。你不需要解释原因，请直接向用户回复：“抱歉，您的当前权限不支持联网搜索，请联系管理员开通。”"
                 messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": result})
                 continue
 
@@ -776,13 +804,24 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
 
             result = None
             t_tool = time.time()
-            
-            # 【工具重试】最多重试 2 次
             for retry in range(MAX_RETRIES + 1):
                 try:
                     if func_name in AVAILABLE_TOOLS:
-                        # 【性能与稳定性】工具执行放入线程池，防止阻塞 asyncio 事件循环
-                        result = await asyncio.to_thread(AVAILABLE_TOOLS[func_name], **arguments)
+                        # 【核心修复】将工具执行路由到对应的 Worker 进行统计与缓存
+                        # 如果 TOOL_ROUTER 可用，则使用 Worker，否则降级为直接线程执行
+                        if TOOL_ROUTER and func_name in TOOL_ROUTER:
+                            worker = TOOL_ROUTER[func_name]
+                            task_result = await worker.send_task({
+                                "tool": func_name,
+                                "arguments": arguments
+                            })
+                            if "error" in task_result:
+                                result = f"工具执行错误: {task_result['error']}"
+                            else:
+                                result = task_result.get("result", "")
+                        else:
+                            # 降级逻辑（防止 Worker 未初始化时崩溃）
+                            result = await asyncio.to_thread(AVAILABLE_TOOLS[func_name], **arguments)
                     else:
                         result = f"未找到工具 {func_name}"
                     break
@@ -1153,8 +1192,15 @@ async def api_health():
 
 
 @app.get("/api/logs")
-async def api_logs():
-    """获取操作日志列表"""
+async def api_logs(session_id: str = ""):
+    """获取操作日志列表（增加观察者物理层权限校验）"""
+    # 【物理层安全拦截】观察者不允许查看系统日志，防止内部消息外泄
+    if session_id:
+        real_username = session_id.split('_')[0] if '_' in session_id else session_id
+        user_info = get_user_info(real_username)
+        if user_info and user_info.get("role") == "viewer":
+            return {"status": "error", "message": "无权限查看系统日志，请联系管理员"}
+
     plan_log_path = os.path.join(UPLOAD_DIR, "plan_log.json")
     logs = []
     if os.path.exists(plan_log_path):
@@ -1163,8 +1209,8 @@ async def api_logs():
                 try:
                     entry = json.loads(line)
                     ts = entry.get('timestamp', '')[:19]
-                    session_id = entry.get('session_id', '')
-                    window_name = session_id.split('_', 1)[1] if '_' in session_id else '主对话'
+                    session_id_entry = entry.get('session_id', '')
+                    window_name = session_id_entry.split('_', 1)[1] if '_' in session_id_entry else '主对话'
                     logs.append({
                         "timestamp": ts,
                         "username": f"{entry.get('username', 'unknown')}/{window_name}",

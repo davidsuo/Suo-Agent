@@ -33,6 +33,10 @@ import pandas as pd
 import jieba
 from rank_bm25 import BM25Okapi
 
+# 【核心修复】强制离线加载本地模型，彻底消灭网络超时导致的启动卡死
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
 # ==================== 基础路径定义（必须最先定义） ====================
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # 优先使用持久化磁盘路径，将数据库和元数据存储在 Disk
@@ -85,17 +89,28 @@ if os.getenv("DISABLE_RERANKER_MODEL", "false").lower() == "true":
 else:
     try:
         from sentence_transformers import CrossEncoder
-        print("###RAG加载### 正在加载 Reranker 轻量级模型（首次加载需等待几十秒）...")
-        _reranker_model = CrossEncoder(
-            "cross-encoder/ms-marco-MiniLM-L-6-v2",
-            cache_folder=_MODEL_CACHE_DIR,
-            device="cpu"
+
+        # 默认用中文/多语言 Reranker；如果下载失败，可用环境变量切换
+        _RERANKER_MODEL_NAME = os.getenv(
+            "RERANKER_MODEL",
+            "BAAI/bge-reranker-base"
         )
+
+        print(f"###RAG加载### 正在加载 Reranker 模型：{_RERANKER_MODEL_NAME}（首次加载需等待）...")
+
+        _reranker_model = CrossEncoder(
+            _RERANKER_MODEL_NAME,
+            cache_folder=_MODEL_CACHE_DIR,
+            device=os.getenv("RERANKER_DEVICE", "cpu")
+        )
+
+        # 只有实例化成功后才预热，避免 NoneType.predict
         _reranker_model.predict([("预热查询", "预热文档")])
-        print("✅ Reranker 轻量级模型加载成功！")
+        print("✅ Reranker 模型加载成功！")
         print("✅ Reranker 预热完成")
+
     except Exception as e:
-        print(f"⚠️ Reranker 模型加载失败，降级为纯 RRF 融合: {e}")
+        print(f"⚠️ Reranker 模型加载失败，降级为纯 RRF 融合: {type(e).__name__}: {e}")
         _reranker_model = None
 
 # ==================== ChromaDB 客户端 ====================
@@ -665,7 +680,12 @@ def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
 
             # 【核心修复】向量无命中时，绝不能直接返回！必须放行让 BM25 接力兜底。
             if not all_hits:
-                print(f"【US-01】向量路无命中，放行 BM25 关键词检索...")
+                # 【核心修复】如果向量模型存在且判定拒绝（低于阈值），则直接返回空，彻底切断 BM25 对负样本的噪音兜底
+                if _vector_model and _chroma_client and not vector_passed:
+                    print(f"【US-01】向量路判定拒绝，为防止噪音污染，直接返回空。")
+                    return {"context_text": "", "sources": []}
+                else:
+                    print(f"【US-01】向量模型不可用，放行 BM25 关键词检索...")
             else:
                 all_hits.sort(key=lambda x: x[0], reverse=True)
                 for rank, (sim, doc_id, meta, doc_text) in enumerate(all_hits[:RETRIEVAL_CONFIG["vector_top_k"]]):
@@ -717,12 +737,14 @@ def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
         return {"context_text": "", "sources": []}
 
     # 【核心修复】动态熔断机制：防止纯 BM25 时的 RRF 分数（约 0.016）被硬编码阈值 0.025 误杀
-    RRF_SCORE_THRESHOLD = 0.025
+    # RRF 基础阈值已经在 filtered 里用 rrf_threshold=0.001 把关
+    # 这里只做软阈值，保证 Top10 候选池完整，交给 Reranker 精排
+    RRF_SCORE_THRESHOLD = float(os.getenv("RRF_SCORE_THRESHOLD", "0.01"))
     valid_filtered = [(doc_id, score) for doc_id, score in filtered if score >= RRF_SCORE_THRESHOLD]
 
     if not valid_filtered:
-        print(f"【诊断-rag_v2】RRF 分数均低于 {RRF_SCORE_THRESHOLD}，尝试放宽阈值至 0.01 保底")
-        valid_filtered = [(doc_id, score) for doc_id, score in filtered if score >= 0.01]
+        print(f"【诊断-rag_v2】RRF 分数均低于 {RRF_SCORE_THRESHOLD}，判定为无相关结果，返回空")
+        return {"context_text": "", "sources": []}
 
     if not valid_filtered:
         print(f"【诊断-rag_v2】RRF 分数极低，判定为无相关结果，返回空")
@@ -739,37 +761,30 @@ def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
                 doc = doc_map.get(doc_id)
                 text = doc["text"] if doc else vector_meta.get(doc_id, {}).get("text", "")
                 rerank_pairs.append((query, text))
-            
+
             if rerank_pairs:
                 rerank_scores = _reranker_model.predict(rerank_pairs)
-                
-                # 【双重门控机制】
+
                 if len(rerank_scores) == 0:
                     top_k = candidates[:RETRIEVAL_CONFIG["final_top_k"]]
                 else:
-                    max_rerank_score = float(max(rerank_scores))
-                    
-                    # 【核心修复】废除硬编码的 true，使用动态阈值，并保证变量有定义
-                    if vector_passed:
-                        RERANKER_SCORE_THRESHOLD = 7.0
-                    else:
-                        RERANKER_SCORE_THRESHOLD = 8.0
-                        
-                    if max_rerank_score < RERANKER_SCORE_THRESHOLD:
-                        print(f"【诊断-rerank】最高分低于 {RERANKER_SCORE_THRESHOLD}（最高分: {max_rerank_score:.4f}，向量通过: {vector_passed}），判定为无相关结果，返回空")
-                        return {"context_text": "", "sources": []}
-                        
-                    # 精排通过，按分数降序取最终 Top K
-                    reranked = sorted(zip(candidates, rerank_scores), key=lambda x: x[1], reverse=True)
+                    reranked = sorted(
+                        zip(candidates, rerank_scores),
+                        key=lambda x: x[1],
+                        reverse=True
+                    )
                     top_k = [item[0] for item in reranked[:RETRIEVAL_CONFIG["final_top_k"]]]
-                    print(f"【诊断-rerank】精排完成，有效文档 {len(top_k)} 条，最高分: {reranked[0][1]:.4f}")
+                    print(
+                        f"【诊断-rerank】精排完成，有效文档 {len(top_k)} 条，"
+                        f"最高分: {float(reranked[0][1]):.4f}"
+                    )
             else:
                 top_k = candidates[:RETRIEVAL_CONFIG["final_top_k"]]
         except Exception as e:
             print(f"⚠️ Reranker 精排异常，降级为 RRF: {e}")
             top_k = candidates[:RETRIEVAL_CONFIG["final_top_k"]]
     else:
-        # 如果没有加载 Reranker，直接使用 RRF 截断
+        # 没有 Reranker 或没有候选时，直接用 RRF 截断
         top_k = candidates[:RETRIEVAL_CONFIG["final_top_k"]]
 
     # 初始化后续容器
