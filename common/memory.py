@@ -53,10 +53,14 @@ class ConversationMemory:
         self._save()
 
     def get_tenant(self, session_id: str) -> str:
-        for s_id, data in self.memory_store.items():
-            if s_id == session_id:
-                return data.get("tenant", "default")
-        return "default"
+        """从 session_id 提取租户（用户名），实现用户间日程隔离。
+
+        session_id 格式: "alice_主对话" → tenant = "alice"
+        这样每个用户的日程天然隔离，不依赖 memory_store 的写入时机。
+        """
+        if "_" in session_id:
+            return session_id.split("_", 1)[0]
+        return session_id
 
     def set_current_user(self, user: Optional[dict]):
         self.current_user = user
