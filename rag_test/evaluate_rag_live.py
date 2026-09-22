@@ -12,6 +12,7 @@ except ImportError:
     HTTPX_AVAILABLE = False
     print("警告：未安装 httpx，请运行 pip install httpx")
 
+
 # 【口径修正】RAG 系统设计目标是"宁多勿漏"，优先看 recall
 METRICS_THRESHOLDS = {
     "context_recall": 0.70,
@@ -19,6 +20,25 @@ METRICS_THRESHOLDS = {
     "rejection_accuracy": 0.80,
     "answer_relevancy": 0.05,
 }
+
+# 【负样本判定】拒答信号关键词表
+REJECT_SIGNALS = [
+    "未找到", "未能找到", "没有找到", "无法找到",
+    "无法回答", "无法提供", "无法直接回答",
+    "不包含", "未包含", "知识库中未", "知识库中暂无",
+    "抱歉", "没有收录", "未收录", "未能提供",
+    "不在知识库", "超出知识库", "没有相关信息",
+    "无相关", "未涉及", "未涵盖", "没有覆盖",
+    "建议咨询", "建议联系",
+]
+
+# 【防御】LLM/API 调用失败时的信号（这些情况下本样本不计入失败）
+API_FAILURE_SIGNALS = [
+    "模型调用失败", "Insufficient Balance", "Error code: 402",
+    "Error code: 429", "Error code: 500", "Error code: 502", "Error code: 503",
+    "网络错误", "连接失败", "Connection error",
+]
+
 
 class RAGV2Evaluator:
     def __init__(self, rag_client: Any):
@@ -72,26 +92,18 @@ class RAGV2Evaluator:
         final_metrics = {**retrieval_metrics, "answer_relevancy": round(llm_relevancy, 4)}
 
         if q_type == "negative":
-            answer_lower = (generated_answer or "").lower()
-            reject_signals = ["未找到", "未能找到", "没有找到", "无法找到", "无法回答",
-                  "无法提供", "无法直接回答", "不包含", "知识库中未",
-                  "抱歉", "没有收录", "未收录", "未能提供", "未包含"]
-        # 【防御】LLM 调用失败 / 余额不足 / 网络异常时，本次评估不计入失败
-        api_failure_signals = [
-            "模型调用失败", "Insufficient Balance", "Error code: 402",
-            "Error code: 429", "Error code: 500", "Error code: 502", "Error code: 503",
-            "网络错误", "连接失败"
-        ]
-        is_api_failure = any(sig in (answer or "") for sig in api_failure_signals)
+            # 【防御】LLM/API 调用失败时，本样本不计入失败
+            is_api_failure = any(sig in (generated_answer or "") for sig in API_FAILURE_SIGNALS)
 
-        if is_api_failure:
-            print(f"⚠️ 样本 {sample['id']} LLM 调用失败，本样本跳过判分")
-            final_metrics["rejection_accuracy"] = -1.0  # -1 表示无效样本
-            passed = True  # 不因为基础设施故障扣分
-        else:
-            rejected = any(sig in answer_lower for sig in reject_signals)
-            final_metrics["rejection_accuracy"] = 1.0 if rejected else 0.0
-            passed = rejected
+            if is_api_failure:
+                print(f"⚠️ 样本 {sample['id']} LLM 调用失败，本样本跳过判分")
+                final_metrics["rejection_accuracy"] = -1.0  # -1 表示无效样本
+                passed = True
+            else:
+                answer_lower = (generated_answer or "").lower()
+                rejected = any(sig in answer_lower for sig in REJECT_SIGNALS)
+                final_metrics["rejection_accuracy"] = 1.0 if rejected else 0.0
+                passed = rejected
         else:
             passed = final_metrics.get("context_recall", 0) >= METRICS_THRESHOLDS["context_recall"]
 
@@ -151,9 +163,12 @@ class RAGV2Evaluator:
             }
         avg_metrics = {}
         for metric in METRICS_THRESHOLDS.keys():
-            # 【口径修正】rejection_accuracy 只对 negative 样本求平均，避免正样本 0 值污染分母
+            # 【口径修正】rejection_accuracy 只对 negative 样本求平均，排除无效样本(-1)
             if metric == "rejection_accuracy":
-                neg_samples = [r for r in self.results if r["type"] == "negative"]
+                neg_samples = [
+                    r for r in self.results
+                    if r["type"] == "negative" and r["metrics"].get(metric, 0) >= 0
+                ]
                 if neg_samples:
                     values = [r["metrics"].get(metric, 0) for r in neg_samples]
                     avg_metrics[metric] = round(sum(values) / len(values), 4)
@@ -174,6 +189,7 @@ class RAGV2Evaluator:
             "results": self.results
         }
 
+
 class RealRAGClient:
     def __init__(self, base_url: str = "http://127.0.0.1:10000"):
         self.base_url = base_url
@@ -181,7 +197,7 @@ class RealRAGClient:
     async def generate(self, query: str):
         if not HTTPX_AVAILABLE:
             return {"answer": "httpx未安装", "contexts": []}
-        
+
         # 【关键修复】必须使用真实存在的用户，防止被系统权限拦截
         payload = {"session_id": "alice_主对话", "query": query, "user_text": query}
         answer_content = ""
@@ -204,18 +220,21 @@ class RealRAGClient:
                                 data = json.loads(data_str)
                                 if data.get("type") == "answer":
                                     answer_content += data.get("content", "")
-                                    if data.get("contexts"):
-                                        context_list = data.get("contexts")
+                                    new_contexts = data.get("contexts") or []
+                                    for cid in new_contexts:
+                                        if cid not in context_list:
+                                            context_list.append(cid)
                             except Exception:
                                 pass
-                
+
                 print(f"【诊断-评估器】问题: {query[:30]}...")
                 print(f"【诊断-评估器】后端返回的contexts: {context_list}")
                 return {"answer": answer_content, "contexts": context_list}
-                
+
             except Exception as e:
                 print(f"【诊断-评估器】连接失败: {type(e).__name__}: {e}")
                 return {"answer": f"网络错误: {e}", "contexts": []}
+
 
 class MockRAGClient:
     async def generate(self, query):
@@ -228,6 +247,7 @@ class MockRAGClient:
         else:
             return {"answer": "通用处理办法", "contexts": ["IT-99"]}
 
+
 async def main():
     import argparse
     parser = argparse.ArgumentParser(description="RAGV2 文档ID检索评估")
@@ -236,27 +256,27 @@ async def main():
     parser.add_argument("--local", action="store_true", help="测试本地后端（默认测试 Render 云端）")
     args = parser.parse_args()
     dataset_path = args.dataset or "test_set.json"
-    
+
     if args.local:
         target_url = "http://127.0.0.1:10000"
     else:
         target_url = "https://suo-agent.onrender.com"
-    
+
     print(f"⚠️ 警告：正在连接后端服务 [{target_url}] ...")
     rag_client = RealRAGClient(base_url=target_url) if args.real else MockRAGClient()
     evaluator = RAGV2Evaluator(rag_client=rag_client)
-    
+
     report = await evaluator.run_full_evaluation(dataset_path)
     print("\n=== 评估报告 ===")
     print(json.dumps(report["average_metrics"], indent=2, ensure_ascii=False))
     print(f"通过率: {report['pass_rate']}")
-    
+
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-    # 【修复导入】使用 datetime.now(timezone.utc)
     output_path = os.path.join(SCRIPT_DIR, f"eval_report_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json")
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=2)
     print(f"报告已保存至 {output_path}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
