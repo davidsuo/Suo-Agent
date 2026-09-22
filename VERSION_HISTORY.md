@@ -1,6 +1,6 @@
 # 版本历史与命名规范
 
-> 最后更新：2026-09-17
+> 最后更新：2026-09-22
 > 维护者：索群
 
 本文档记录 AI Native Project 的完整版本演进史，并定义新的标签命名规范。
@@ -131,6 +131,7 @@ docs/v1.0.0	2026-09-14	建立版本管理规范：VERSION_HISTORY.md + CHANGELOG
 | `rag/v2.5.0` | 2026-09-14 | 检索基础设施化：通过率 5%→85%，context_recall 0.85 |
 | `rag/v2.6.4` | 2026-09-22 | 评估器 reject_signals 关键词修正（"未能找到"等），本地/云端通过率 100% |
 | `rag/v2.6.5` | 2026-09-22 | 评估器常量重构（REJECT_SIGNALS / API_FAILURE_SIGNALS），context_list 去重累积 |
+| `rag/v2.6.6` | 2026-09-22 | 工具权限通用拦截（按 ROLE_PERMISSIONS）+ 租户隔离修复（get_tenant 从 session_id 前缀提取）+ 前端构建 |
 
 ### 3.4 Agent 架构线
 | 新标签 | 时间 | 里程碑 |

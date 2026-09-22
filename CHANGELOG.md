@@ -16,6 +16,23 @@
 版本号遵循 [SemVer 2.0.0](https://semver.org/lang/zh-CN/)。
 
 
+## [rag/v2.6.6] - 2026-09-22
+
+### Fixed
+- **工具权限越权**：`chat_core_stream` 工具执行循环按 `ROLE_PERMISSIONS` 通用校验，未授权角色（如 developer 调 `add_event`/`list_events`）被物理层拦截，不再让 LLM 编造理由。
+- **租户隔离失效**：`memory.get_tenant` 改为从 `session_id` 前缀提取用户名（`alice_主对话` → `alice`），不再依赖从未被写入的 `memory_store.tenant` 字段。
+- **前端 warning**：删除 `Chat.tsx` 里未使用的 `toolColumns` 常量（US-04 遗留）。
+
+### Changed
+- **角色文案**：`Chat.tsx` 里「观察者」→「用户」。
+- **前端构建**：`frontend/dist/` 重新生成（新 hash `index-Svwf2L19.css` / `index-z0pzyh9P.js`）。
+
+### Notes
+- 修复后发现 bob 仍能看到 2 条日程，是 `memory` 里残留的**旧越权查询记录**被 LLM 复述。**清空 bob 对话即可解决**，无需改代码。
+
+---
+
+
 ## [release/v5.8.0] - 2026-09-22
 
 ### Added
