@@ -785,10 +785,20 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
                 arguments["_tenant"] = memory.get_tenant(session_id)
 
             # 【权限拦截】viewer 角色禁止调用联网工具
+            # 【通用权限拦截】按 ROLE_PERMISSIONS 校验角色是否有权调用此工具
+            # 不删除工具定义（否则 LLM 会编造理由），而是让 LLM 调用后物理层拒绝
+            user_allowed_tools = ROLE_PERMISSIONS.get(role, [])
+            has_permission = ("*" in user_allowed_tools) or (func_name in user_allowed_tools)
+            # 额外收紧：viewer 无论权限列表怎么写，都不得联网
             if role == "viewer" and func_name in ["web_search", "fetch_webpage"]:
+                has_permission = False
+
+            if not has_permission:
                 # 【物理层拦截】强制中断并返回不可逾越的提示，要求 LLM 不得解释
-                result = "【物理层安全拦截】当前账号（观察者）没有互联网访问权限。你不需要解释原因，请直接向用户回复：“抱歉，您的当前权限不支持联网搜索，请联系管理员开通。”"
+                result = f"【物理层安全拦截】当前账号（{role}）没有调用 {func_name} 的权限。请直接告知用户无权使用该功能，不要解释原因。"
                 messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": result})
+                # 记录审计日志（可选，但推荐）
+                simple_log_tool(session_id, original_query, func_name, arguments, "【权限拦截】")
                 continue
 
             # 【临时文件注入】图表或数据聚合工具自动注入当前会话的临时文件
@@ -1193,8 +1203,8 @@ async def api_health():
 
 @app.get("/api/logs")
 async def api_logs(session_id: str = ""):
-    """获取操作日志列表（增加观察者物理层权限校验）"""
-    # 【物理层安全拦截】观察者不允许查看系统日志，防止内部消息外泄
+    """获取操作日志列表（增加用户物理层权限校验）"""
+    # 【物理层安全拦截】用户不允许查看系统日志，防止内部消息外泄
     if session_id:
         real_username = session_id.split('_')[0] if '_' in session_id else session_id
         user_info = get_user_info(real_username)

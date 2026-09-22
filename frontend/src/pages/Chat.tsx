@@ -57,7 +57,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     admin: '管理员',
     manager: '经理',
     developer: '研发人员',
-    viewer: '观察者',
+    viewer: '用户',
   };
 
   const sessionId = `${user.username}_${currentProject}`;
@@ -605,11 +605,6 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     }
   };
 
-  const toolColumns = [
-      { title: '工具名称', dataIndex: 'tool', render: (text: string | undefined) => text || '系统操作' },
-      { title: '调用次数', dataIndex: 'count' }
-  ];
-
   const logColumns = [
     { title: '时间戳', dataIndex: 'timestamp', width: 180 },
     { title: '操作人/窗口', dataIndex: 'username', width: 140 },
@@ -803,7 +798,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                           const fd = new FormData(); fd.append('username', record.username); fd.append('role', val); fd.append('status', record.status);
                           await api.post('/users/update', fd); antMessage.success('角色更新成功'); loadUsers();
                         }}>
-                        <Select.Option value="admin">管理员</Select.Option><Select.Option value="manager">经理</Select.Option><Select.Option value="developer">研发人员</Select.Option><Select.Option value="viewer">观察者</Select.Option>
+                        <Select.Option value="admin">管理员</Select.Option><Select.Option value="manager">经理</Select.Option><Select.Option value="developer">研发人员</Select.Option><Select.Option value="viewer">用户</Select.Option>
                       </Select>
                     ) },
                   { title: '部门', dataIndex: 'department' },
@@ -835,7 +830,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                   <Input.Password placeholder="密码" value={newUser.pin} onChange={(e) => setNewUser({...newUser, pin: e.target.value})} />
                   <Input placeholder="姓名" value={newUser.real_name} onChange={(e) => setNewUser({...newUser, real_name: e.target.value})} />
                   <Select placeholder="角色" value={newUser.role} onChange={(val) => setNewUser({...newUser, role: val})} style={{ width: '100%' }}>
-                    <Select.Option value="admin">管理员</Select.Option><Select.Option value="manager">经理</Select.Option><Select.Option value="developer">研发人员</Select.Option><Select.Option value="viewer">观察者</Select.Option>
+                    <Select.Option value="admin">管理员</Select.Option><Select.Option value="manager">经理</Select.Option><Select.Option value="developer">研发人员</Select.Option><Select.Option value="viewer">用户</Select.Option>
                   </Select>
                   <Input placeholder="部门" value={newUser.department} onChange={(e) => setNewUser({...newUser, department: e.target.value})} />
                   <Input placeholder="联系方式" value={newUser.contact} onChange={(e) => setNewUser({...newUser, contact: e.target.value})} />
