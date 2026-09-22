@@ -16,28 +16,6 @@
 版本号遵循 [SemVer 2.0.0](https://semver.org/lang/zh-CN/)。
 
 
-<<<<<<< HEAD
-## [release/v5.6.1] - 2026-09-21
-
-### Added
-- **全链路 RAG 语义文件匹配**：在 `_build_schema_hint` 中引入向量模型语义匹配，彻底淘汰字符串硬编码逻辑。
-- **Tavily 搜索集成**：替换 `ddgs` 为 Tavily API，彻底解决本地和云端联网搜索不稳定、超时的问题。
-- **启动预加载**：在 FastAPI 启动时强制加载 `GTE-small` 向量模型和 `Reranker` 模型，消除首次请求的冷启动延迟。
-- **文件分析工具扩展**：`analyze_file` 工具新增支持 PDF、DOCX、Markdown、TXT 格式。
-
-### Fixed
-- **图表渲染修复**：修复了 `generate_chart` 函数中缺失 `elif chart_type == "pie":` 分支导致画饼图崩溃的问题，并为渲染流程增加了防御性编程（处理全0数据）。
-- **前后端诊断流程规范化**：为 `generate_chart` 增加了基于标题的工程兜底与诊断日志（`###generate_chart###` 和 `###图表类型修正###`），确保前后端执行预期100%一致。
-- **安全拦截逻辑恢复**：修复了流式 SSE 协议下，被禁用账号请求卡死的问题。
-
----
-
-## [on-prem/v1.0.0] - 2026-09-21
-
-### 说明
-- **内部系统首次正式发布**：基于 `RAG_V2_EXPERIMENTAL` 合并至 `main` 的稳定版本。
-- **功能与云端系统完全对齐**：涵盖 RAG 混合检索、Tavily 搜索、Reranker 精排、图表绘制等所有最新特性。
-=======
 ## [release/v5.8.0] - 2026-09-22
 
 ### Added
@@ -118,7 +96,6 @@
 
 ### Changed
 - 同步云端 `release/v5.8.0`：RAG V2.6.5 + UI V3.5.0 + 5 个用户故事全部落地。
->>>>>>> RAG_V2_EXPERIMENTAL
 
 ---
 
