@@ -16,6 +16,7 @@
 版本号遵循 [SemVer 2.0.0](https://semver.org/lang/zh-CN/)。
 
 
+<<<<<<< HEAD
 ## [release/v5.6.1] - 2026-09-21
 
 ### Added
@@ -36,6 +37,88 @@
 ### 说明
 - **内部系统首次正式发布**：基于 `RAG_V2_EXPERIMENTAL` 合并至 `main` 的稳定版本。
 - **功能与云端系统完全对齐**：涵盖 RAG 混合检索、Tavily 搜索、Reranker 精排、图表绘制等所有最新特性。
+=======
+## [release/v5.8.0] - 2026-09-22
+
+### Added
+- **US-01 账户禁用漏洞修复**：修复账户禁用后页面仍可操作的问题。
+- **US-02 观察者角色权限拦截**：
+  - 前端 `Chat.tsx`：拦截知识库/日志按钮，弹 `antMessage.warning`，页面不切换。
+  - 后端 `api_logs`：新增 `session_id` 参数 + 角色校验，防御越权 API 调用。
+  - 联网搜索：物理层拦截，返回固定提示"抱歉，您的当前权限不支持联网搜索，请联系管理员开通。"，杜绝 LLM 长篇解释。
+- **US-03 Worker 实时状态监控**：`/api/status` 返回 QueryWorker / CommandWorker 运行状态。
+- **US-04 系统健康仪表板重构**：工具调用分布从 Table 改为百分比进度条，可视化更直观。
+- **US-05 聊天窗口用户身份展示优化**：显示 `用户名（部门：角色）`，含 `roleMap` 中文映射。
+- **中文 Reranker 上线**：`BAAI/bge-reranker-base`（1.11GB），本地/云端加载成功，替换原英文 `ms-marco-MiniLM-L-6-v2`。
+- **`start.sh` 自动化部署脚本**：Render 部署时自动检查并下载 Reranker 模型，支持断点续传和失败降级（不影响服务可用）。
+
+### Changed
+- **RAG V2.6.4 评估器**：`reject_signals` 补充"未能找到"、"无法找到"等 10 个关键词。
+- **RAG V2.6.5 评估器重构**：`REJECT_SIGNALS` / `API_FAILURE_SIGNALS` 提升为模块级常量；`context_list` 去重累积，避免 SSE 覆盖。
+- **`SYSTEM_PROMPT`**：新增"回答边界与拒答规则（绝对禁令）"，禁止编造与强行套用。
+- **`RRF_SCORE_THRESHOLD`**：0.032 → 0.01，扩大候选池。
+- **`final_top_k`**：2 → 5，避免双 ground_truth 题漏召。
+- **Render Disk**：2GB → 5GB。
+- **`HF_HUB_DISABLE_XET=1`**：禁用 Xet 双倍磁盘占用。
+
+### Fixed
+- 修复 Reranker 未实例化导致的 `NoneType.predict` 报错。
+- 修复向量路判定拒绝时仍走 BM25 噪音兜底的问题（负样本熔断）。
+- 修复 `rejection_accuracy` 平均值口径（只对 negative 样本求平均）。
+- 修复 LLM 调用失败（余额不足/网络错误）时误判为失败的逻辑。
+- 修复 `start.sh` 残留 `...` 占位符导致的 `command not found`。
+- 修复 `start.sh` 在 Render Root Directory=`bus_memory` 下找不到路径的问题。
+
+### Performance
+- **本地 RAG 通过率：80% → 100%**
+- **云端 RAG 通过率：85% → 100%**
+- **`context_recall`：0.8 → 0.9**
+- **`rejection_accuracy`：0.1 → 1.0**
+- **Reranker 加载**：BGE-reranker-base 中文精排，最高分从 0.57 → 0.99
+- **服务启动**：模型已持久化，redeploy 从几分钟缩短到 ~30 秒
+
+### Notes
+- Render 首次部署需下载 1.11GB 模型，可能超 15 分钟部署超时。中断后 **Manual Deploy** 可断点续传。
+- 模型已持久化到 `/app/uploads/models/`，redeploy 不会重复下载。
+- **未来若换新 Reranker 模型**：需临时删除 Render 环境变量 `HF_HUB_OFFLINE` 和 `TRANSFORMERS_OFFLINE`，允许服务联网下载。
+
+---
+
+## [ui/v3.5.0] - 2026-09-22
+
+### Added
+- **US-02 观察者权限拦截**：`Chat.tsx` 知识库/日志按钮对 `user.role === 'viewer'` 拦截，弹黄色提示。
+- **US-04 健康仪表板重构**：工具调用分布从 Table 改为百分比进度条 UI。
+- **US-05 用户身份展示**：显示 `用户名（部门：角色）`，含 `roleMap` 中文映射。
+
+---
+
+## [rag/v2.6.5] - 2026-09-22
+
+### Changed
+- `REJECT_SIGNALS` 提升为模块级常量（24 个关键词）。
+- `API_FAILURE_SIGNALS` 新增为模块级常量，覆盖 402/429/5xx 及网络错误。
+- `context_list` 改为去重累积，避免 SSE 多段 contexts 被覆盖。
+
+### Performance
+- 本地/云端 RAG 通过率均达到 **100%**。
+
+---
+
+## [rag/v2.6.4] - 2026-09-22
+
+### Fixed
+- `reject_signals` 补充"未能找到"、"无法找到"、"未能提供"等关键词。
+- `rejection_accuracy` 平均值口径只对 negative 样本求平均。
+- API 失败时本样本跳过判分。
+
+---
+
+## [on-prem/v1.1.0] - 2026-09-22
+
+### Changed
+- 同步云端 `release/v5.8.0`：RAG V2.6.5 + UI V3.5.0 + 5 个用户故事全部落地。
+>>>>>>> RAG_V2_EXPERIMENTAL
 
 ---
 
