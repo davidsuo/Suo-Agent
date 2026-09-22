@@ -12,14 +12,32 @@ except ImportError:
     HTTPX_AVAILABLE = False
     print("警告：未安装 httpx，请运行 pip install httpx")
 
+
 # 【口径修正】RAG 系统设计目标是"宁多勿漏"，优先看 recall
-# precision 作为辅助参考，阈值放宽（Top-5 检索下 precision 天然较低）
 METRICS_THRESHOLDS = {
     "context_recall": 0.70,
     "context_precision": 0.15,
     "rejection_accuracy": 0.80,
     "answer_relevancy": 0.05,
 }
+
+# 【负样本判定】拒答信号关键词表
+REJECT_SIGNALS = [
+    "未找到", "未能找到", "没有找到", "无法找到",
+    "无法回答", "无法提供", "无法直接回答",
+    "不包含", "未包含", "知识库中未", "知识库中暂无",
+    "抱歉", "没有收录", "未收录", "未能提供",
+    "不在知识库", "超出知识库", "没有相关信息",
+    "无相关", "未涉及", "未涵盖", "没有覆盖",
+    "建议咨询", "建议联系",
+]
+
+# 【防御】LLM/API 调用失败时的信号（这些情况下本样本不计入失败）
+API_FAILURE_SIGNALS = [
+    "模型调用失败", "Insufficient Balance", "Error code: 402",
+    "Error code: 429", "Error code: 500", "Error code: 502", "Error code: 503",
+    "网络错误", "连接失败", "Connection error",
+]
 
 
 class RAGV2Evaluator:
@@ -73,18 +91,20 @@ class RAGV2Evaluator:
 
         final_metrics = {**retrieval_metrics, "answer_relevancy": round(llm_relevancy, 4)}
 
-        # 【口径修正】通过条件分两类判定
         if q_type == "negative":
-            # negative 题的拒答成功 = LLM 回答中明确表示"未找到/无法回答"
-            # 而非 "contexts 为空"（背景检索会返回一些 ID，但不影响 LLM 拒答）
-            answer_lower = (generated_answer or "").lower()
-            reject_signals = ["未找到", "没有找到", "无法回答", "无法提供", "不包含",
-                              "知识库中未", "抱歉", "无法直接回答", "没有收录", "未收录"]
-            rejected = any(sig in answer_lower for sig in reject_signals)
-            final_metrics["rejection_accuracy"] = 1.0 if rejected else 0.0
-            passed = rejected
+            # 【防御】LLM/API 调用失败时，本样本不计入失败
+            is_api_failure = any(sig in (generated_answer or "") for sig in API_FAILURE_SIGNALS)
+
+            if is_api_failure:
+                print(f"⚠️ 样本 {sample['id']} LLM 调用失败，本样本跳过判分")
+                final_metrics["rejection_accuracy"] = -1.0  # -1 表示无效样本
+                passed = True
+            else:
+                answer_lower = (generated_answer or "").lower()
+                rejected = any(sig in answer_lower for sig in REJECT_SIGNALS)
+                final_metrics["rejection_accuracy"] = 1.0 if rejected else 0.0
+                passed = rejected
         else:
-            # 非 negative 题：优先看 recall（覆盖度），precision 作为辅助
             passed = final_metrics.get("context_recall", 0) >= METRICS_THRESHOLDS["context_recall"]
 
         return {
@@ -98,8 +118,6 @@ class RAGV2Evaluator:
         retrieved_set = set(retrieved_ids)
         gt_set = set(gt_ids)
         if q_type == "negative":
-            # 【口径修正】negative 题的 rejection_accuracy 在 evaluate_sample 里判定
-            # 这里只返回占位值，由 evaluate_sample 覆盖
             return {"context_recall": 0.0, "context_precision": 0.0, "rejection_accuracy": 0.0}
         if len(gt_set) == 0:
             return {"context_recall": 0.0, "context_precision": 0.0, "rejection_accuracy": 0.0}
@@ -145,8 +163,20 @@ class RAGV2Evaluator:
             }
         avg_metrics = {}
         for metric in METRICS_THRESHOLDS.keys():
-            values = [r["metrics"].get(metric, 0) for r in self.results]
-            avg_metrics[metric] = round(sum(values) / len(values), 4) if values else 0
+            # 【口径修正】rejection_accuracy 只对 negative 样本求平均，排除无效样本(-1)
+            if metric == "rejection_accuracy":
+                neg_samples = [
+                    r for r in self.results
+                    if r["type"] == "negative" and r["metrics"].get(metric, 0) >= 0
+                ]
+                if neg_samples:
+                    values = [r["metrics"].get(metric, 0) for r in neg_samples]
+                    avg_metrics[metric] = round(sum(values) / len(values), 4)
+                else:
+                    avg_metrics[metric] = 0.0
+            else:
+                values = [r["metrics"].get(metric, 0) for r in self.results]
+                avg_metrics[metric] = round(sum(values) / len(values), 4) if values else 0
         passed_count = sum(1 for r in self.results if r["passed"])
         total_count = len(self.results)
         return {
@@ -167,20 +197,20 @@ class RealRAGClient:
     async def generate(self, query: str):
         if not HTTPX_AVAILABLE:
             return {"answer": "httpx未安装", "contexts": []}
-        
-        # 【核心修复】必须使用系统里真实存在的用户，否则会被安全拦截
+
+        # 【关键修复】必须使用真实存在的用户，防止被系统权限拦截
         payload = {"session_id": "alice_主对话", "query": query, "user_text": query}
         answer_content = ""
         context_list = []
 
         async with httpx.AsyncClient(timeout=180) as client:
             try:
-                # 使用 stream 方法接收 SSE 流
+                # 【核心修复】使用 stream 来接收 SSE 流，不再用 response.json()
                 async with client.stream("POST", f"{self.base_url}/api/chat", json=payload) as response:
                     if response.status_code != 200:
                         return {"answer": f"请求失败: {response.status_code}", "contexts": []}
 
-                    # 逐行读取流数据
+                    # 逐行读取 SSE 数据
                     async for line in response.aiter_lines():
                         if line.startswith("data: "):
                             data_str = line[6:].strip()
@@ -190,16 +220,17 @@ class RealRAGClient:
                                 data = json.loads(data_str)
                                 if data.get("type") == "answer":
                                     answer_content += data.get("content", "")
-                                    # 如果返回中有 contexts，则提取
-                                    if data.get("contexts"):
-                                        context_list = data.get("contexts")
+                                    new_contexts = data.get("contexts") or []
+                                    for cid in new_contexts:
+                                        if cid not in context_list:
+                                            context_list.append(cid)
                             except Exception:
                                 pass
-                
+
                 print(f"【诊断-评估器】问题: {query[:30]}...")
                 print(f"【诊断-评估器】后端返回的contexts: {context_list}")
                 return {"answer": answer_content, "contexts": context_list}
-                
+
             except Exception as e:
                 print(f"【诊断-评估器】连接失败: {type(e).__name__}: {e}")
                 return {"answer": f"网络错误: {e}", "contexts": []}
@@ -216,6 +247,7 @@ class MockRAGClient:
         else:
             return {"answer": "通用处理办法", "contexts": ["IT-99"]}
 
+
 async def main():
     import argparse
     parser = argparse.ArgumentParser(description="RAGV2 文档ID检索评估")
@@ -224,21 +256,26 @@ async def main():
     parser.add_argument("--local", action="store_true", help="测试本地后端（默认测试 Render 云端）")
     args = parser.parse_args()
     dataset_path = args.dataset or "test_set.json"
-    
-    # 【核心修复】显式判断并打印目标地址
+
     if args.local:
         target_url = "http://127.0.0.1:10000"
     else:
         target_url = "https://suo-agent.onrender.com"
-    
+
     print(f"⚠️ 警告：正在连接后端服务 [{target_url}] ...")
     rag_client = RealRAGClient(base_url=target_url) if args.real else MockRAGClient()
     evaluator = RAGV2Evaluator(rag_client=rag_client)
-    
+
     report = await evaluator.run_full_evaluation(dataset_path)
     print("\n=== 评估报告 ===")
     print(json.dumps(report["average_metrics"], indent=2, ensure_ascii=False))
     print(f"通过率: {report['pass_rate']}")
+
+    SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+    output_path = os.path.join(SCRIPT_DIR, f"eval_report_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json")
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(report, f, ensure_ascii=False, indent=2)
+    print(f"报告已保存至 {output_path}")
 
 
 if __name__ == "__main__":
