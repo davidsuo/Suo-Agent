@@ -52,6 +52,14 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
   const [statusData, setStatusData] = useState<any[]>([]);
   const [statusLoading, setStatusLoading] = useState(false);
 
+  // 【US-05】角色中文映射字典
+  const roleMap: Record<string, string> = {
+    admin: '管理员',
+    manager: '经理',
+    developer: '研发人员',
+    viewer: '观察者',
+  };
+
   const sessionId = `${user.username}_${currentProject}`;
 
   useEffect(() => {
@@ -536,8 +544,16 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     setActiveView('logs');
     setLogsLoading(true);
     try {
-      const res = await api.get('/logs');
-      if (res.data?.data) setLogsData(res.data.data);
+      // 【安全修复】传递 session_id 供后端进行物理层角色校验
+      const res = await api.get(`/logs?session_id=${sessionId}`);
+      if (res.data?.data) {
+        setLogsData(res.data.data);
+      } else {
+        setLogsData([]);
+        if (res.data?.message) {
+          antMessage.warning(res.data.message);
+        }
+      }
     } catch { antMessage.warning("日志接口异常"); }
     finally { setLogsLoading(false); }
   };
@@ -656,7 +672,12 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
         </div>
         <div style={{ padding: '0 10px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
           <Avatar icon={<UserOutlined />} />
-          <span>{user.display_name}</span>
+          <span>
+            {user.display_name} 
+            <span style={{ fontSize: '12px', color: '#888', marginLeft: '4px' }}>
+              ({user.department || '未知部门'}：{roleMap[user.role] || user.role})
+            </span>
+          </span>
         </div>
         <div style={{ padding: '0 10px', marginBottom: 8, display: 'flex', gap: 8 }}>
           <Button block icon={<PlusOutlined />} onClick={handleAddProject}>新建对话窗</Button>
@@ -837,9 +858,33 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                     <Col span={12} style={{ marginTop: 16 }}><Card><Statistic title="活跃用户" value={healthData.active_users} /></Card></Col>
                     <Col span={12} style={{ marginTop: 16 }}><Card><Statistic title="总用户" value={healthData.total_users} /></Card></Col>
                   </Row>
-                  <Card title="工具调用分布" style={{ marginTop: 16 }}>
-                    <Table dataSource={healthData.sorted_tools.map((item: any, index: number) => ({ ...item, key: index }))} columns={toolColumns} pagination={false} size="small" />
-                  </Card>
+                  
+                  {/* 【零依赖方案】用纯 CSS 绘制工具调用分布横向条形图 */}
+                  {healthData.sorted_tools && healthData.sorted_tools.length > 0 && (() => {
+                    const totalCalls = healthData.sorted_tools.reduce((sum: number, item: any) => sum + item.count, 0);
+                    return (
+                      <Card title="工具调用分布" style={{ marginTop: 16 }}>
+                        <div style={{ padding: '10px 0' }}>
+                          {healthData.sorted_tools.map((item: any, idx: number) => {
+                            const percentage = totalCalls > 0 ? (item.count / totalCalls) * 100 : 0;
+                            return (
+                              <div key={idx} style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+                                <div style={{ width: 120, color: '#333', fontSize: '14px', textAlign: 'right', marginRight: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {item.tool}
+                                </div>
+                                <div style={{ flex: 1, height: 20, background: '#f0f0f0', borderRadius: 4, overflow: 'hidden' }}>
+                                  <div style={{ width: `${percentage}%`, height: '100%', background: '#1890ff', borderRadius: 4, transition: 'width 0.5s' }} />
+                                </div>
+                                <div style={{ width: 80, color: '#888', fontSize: '12px', marginLeft: 12 }}>
+                                  {item.count} 次 ({percentage.toFixed(1)}%)
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </Card>
+                    );
+                  })()}
                 </>
               ) : (<p>暂无健康数据</p>)}
             </Spin>
@@ -950,8 +995,21 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
             <Button type={activeView === 'status' ? 'primary' : 'default'} size="small" onClick={loadStatus}>状态监控</Button>
           </div>
           <div style={{ display: 'flex', justifyContent: 'flex-start', gap: '8px' }}>
-            <Button type={activeView === 'logs' ? 'primary' : 'default'} size="small" onClick={loadLogs}>日志</Button>
-            <Button type={activeView === 'kb' ? 'primary' : 'default'} size="small" onClick={() => { setActiveView('kb'); loadKbFiles(); }}>知识库</Button>
+            <Button type={activeView === 'logs' ? 'primary' : 'default'} size="small" onClick={() => {
+              if (user.role === 'viewer') {
+                antMessage.warning('您没有权限查看系统日志，请联系管理员');
+                return;
+              }
+              loadLogs();
+            }}>日志</Button>
+            <Button type={activeView === 'kb' ? 'primary' : 'default'} size="small" onClick={() => {
+              if (user.role === 'viewer') {
+                antMessage.warning('您没有权限访问知识库，请联系管理员');
+                return;
+              }
+              setActiveView('kb');
+              loadKbFiles();
+            }}>知识库</Button>
             {user.role === 'admin' || user.username === 'carol' ? (
               <Button type={activeView === 'admin' ? 'primary' : 'default'} size="small" onClick={() => { setActiveView('admin'); loadUsers(); }}>用户管理</Button>
             ) : null}
