@@ -134,17 +134,21 @@ class ChatRequest(BaseModel):
 
 
 def init_db():
-    """初始化示例 SQLite 数据库（sample.db）"""
+    """初始化示例 SQLite 数据库（sample.db）—— 幂等，自动补全空库"""
     db_path = os.path.join(UPLOAD_DIR, "sample.db")
-    if not os.path.exists(db_path):
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute('''CREATE TABLE IF NOT EXISTS employees (
-            id INTEGER PRIMARY KEY, name TEXT, position TEXT, salary INTEGER)''')
-        sample_data = [(1, "张三", "工程师", 60000), (2, "李四", "产品经理", 75000), (3, "王五", "设计师", 55000), (4, "赵六", "数据分析师", 68000)]
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    # 1. 无论文件是否存在，都确保建表
+    cursor.execute('''CREATE TABLE IF NOT EXISTS employees (
+        id INTEGER PRIMARY KEY, name TEXT, position TEXT, salary INTEGER)''')
+    # 2. 如果表为空，补全示例数据
+    cursor.execute("SELECT COUNT(*) FROM employees")
+    if cursor.fetchone()[0] == 0:
+        sample_data = [(1, "张三", "工程师", 60000), (2, "李四", "产品经理", 75000),
+                       (3, "王五", "设计师", 55000), (4, "赵六", "数据分析师", 68000)]
         cursor.executemany("INSERT OR REPLACE INTO employees VALUES (?,?,?,?)", sample_data)
-        conn.commit()
-        conn.close()
+    conn.commit()
+    conn.close()
 
 
 def init_health_db():
