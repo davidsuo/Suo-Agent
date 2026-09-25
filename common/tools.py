@@ -129,7 +129,23 @@ def query_database(sql: str, **kwargs) -> str:
     if not sql.strip().upper().startswith("SELECT"):
         return "错误：仅允许执行 SELECT 查询"
     try:
-        with sqlite3.connect("sample.db") as conn:
+        db_path = os.path.join(UPLOAD_DIR, "sample.db")
+        # 【诊断】打印实际连接的数据库路径和状态
+        print(f"###Diagnose-query_database###")
+        print(f"  UPLOAD_DIR = {UPLOAD_DIR!r}")
+        print(f"  db_path = {db_path!r}")
+        print(f"  exists = {os.path.exists(db_path)}")
+        if os.path.exists(db_path):
+            print(f"  size = {os.path.getsize(db_path)} bytes")
+            try:
+                _c = sqlite3.connect(db_path)
+                _tables = _c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+                print(f"  tables = {_tables}")
+                _c.close()
+            except Exception as _e:
+                print(f"  table_check_error = {_e}")
+        print(f"  sql = {sql[:80]}")
+        with sqlite3.connect(db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(sql)
             rows = cursor.fetchall()

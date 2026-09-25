@@ -381,52 +381,131 @@ def _extract_ids_from_text(text: str) -> list:
                 break
     return ids
 
-async def _route_query(query: str) -> str:
-    """
-    语义路由：判断用户问题的类型。
+async def _select_capabilities(query: str) -> list[str]:
+    """能力筛选器（AI Native 2.0）。
 
-    返回类别：
-    - knowledge: 企业知识库类（触发背景检索）
-    - data: 数据文件类（触发 schema 注入）
-    - schedule: 日程类
-    - realtime: 实时信息类
-    - chitchat: 闲聊类
+    与旧 _route_query 的本质区别：
+    - 旧：返回 1 个类别（5 选 1），决策在此结束
+    - 新：返回 0~N 个能力候选，供 LLM 进一步决策
 
-    原理：
-    用轻量 LLM 调用做语义判断，不使用关键词匹配。
+    返回的能力标识：
+    - rag_search：企业知识库检索
+    - query_database：内置 SQLite 库查询
+    - file_analysis：上传的 CSV/Excel 文件分析
+    - web_search：实时互联网信息
+    - schedule：日程管理
+    - send_email：发送邮件
     """
+    import json as _json
     try:
         resp = client.chat.completions.create(
             model="deepseek-chat",
             messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "你是一个语义路由器。根据用户问题，判断其类型，"
-                        "只返回以下 5 个类别之一，不要任何解释：\n\n"
-                        "- knowledge: 企业内部的故障排查、IT 支持、文档查询、FAQ、流程规定、行政政策\n"
-                        "- data: 对数据文件（CSV/Excel）进行统计、查询、聚合、可视化\n"
-                        "- schedule: 日程管理（查询/添加/删除日程、会议提醒）\n"
-                        "- realtime: 需要实时互联网信息（新闻、天气、股价）\n"
-                        "- chitchat: 闲聊、常识问答、计算题、不涉及企业专属信息"
-                    )
-                },
+                {"role": "system", "content": (
+                    "你是能力筛选器。根据用户问题，列出完成任务【可能】需要的工具，"
+                    "0 个、1 个或多个都可以。只返回 JSON 数组，不要任何解释。\n\n"
+                    "可用工具：\n"
+                    "- rag_search：查企业知识库（故障排查、IT 支持、流程规定、FAQ）\n"
+                    "- query_database：查内置 SQLite 库（员工、薪资、日程）\n"
+                    "- file_analysis：分析上传的 CSV/Excel 数据文件\n"
+                    "- web_search：实时互联网信息（新闻、天气、股价）\n"
+                    "- schedule：日程增删查\n"
+                    "- send_email：发送邮件\n\n"
+                    "示例：\n"
+                    "Q: '查询员工工资' → [\"query_database\"]\n"
+                    "Q: '分析咖啡销售数据' → [\"file_analysis\"]\n"
+                    "Q: '打印机报错 0x80004005' → [\"rag_search\"]\n"
+                    "Q: '查工资最高的人，然后搜他职位新闻，发邮件给 x@y.com' → "
+                    "[\"query_database\", \"web_search\", \"send_email\"]\n"
+                    "Q: '你好' → []"
+                )},
                 {"role": "user", "content": query}
             ],
-            max_tokens=10,
+            max_tokens=80,
             temperature=0
         )
-        raw = resp.choices[0].message.content.strip().lower()
-        for c in ["knowledge", "data", "schedule", "realtime", "chitchat"]:
-            if c in raw:
-                print(f"###路由### '{query[:30]}...' -> {c}")
-                return c
-        print(f"###路由### 未识别类别 '{raw}'，默认 chitchat")
-        return "chitchat"
+        raw = resp.choices[0].message.content.strip()
+        # 容错：剥掉可能的 markdown 代码块
+        if raw.startswith("```"):
+            raw = raw.strip("`").strip()
+            if raw.startswith("json"):
+                raw = raw[4:].strip()
+        caps = _json.loads(raw)
+        if not isinstance(caps, list):
+            caps = []
+        caps = [c for c in caps if isinstance(c, str)]
+        print(f"###能力筛选### '{query[:30]}...' -> {caps}")
+        return caps
     except Exception as e:
-        print(f"###路由### 失败: {e}，保守走 knowledge")
-        return "knowledge"
+        print(f"###能力筛选### 失败: {e}，保守返回 ['rag_search']")
+        return ["rag_search"]
 
+
+def _discover_data_sources() -> str:
+    """动态发现所有可用数据源，返回结构化目录文本（AI Native 2.0）。
+
+    核心思想：全量注入目录，让 LLM 自主选择。
+    放弃"向量匹配选最相似"的策略，避免相似度虚高导致的错误注入。
+    """
+    lines = []
+    lines.append("【可用数据源目录】")
+
+    # 1. 自动扫描所有 SQLite 数据库
+    lines.append("\n▶ 内置 SQLite 数据库：")
+    db_names = ["sample.db", "calendar.db", "users.db", "health.db", "feedback.db"]
+    found_db = False
+    for db_name in db_names:
+        db_path = os.path.join(UPLOAD_DIR, db_name)
+        if not os.path.exists(db_path):
+            continue
+        try:
+            conn = sqlite3.connect(db_path)
+            cur = conn.cursor()
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = [r[0] for r in cur.fetchall()]
+            for t in tables:
+                cur.execute(f"PRAGMA table_info({t})")
+                cols = cur.fetchall()
+                col_desc = ", ".join(f"{c[1]}({c[2]})" for c in cols)
+                lines.append(f"  - {db_name} → 表 `{t}`：{col_desc}")
+                found_db = True
+            conn.close()
+        except Exception as e:
+            lines.append(f"  - {db_name}（读取失败：{e}）")
+    if not found_db:
+        lines.append("  （无）")
+
+    # 2. 上传的数据文件
+    rag_file = os.path.join(UPLOAD_DIR, "rag_data.json")
+    if os.path.exists(rag_file):
+        try:
+            with open(rag_file, "r", encoding="utf-8") as f:
+                store = json.load(f)
+            file_lines = []
+            for item in store.get("files", []):
+                schema = item.get("schema")
+                if not schema:
+                    continue
+                fname = item.get("file_name", "")
+                tags = item.get("tags", "")
+                cols = [c.get("name", "") for c in schema.get("columns", [])]
+                file_lines.append(f"  - {fname}（标签：{tags}，列：{', '.join(cols)}）")
+            if file_lines:
+                lines.append("\n▶ 已上传的数据文件：")
+                lines.extend(file_lines)
+        except Exception as e:
+            lines.append(f"\n▶ 已上传的数据文件（读取失败：{e}）")
+
+    lines.append(
+        "\n【选择提示】根据用户问题，从上表中选择最相关的数据源。"
+        "例如：问员工工资 → sample.db / employees 表；"
+        "问咖啡销售 → coffee_sales.csv。"
+        "若用户问题与任何数据源无关，请不要调用 query_database 或 file_analysis。"
+    )
+    return "\n".join(lines)
+
+# 【DEPRECATED】旧的文件向量匹配注入，已被 _discover_data_sources 替代。
+# 保留是为了兼容；新代码请勿调用。等确认新方案稳定后可删除。
 # ================= V3：从 rag_data.json 构建 schema 提示 ====================
 def _build_schema_hint(query: str = "") -> str:
     """
@@ -612,20 +691,35 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
     history = memory.get(session_id)[-20:]
 
     # ② 语义路由层：判断问题类型
-    yield json.dumps({"type": "status", "content": "正在分析问题类型..."}, ensure_ascii=False)
-    route = await _route_query(query)
+    # ② 能力筛选层（AI Native 2.0）
+    yield json.dumps({"type": "status", "content": "正在分析任务能力..."}, ensure_ascii=False)
+    capabilities = await _select_capabilities(query)
     system_content = SYSTEM_PROMPT
 
-    # 数据类问题注入数据文件的 schema 提示
-    if route == "data":
-        schema_hint = _build_schema_hint(query)
-        if schema_hint:
-            system_content = SYSTEM_PROMPT + "\n\n" + schema_hint
-            print(f"###schema### 注入 {len(schema_hint)} 字符的数据 schema")
-        else:
-            print(f"###schema### 无可用 schema，跳过")
+    # 【AI Native 2.0 过渡层】从 capabilities 推导旧 route 变量，
+    # 供 chat_core_stream 里尚未迁移的 if route == ... 判断使用。
+    # 后续清理时，所有 route 引用都应改成 capabilities 判断。
+    if "rag_search" in capabilities:
+        route = "knowledge"
+    elif "query_database" in capabilities or "file_analysis" in capabilities:
+        route = "data"
+    elif "web_search" in capabilities:
+        route = "realtime"
+    elif "schedule" in capabilities:
+        route = "schedule"
     else:
-        print(f"###schema### 跳过（路由={route}）")
+        route = "chitchat"
+
+    # 数据源目录：只要可能用到数据库或文件分析，就全量注入
+    need_data_sources = any(
+        c in capabilities for c in ["query_database", "file_analysis"]
+    )
+    if need_data_sources:
+        data_sources = _discover_data_sources()
+        system_content += "\n\n" + data_sources
+        print(f"###数据源目录### 注入 {len(data_sources)} 字符")
+    else:
+        print(f"###数据源目录### 跳过（能力={capabilities}）")
 
     # 【物理层数据来源前缀】根据实际数据来源生成前缀，保证最终输出对用户透明
     if current_temp_file:
@@ -635,16 +729,17 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
         if len(raw_name) > 9 and raw_name[8] == '_':
             raw_name = raw_name[9:]
         source_prefix = f"根据上传文件 {raw_name} 和工具返回的真实数据，"
-    elif route == "knowledge":
+    elif "rag_search" in capabilities:
         source_prefix = "根据企业知识库文档和工具返回的真实数据，"
-    elif route == "data":
-        source_prefix = "根据数据文件分析结果，"
-    elif route == "realtime":
+    elif "query_database" in capabilities or "file_analysis" in capabilities:
+        source_prefix = "根据数据查询结果，"
+    elif "web_search" in capabilities:
         source_prefix = "根据实时信息，"
 
     # 【知识类背景检索】仅当路由为 knowledge 时才触发
+    # 【知识类背景检索】仅当能力包含 rag_search 时才触发
     bg = {"text": "", "ids": []}
-    if route == "knowledge":
+    if "rag_search" in capabilities:
         yield json.dumps({"type": "status", "content": "正在检索企业知识库..."}, ensure_ascii=False)
         bg = _retrieve_background(query)
         if bg["text"]:
