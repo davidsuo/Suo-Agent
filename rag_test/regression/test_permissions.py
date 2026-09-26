@@ -6,7 +6,7 @@ USERS = {
     "alice": "manager",
     "bob":   "developer",
     "lucky": "manager",
-    "anan":  "viewer",
+    "anna":  "viewer",
 }
 
 MATRIX = [
