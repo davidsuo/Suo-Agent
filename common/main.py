@@ -1302,13 +1302,20 @@ async def api_health():
 
 @app.get("/api/logs")
 async def api_logs(session_id: str = ""):
-    """获取操作日志列表（增加用户物理层权限校验）"""
-    # 【物理层安全拦截】用户不允许查看系统日志，防止内部消息外泄
+    """获取操作日志列表（带观察者权限校验，直接查库）"""
+    # 【物理层安全拦截】viewer 不允许查看系统日志
     if session_id:
         real_username = session_id.split('_')[0] if '_' in session_id else session_id
-        user_info = get_user_info(real_username)
-        if user_info and user_info.get("role") == "viewer":
-            return {"status": "error", "message": "无权限查看系统日志，请联系管理员"}
+        try:
+            _conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "users.db"))
+            _cur = _conn.cursor()
+            _cur.execute("SELECT role FROM users WHERE username = ?", (real_username,))
+            _row = _cur.fetchone()
+            _conn.close()
+            if _row and _row[0] == "viewer":
+                return {"status": "error", "message": "无权限查看系统日志，请联系管理员"}
+        except Exception as e:
+            print(f"###api_logs### 权限校验异常: {e}")
 
     plan_log_path = os.path.join(UPLOAD_DIR, "plan_log.json")
     logs = []
@@ -1334,8 +1341,22 @@ async def api_logs(session_id: str = ""):
 
 
 @app.get("/api/logs/export")
-async def api_logs_export():
-    """导出操作日志为 CSV 文件"""
+async def api_logs_export(session_id: str = ""):
+    """导出操作日志为 CSV 文件（带观察者权限校验）"""
+    # 【物理层安全拦截】viewer 不允许导出系统日志
+    if session_id:
+        real_username = session_id.split('_')[0] if '_' in session_id else session_id
+        try:
+            _conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "users.db"))
+            _cur = _conn.cursor()
+            _cur.execute("SELECT role FROM users WHERE username = ?", (real_username,))
+            _row = _cur.fetchone()
+            _conn.close()
+            if _row and _row[0] == "viewer":
+                return {"status": "error", "message": "无权限导出系统日志"}
+        except Exception as e:
+            print(f"###api_logs_export### 权限校验异常: {e}")
+
     import csv
     from io import StringIO
     from fastapi.responses import Response
