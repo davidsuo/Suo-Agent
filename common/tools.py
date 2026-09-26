@@ -36,6 +36,18 @@ from typing import Any, Dict, Optional
 import matplotlib.font_manager as fm
 import concurrent.futures
 
+# 诊断开关：RAG_DEBUG=true 时输出详细诊断，默认关闭
+_RAG_DEBUG = os.getenv("RAG_DEBUG", "false").lower() == "true"
+
+def _diag(tag: str, **kwargs):
+    """统一诊断打印函数。RAG_DEBUG=1 时输出。"""
+    if _RAG_DEBUG:
+        print(f"###{tag}###")
+        for k, v in kwargs.items():
+            print(f"  {k} = {v!r}")
+
+
+
 # 【Render Disk 适配】优先使用环境变量 UPLOAD_DIR（指向 Persistent Disk）
 # 本地开发时环境变量不存在，走默认路径
 UPLOAD_DIR = os.getenv(
@@ -130,21 +142,14 @@ def query_database(sql: str, **kwargs) -> str:
         return "错误：仅允许执行 SELECT 查询"
     try:
         db_path = os.path.join(UPLOAD_DIR, "sample.db")
-        # 【诊断】打印实际连接的数据库路径和状态
-        print(f"###Diagnose-query_database###")
-        print(f"  UPLOAD_DIR = {UPLOAD_DIR!r}")
-        print(f"  db_path = {db_path!r}")
-        print(f"  exists = {os.path.exists(db_path)}")
-        if os.path.exists(db_path):
-            print(f"  size = {os.path.getsize(db_path)} bytes")
-            try:
-                _c = sqlite3.connect(db_path)
-                _tables = _c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
-                print(f"  tables = {_tables}")
-                _c.close()
-            except Exception as _e:
-                print(f"  table_check_error = {_e}")
-        print(f"  sql = {sql[:80]}")
+        _diag(
+            "Diagnose-query_database",
+            UPLOAD_DIR=UPLOAD_DIR,
+            db_path=db_path,
+            exists=os.path.exists(db_path),
+            size=os.path.getsize(db_path) if os.path.exists(db_path) else 0,
+            sql=sql[:80],
+        )
         with sqlite3.connect(db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(sql)

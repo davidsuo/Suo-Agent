@@ -168,12 +168,12 @@ CHUNK_CONFIG = {
 
 # 检索参数
 RETRIEVAL_CONFIG = {
-    "vector_top_k": 20,       # 扩大候选池
-    "bm25_top_k": 20,         # 扩大候选池
+    "vector_top_k": 30,      # 20 → 30
+    "bm25_top_k": 30,        # 20 → 30
     "rrf_k": 60,
-    "rrf_threshold": 0.001,   # 由两路各自阈值把关
-    "vector_threshold": 0.30, # 向量相似度门槛
-    "final_top_k": 5,
+    "rrf_threshold": 0.001,
+    "vector_threshold": 0.30,
+    "final_top_k": 8,        # 5 → 8
 }
 
 # ==================== 分层索引策略 ====================
@@ -589,6 +589,8 @@ _bm25_docs: List[dict] = []
 
 def _build_bm25():
     global _bm25_index, _bm25_docs
+    t_start = time.time()
+
     store = _load_store()
     all_docs = []
     for key, docs in store.get("store", {}).items():
@@ -604,9 +606,25 @@ def _build_bm25():
             bm25_texts.append(bm25_text)
         tokenized = [_tokenize(t) for t in bm25_texts]
         _bm25_index = BM25Okapi(tokenized)
+
+        # 【性能监控】BM25 启动耗时与分档告警
+        elapsed = time.time() - t_start
+        per_chunk_ms = (elapsed / len(all_docs)) * 1000
         print(f"【诊断-bm25】索引 {len(all_docs)} 块（每块截断至 ~500 字符）")
+        print(f"【性能监控-bm25】构建耗时 {elapsed:.2f}s | 平均 {per_chunk_ms:.2f}ms/块")
+
+        # 分档告警
+        if elapsed > 60:
+            print(f"【性能告警-bm25】⚠️ 构建耗时超过 60s，文档规模过大，"
+                  f"建议立即启用 BM25 持久化（pickle 缓存）")
+        elif elapsed > 30:
+            print(f"【性能告警-bm25】⚠️ 构建耗时超过 30s，建议启用 BM25 持久化")
+        elif elapsed > 10:
+            print(f"【性能提示-bm25】构建耗时超过 10s，接近需持久化的临界点，"
+                  f"文档 >100 时建议启用缓存")
     else:
         _bm25_index = None
+        print(f"【诊断-bm25】索引为空（0 块）")
 
 # 模块启动时构建一次
 _build_bm25()
@@ -624,7 +642,7 @@ def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
         {"context_text": 拼接后的上下文, "sources": 结构化来源列表}
     """
     global _vector_model, _chroma_client, _bm25_index, _bm25_docs
-
+    t_query_start = time.time()   # 【性能监控】query 总耗时起点
     vector_results: Dict[str, int] = {}
     vector_meta: Dict[str, dict] = {}
     # 【核心修复】初始化 vector_passed，解决 NameError 隐患
@@ -752,7 +770,7 @@ def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
 
     # 组装 Top K（先取 Top 10 供 Reranker 精排，然后再取 Top 5）
     doc_map = {d["id"]: d for d in _bm25_docs}
-    candidates = valid_filtered[:10]
+    candidates = valid_filtered[:15]
 
     if _reranker_model and candidates:
         try:
@@ -812,6 +830,14 @@ def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
         })
 
     print(f"【诊断-rag_v2】最终返回 {len(sources)} 条，RRF 分数: {[s['score'] for s in sources]}")
+
+    # 【性能监控】query 总耗时告警
+    query_elapsed = time.time() - t_query_start
+    print(f"【性能监控-rag_v2】query 总耗时 {query_elapsed:.3f}s")
+    if query_elapsed > 5:
+        print(f"【性能告警-rag_v2】⚠️ query 耗时超过 5s，需排查瓶颈"
+              f"（向量路/BM25 路/Reranker）")
+
     return {
         "context_text": "\n\n".join(context_parts),
         "sources": sources,
