@@ -1005,35 +1005,10 @@ def generate_chart(
     import matplotlib.pyplot as plt
     import seaborn as sns
 
-    # ---------- 参数防呆兜底与诊断日志 (最高优先级) ----------
-    # 打印进入函数的原始参数，方便前后端联调排查
+    # ---------- 诊断日志 ----------
+    # 直接使用 LLM 传入的 chart_type，不做任何"标题修正"
+    # tool schema 已声明 chart_type 为 required 且 enum 限定为 line/bar/pie
     print(f"###generate_chart### 接收参数 | chart_type: '{chart_type}' | title: '{title}' | file_name: '{file_name}'")
-    
-    # 【工程兜底】如果 LLM 标题写对了（如"饼图"），但参数传错，这里强制修正
-    if title:
-        if "饼图" in title:
-            chart_type = "pie"
-        elif "柱状图" in title:
-            chart_type = "bar"
-        elif "折线图" in title:
-            chart_type = "line"
-        else:
-            # 如果标题没提，再看 _user_query 的内容
-            if _user_query and "饼图" in _user_query:
-                chart_type = "pie"
-            elif _user_query and "柱状图" in _user_query:
-                chart_type = "bar"
-    else:
-        # 如果 title 为空，只靠 _user_query
-        if _user_query and "饼图" in _user_query:
-            chart_type = "pie"
-
-    # 最终安全兜底（如果还是空，默认折线图）
-    if not chart_type:
-        chart_type = "line"
-
-    # 【诊断流程规范】此处打印最终执行的图表类型，确保前端预期与后端诊断完美配对
-    print(f"###图表类型修正### 最终执行图表类型: {chart_type}")
 
     # ---------- 1. 定位文件 ----------
     candidates_dirs = [os.path.join(UPLOAD_DIR, "temp"), UPLOAD_DIR]
@@ -1262,11 +1237,11 @@ TOOLS_METADATA = [
     }, "required": ["file_name", "filter_json", "agg_column", "agg_func"]}}},
     {"type": "function", "function": {"name": "generate_chart", "description": "根据数据生成图表。当用户要求画图时使用。", "parameters": {"type": "object", "properties": {
         "file_name": {"type": "string", "description": "数据文件名。必须从系统提供的【可用数据文件】列表中选择"},
-        "filter_json": {"type": "string", "description": "过滤条件的JSON字符串。如果用户没有明确指定年份、月份或季度，必须传 '{}'，严禁捏造过滤条件"},
+        "filter_json": {"type": "string", "description": "过滤条件 JSON；无过滤条件时传 '{}'"},
         "agg_column": {"type": "string", "description": "要聚合的列名，如 price"},
         "agg_func": {"type": "string", "description": "聚合函数：sum/avg/count", "enum": ["sum", "avg", "count"]},
         "group_by": {"type": "string", "description": "分组列，画时间趋势图固定传 'month'"},
-        "chart_type": {"type": "string", "description": "图表类型：line/bar/pie。严格根据用户提问填写", "enum": ["line", "bar", "pie"]},
+        "chart_type": {"type": "string", "description": "图表类型", "enum": ["line", "bar", "pie"]},
         "title": {"type": "string", "description": "图表标题，根据用户提问动态生成"}
     }, "required": ["file_name", "filter_json", "agg_column", "agg_func", "group_by", "chart_type", "title"]}}},
     {"type": "function", "function": {"name": "search_knowledge", "description": "从企业知识库检索相关文档。适用于询问企业内部知识、技术文档、FAQ、故障排查等。", "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "department": {"type": "string"}}, "required": ["query"]}}},

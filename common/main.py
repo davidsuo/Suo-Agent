@@ -279,61 +279,16 @@ async def startup_event():
 
     print("✅ FastAPI 初始化完成")
 
-
-# ================= V3 系统提示 =================
+# ================= V3 系统提示（AI Native 2.1 精简版） =================
 SYSTEM_PROMPT = """
-你是一个企业级AI智能助手。你拥有工具调用能力，请根据用户意图自主决策调用哪些工具。
+你是企业级 AI 智能助手。基于系统注入的背景资料和工具返回的真实数据回答用户。
 
-【最高优先级：回答边界与拒答规则（绝对禁令）】
-1. **必须且只能基于【企业知识库背景资料】和工具返回的真实数据回答**，严禁使用模型自身常识、经验或推测补充任何未在资料中出现的内容。
-2. **若【企业知识库背景资料】为空，或资料与用户问题完全无关**（如财务报销、发票开具、保修期查询、行政政策等知识库未覆盖的领域），**必须直接回答：**
-   「根据企业知识库文档，未能找到关于该问题的具体说明，建议咨询相关部门。」
-   **严禁编造、严禁套用无关资料强行作答。**
-3. **若背景资料中包含与用户问题症状相近、机理相似的文档**（例如用户描述"系统升级后打印中断"，而资料中是"重装系统后打印机失踪"，二者都属于系统变动导致打印异常），**必须基于该相近文档给出处理建议**，并在回答中说明"这与 [XX-XX] 描述的场景相近，可参考其处理方式"。**不得因字面措辞不同就拒答。**
-4. **回答中必须引用命中的文档编号**（如 [IT-01]、[TS-06]）。
+【硬性要求】
+1. 引用命中的文档编号（如 [IT-01]）。
+2. 使用 Markdown 结构化输出；禁止直接粘贴工具返回的原始 JSON。
 
-【能力边界】
-- **系统已自动检索企业知识库，背景资料已注入 system prompt**。请优先基于背景资料回答。
-- 如果背景资料不足以回答，可调用 search_knowledge 做**进一步**检索。
-- 涉及数据文件的统计、趋势、聚合、筛选 → 使用 aggregate
-- 涉及日程 → 使用 list_events / add_event / delete_event
-- 涉及实时信息 → 使用 web_search
-- 涉及文件概况 → 使用 analyze_file
-- 涉及图表可视化（折线图/柱状图/饼图等）→ 使用 generate_chart
-- 涉及企业内部员工/薪资的SQL查询 → 使用 query_database
-
-【内置数据库说明】
-系统内置了一个 SQLite 数据库（sample.db），其中包含一个 employees 表。
-表结构：id (INTEGER), name (TEXT), position (TEXT), salary (INTEGER)。
-当用户询问员工信息、工资、薪资总和、最高/最低薪资时，请直接使用 query_database 工具执行 SELECT 语句来获取真实数据。
-
-如果知识库和工具都无法解决，请坦诚告知用户。
-
-【图表生成绝对规则（最高优先级，违反将导致系统错误）】
-- 如果用户提问中明确包含“饼图”，调用 generate_chart 时，chart_type 参数**必须填写 "pie"**，严禁填入 "line" 或 "bar"。
-- 如果用户提问中明确包含“柱状图”，chart_type 参数**必须填写 "bar"**。
-- 如果用户提问中明确包含“折线图”，chart_type 参数**必须填写 "line"**。
-- 如果用户只提了“趋势”，没有明确图表类型，才可以使用 "line"。
-
-【few-shot 参考】（仅展示逻辑，严禁照抄示例中的字符串）
-用户问："将趋势绘制成饼图"
-思考：用户明确要求饼图，chart_type 必须填 "pie"。
-调用：generate_chart(file_name="<实际文件>", filter_json="{}", agg_column="<实际金额列>", agg_func="sum", group_by="month", chart_type="pie", title="<根据上下文生成的标题>")
-
-【输出风格与结构模板】
-为了确保最佳的可视化报告体验，你的回答必须严格遵守以下结构（使用 Markdown）：
-1. 首先输出一级标题：`# 各月咖啡销售趋势柱状图`（或类似包含“柱状图/饼图/图表”的标题）
-2. 无需手动写图片，系统会自动在该标题下方插入图表。
-3. 接着输出一级标题：`# 各月咖啡销售趋势分析`
-4. 在此标题下方，输出 Markdown 表格（包含“月份”、“销售额”、“订单数(杯)”等列）。
-5. 最后输出你的文字洞察分析。
-严禁直接把原始 JSON 或文本格式的工具返回结果直接粘贴给用户！你必须对数据进行提炼和总结。
-
-【工具说明】
-- `execute_python` 是纯计算沙箱，不支持绘图库。画图请用 `generate_chart`。
-- `generate_chart` 支持数据文件的图表生成，会自动读取文件、聚合、渲染彩色图片。
+系统中 {CHART} 是图表占位符，会被后端自动替换为图片；请在合适位置原样保留。
 """
-
 
 def _is_error_result(result) -> bool:
     """判断工具执行结果是否包含错误标识"""
@@ -736,23 +691,21 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
     elif "web_search" in capabilities:
         source_prefix = "根据实时信息，"
 
-    # 【知识类背景检索】仅当路由为 knowledge 时才触发
     # 【知识类背景检索】仅当能力包含 rag_search 时才触发
     bg = {"text": "", "ids": []}
     if "rag_search" in capabilities:
         yield json.dumps({"type": "status", "content": "正在检索企业知识库..."}, ensure_ascii=False)
         bg = _retrieve_background(query)
         if bg["text"]:
-            system_content += (
-                f"\n\n【企业知识库背景资料】\n{bg['text']}\n\n"
-                "【背景资料说明】以上是系统自动检索到的企业知识库内容。"
-                "请优先基于这些资料回答用户问题。"
-                "【极其重要】如果背景资料为空，或资料与用户问题完全不相关，"
-                "请务必直接回答：“根据企业知识库文档，未能找到关于该问题的具体说明。”"
-                "绝对禁止基于无关资料强行推测或编造答案。"
-            )
+            # 有结果：注入资料
+            system_content += f"\n\n【企业知识库资料】\n{bg['text']}"
             print(f"###背景检索### 命中 {len(bg['ids'])} 个 ID: {bg['ids']}")
         else:
+            # 无结果：也要注入一个明确的事实，避免 LLM 主动检索或编造
+            system_content += (
+                "\n\n【企业知识库资料】\n"
+                "（系统已执行检索，未命中任何相关文档。）"
+            )
             print(f"###背景检索### 无相关命中")
 
     system_content += "\n\n【回答要求】请不要在回答开头写任何关于数据来源的说明。直接以'以下是...'开头。系统会自动为你添加前缀。"
@@ -953,7 +906,11 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
                 if img_match:
                     full = img_match.group(0)
                     image_output = full[full.index('](') + 2 : -1]
-                    result = re.sub(r'!\[.*?\]\(/charts/[a-f0-9]+\.png\)', '[图片已就绪]', str(result))
+                    result = re.sub(
+                        r'!\[.*?\]\(/charts/[a-f0-9]+\.png\)',
+                        '{CHART}',
+                        str(result)
+                    )
 
             # 【检索ID提取】提取结构化标记 [RETRIEVED_IDS] 中的真实 ID
             if func_name == "search_knowledge" and result:
@@ -991,18 +948,20 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
     else:
         answer = source_prefix + answer
 
-    # 【图片插入】将图片精准插入到带有"柱状图/饼图/图表/趋势图"的标题下方
+    # 【图片插入】后端只做机械替换；位置由 LLM 决定
     if image_output:
         img_md = f"![图表]({image_output})"
-        chart_title_match = re.search(r'^(#{1,3}\s+.*?(柱状图|饼图|图表|趋势图).*?)$', answer, re.MULTILINE)
-        if chart_title_match:
-            pos = chart_title_match.end()
-            answer = answer[:pos] + "\n\n" + img_md + "\n" + answer[pos:]
+        if "{CHART}" in answer:
+            answer = answer.replace("{CHART}", img_md)
         else:
-            title_match = re.search(r'^(#{1,3}\s+.+)$', answer, re.MULTILINE)
-            if title_match:
-                pos = title_match.end()
-                answer = answer[:pos] + "\n\n" + img_md + "\n" + answer[pos:]
+            # 兜底：LLM 未保留占位符时，插入到第一个 Markdown 表格后
+            table_match = re.search(
+                r'(\|[^\n]*\|\n\|[\s\-:|]+\|\n(?:\|[^\n]*\|\n?)+)',
+                answer
+            )
+            if table_match:
+                pos = table_match.end()
+                answer = answer[:pos] + "\n" + img_md + "\n\n" + answer[pos:]
             else:
                 answer = answer.rstrip() + "\n\n" + img_md
 

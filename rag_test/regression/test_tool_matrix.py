@@ -14,8 +14,8 @@ CASES = [
     (17, "alice", "武汉今天的天气", ["web_search"], "t17"),
     # 权限拦截类：__FORBIDDEN__ 前缀表示"不能出现某工具"
     (101, "bob",   "查询员工工资", ["__FORBIDDEN__query_database"], "t101"),
-    (102, "anan",  "搜索今天科技新闻", ["__FORBIDDEN__web_search"], "t102"),
-    (103, "anan",  "明天上午9点提醒我开周会", ["__FORBIDDEN__add_event"], "t103"),
+    (102, "anna",  "搜索今天科技新闻", ["__FORBIDDEN__web_search"], "t102"),
+    (103, "anna",  "明天上午9点提醒我开周会", ["__FORBIDDEN__add_event"], "t103"),
 ]
 
 
