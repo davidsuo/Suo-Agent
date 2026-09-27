@@ -1,32 +1,49 @@
-"""域 1：角色访问权限。"""
+"""域 1：角色访问权限（角色驱动，从后端拉用户列表）。"""
 import httpx
 
-USERS = {
-    "carol": "admin",
-    "alice": "manager",
-    "bob":   "developer",
-    "lucky": "manager",
-    "anna":  "viewer",
+# 期望矩阵：角色 → endpoint 是否允许
+ROLE_MATRIX = {
+    "/api/logs":        {"admin": True, "manager": True, "developer": True, "viewer": False},
+    "/api/logs/export": {"admin": True, "manager": True, "developer": True, "viewer": False},
 }
 
-MATRIX = [
-    ("/api/logs", "json", {"admin": True, "manager": True, "developer": True, "viewer": False}),
-    ("/api/logs/export", "csv", {"admin": True, "manager": True, "developer": True, "viewer": False}),
-]
+# endpoint 响应类型
+RESP_TYPES = {
+    "/api/logs": "json",
+    "/api/logs/export": "csv",
+}
+
+
+async def fetch_users(client, base_url):
+    """从后端拉取 username → role 映射"""
+    r = await client.get(f"{base_url}/api/test/user-roles")
+    if r.status_code != 200:
+        raise RuntimeError(f"无法获取用户列表: HTTP {r.status_code}")
+    body = r.json()
+    if body.get("status") != "success":
+        raise RuntimeError(f"无法获取用户列表: {body}")
+    return body["data"]
 
 
 async def run(base_url: str):
     passed = failed = 0
     async with httpx.AsyncClient(timeout=30) as client:
-        for endpoint, resp_type, role_map in MATRIX:
-            for username, role in USERS.items():
+        try:
+            users = await fetch_users(client, base_url)
+            print(f"  [INFO] 从后端拉取 {len(users)} 个用户：{list(users.keys())}")
+        except Exception as e:
+            print(f"  [ERR ] 无法拉取用户列表：{e}")
+            return {"passed": 0, "failed": 1}
+
+        for endpoint, role_map in ROLE_MATRIX.items():
+            resp_type = RESP_TYPES[endpoint]
+            for username, role in users.items():
                 expected = role_map.get(role, True)
                 session_id = f"{username}_主对话"
                 try:
                     r = await client.get(f"{base_url}{endpoint}",
                                          params={"session_id": session_id})
 
-                    # actual_allowed 统一语义：True=允许，False=拒绝
                     if resp_type == "json":
                         try:
                             body = r.json()
@@ -37,7 +54,6 @@ async def run(base_url: str):
                         content_type = r.headers.get("content-type", "")
                         actual_allowed = "text/csv" in content_type
 
-                    # 断言：期望允许 = 实际允许；期望拒绝 = 实际拒绝
                     result = "PASS" if actual_allowed == expected else "FAIL"
                     if result == "PASS":
                         passed += 1
