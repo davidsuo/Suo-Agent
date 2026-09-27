@@ -1,13 +1,4 @@
 
----
-
-## 📄 文件 2：`CHANGELOG.md`
-
-**位置**：`C:\Users\索群\AI_Native_Project\CHANGELOG.md`
-
-**完整内容**：
-
-```markdown
 # Changelog
 
 本项目所有重要变更均记录于此文件。
@@ -15,6 +6,62 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer 2.0.0](https://semver.org/lang/zh-CN/)。
 
+
+## [rag/v2.6.7] - 2026-09-23
+
+### Fixed
+- **`init_db` 幂等化**：修复云端 `/app/uploads/sample.db` 是空文件时表缺失（`no such table: employees`）。
+  改为 `CREATE TABLE IF NOT EXISTS` + `COUNT(*)==0` 双保险，任何状态启动都自动补全示例数据。
+
+---
+
+## [agent/v3.3.0] - 2026-09-21
+
+### Added
+- **`SYSTEM_PROMPT` 回答边界与拒答规则（绝对禁令）**：明确"只允许基于背景资料回答"、
+  "背景资料为空或完全无关时必须拒答"、"症状相近文档必须参考"、"必须引用命中文档编号"。
+
+---
+
+## [on-prem/v1.3.0] - 2026-09-27
+
+### Changed
+- 同步云端 `release/v5.9.0`：开发契约 v1.0 + 回归测试体系 + AI Native 2.0。
+
+---
+
+## [release/v5.9.0] - 2026-09-27
+
+### Added
+- **AI Native 开发契约 v1.0**（`docs/CONTRACT.md`）：契约精神 = 改前跑、改后跑、全绿才算改完。三条铁律 = 本地+云端都绿、不跳过失败用例、必须 commit+push。
+- **回归测试体系**（`rag_test/regression/`）：
+  - `test_permissions.py`：5 角色 × `/api/logs` + `/api/logs/export` 权限矩阵（10 用例）
+  - `test_tool_matrix.py`：19 条业务用例的核心子集（10 用例）
+  - `test_basic_functions.py`：记忆 / kb.list / health（3 用例）
+  - **本地 + 云端 23/0 全绿**
+- **AI Native 2.0 落地**：
+  - `_route_query` → `_select_capabilities`（从分类到能力候选）
+  - `_build_schema_hint` → `_discover_data_sources`（从向量猜到全量目录）
+  - 决策位置从 Router 前置转为 LLM 在线
+
+### Changed
+- **权限补全**：`manager` / `developer` 新增 `aggregate` / `generate_chart` / `recognize_table` / `ocr_image` / `generate_image`
+- **项目根目录重构**：历史代码归档到 `legacy/`，文档集中到 `docs/`，测试数据移到 `data/samples/`
+- **BM25 启动监控**：`_build_bm25` 加分档告警（>10s 提示 / >30s 告警 / >60s 严重）
+- **诊断开关**：`_diag` 函数 + `RAG_DEBUG` 环境变量控制
+
+### Fixed
+- **`api_logs` / `api_logs_export` viewer 权限校验补齐**：修复 F12 手打 URL 绕过前端拦截的漏洞
+- **`init_db` 幂等化**：修复云端空 `sample.db` 导致表缺失
+
+### Removed
+- `rag_test/IT-01`：误放的测试残留
+- `common/main.py.bak.py`：废弃备份
+
+### Notes
+- **开发契约从本次发布起正式生效**：任何改代码必须先跑本地回归 + 云端回归，全绿才允许 commit
+
+---
 
 ## [rag/v2.6.6] - 2026-09-22
 
@@ -31,7 +78,6 @@
 - 修复后发现 bob 仍能看到 2 条日程，是 `memory` 里残留的**旧越权查询记录**被 LLM 复述。**清空 bob 对话即可解决**，无需改代码。
 
 ---
-
 
 ## [release/v5.8.0] - 2026-09-22
 
