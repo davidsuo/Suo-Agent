@@ -35,19 +35,19 @@ ROLE_PERMISSIONS: Dict[str, List[str]] = {
         "add_event", "delete_event", "web_search", "fetch_webpage",
         "analyze_file", "aggregate", "generate_chart", "recognize_table",
         "speech_to_text", "send_email", "execute_python", "ocr_image",
-        "generate_image"
+        "generate_image", "search_knowledge"
     ],
     "developer": [
         "get_current_time", "calculator", "list_events",
         "add_event", "delete_event", "web_search", "fetch_webpage",
         "analyze_file", "aggregate", "generate_chart", "recognize_table",
         "speech_to_text", "send_email", "execute_python", "ocr_image",
-        "generate_image"
+        "generate_image", "search_knowledge"
     ],
     "viewer": [
-        "get_current_time", "calculator", "analyze_file", "aggregate", 
-        "generate_chart", "recognize_table", "speech_to_text", "send_email", 
-        "execute_python", "ocr_image", "generate_image"
+        "get_current_time", "calculator", "analyze_file", "aggregate",
+        "generate_chart", "recognize_table", "speech_to_text", "send_email",
+        "execute_python", "ocr_image", "generate_image", "search_knowledge"
     ],
 }
 
