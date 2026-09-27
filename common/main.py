@@ -1378,6 +1378,22 @@ async def api_logs_export(session_id: str = ""):
     filename = f"logs_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     return Response(content=output.getvalue().encode('utf-8-sig'), media_type="text/csv", headers={"Content-Disposition": f"attachment; filename={filename}"})
 
+@app.get("/api/test/user-roles")
+async def api_test_user_roles():
+    """仅供回归测试使用：返回 username → role 映射。
+    
+    返回的信息（用户名+角色）本就在 /api/users/list 中可得，
+    这里只做简化封装，避免脚本硬编码用户列表。
+    """
+    try:
+        _conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "users.db"))
+        _cur = _conn.cursor()
+        _cur.execute("SELECT username, role FROM users WHERE status = '正常'")
+        rows = _cur.fetchall()
+        _conn.close()
+        return {"status": "success", "data": {u: r for u, r in rows}}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @app.get("/api/history/{session_id}")
 async def get_history(session_id: str):
