@@ -1,6 +1,6 @@
 # 版本历史与命名规范
 
-> 最后更新：2026-09-22
+> 最后更新：2026-09-27
 > 维护者：索群
 
 本文档记录 AI Native Project 的完整版本演进史，并定义新的标签命名规范。
@@ -144,31 +144,41 @@ docs/v1.0.0	2026-09-14	建立版本管理规范：VERSION_HISTORY.md + CHANGELOG
 | 新标签 | 时间 | 里程碑 |
 | :--- | :--- | :--- |
 | `rag/v2.5.0` | 2026-09-14 | 检索基础设施化：通过率 5%→85%，context_recall 0.85 |
+| `rag/v2.6.0` | 2026-09-21 | 中文 Reranker 接入（BAAI/bge-reranker-base）+ 负样本熔断，本地通过率 100% |
+| `rag/v2.6.1` | 2026-09-21 | 新增 start.sh，Render 部署时自动下载 Reranker 模型 |
+| `rag/v2.6.2` | 2026-09-21 | 修正 start.sh 路径，配合 Render Root Directory=bus_memory |
+| `rag/v2.6.3` | 2026-09-22 | 整段重写 start.sh，禁用 Xet 避免磁盘双倍占用；Render Disk 升级 5GB |
 | `rag/v2.6.4` | 2026-09-22 | 评估器 reject_signals 关键词修正（"未能找到"等），本地/云端通过率 100% |
 | `rag/v2.6.5` | 2026-09-22 | 评估器常量重构（REJECT_SIGNALS / API_FAILURE_SIGNALS），context_list 去重累积 |
 | `rag/v2.6.6` | 2026-09-22 | 工具权限通用拦截（按 ROLE_PERMISSIONS）+ 租户隔离修复（get_tenant 从 session_id 前缀提取）+ 前端构建 |
+| `rag/v2.6.7` | 2026-09-23 | init_db 幂等化，修复云端空 sample.db 导致表缺失 |
 
 ### 3.4 Agent 架构线
 | 新标签 | 时间 | 里程碑 |
 | :--- | :--- | :--- |
 | `agent/v3.2.0` | 2026-09-15 | 图片清理策略：启动时自动清理 30 天前旧图表 |
+| `agent/v3.3.0` | 2026-09-21 | SYSTEM_PROMPT 新增回答边界与拒答规则（绝对禁令） |
 
 
 ### 3.5 综合发布线
 新标签	时间	里程碑
 | `release/v5.5.0` | 2026-09-18 | 云端部署里程碑：全链路持久化与 UI 体验完美收官 |
 | `release/v5.6.0` | 2026-09-18 | 云端 RAG 生产就绪：流式输出 + 2GB向量模型 + 持久化架构 |
+| `release/v5.6.1` | 2026-09-18 | 发布 V5.6.1 与 on-prem/v1.0.0 版本说明 |
+| `release/v5.7.0` | 2026-09-21 | 合并 RAG V2.6.0 + Agent V3.3.0 到 main（RAG 通过率 100%） |
 | `release/v5.8.0` | 2026-09-22 | RAG 100% + 5 个用户故事全部完成（US-01~US-05）；中文 Reranker 上线；start.sh 自动化部署 + Render 5GB Disk |
+| `release/v5.9.0` | 2026-09-27 | AI Native 开发契约 v1.0 生效 + 回归测试体系落地（23 用例全绿） + 权限校验加固（api_logs/api_logs_export） + 项目根目录重构 + AI Native 2.0 落地 |
 
 
 ### 3.6 on-prem 线
 | 新标签 | 时间 | 里程碑 |
 | :--- | :--- | :--- |
+| `on-prem/v1.0.0` | 2026-09-18 | 首次 on-prem 发布（同步云端 V5.6.1） |
 | `on-prem/v1.1.0` | 2026-09-22 | 同步云端 release/v5.8.0（RAG V2.6.5 + UI V3.5.0 + 5 个用户故事） |
+| `on-prem/v1.3.0` | 2026-09-27 | 同步云端 release/v5.9.0（含开发契约） |
 
 
 ### 3.7 AI Native 2.0 里程碑
-
 | 新标签 | 时间 | 里程碑 |
 | :--- | :--- | :--- |
 | `ai-native/v2.0.0` | 2026-09-25 | 从"分类路由"到"能力筛选"：`_route_query` → `_select_capabilities`；`_build_schema_hint` → `_discover_data_sources`；决策位置从 Router 前置转为 LLM 在线。 |
