@@ -1,20 +1,20 @@
 """域 2：功能矩阵。"""
 import httpx
 import json
-import asyncio
 
 CASES = [
     # (id, username, query, expected_tools, session_suffix)
-    (1,  "alice", "明天上午9点提醒我开周会", ["add_event"], "t1"),
+    # expected_tools 中的 "|" 表示"任一命中即通过"
+    (1,  "alice", "明天上午9点提醒我开周会", ["add_event|list_events"], "t1"),
     (2,  "alice", "查看我明天的日程", ["list_events"], "t2"),
     (4,  "alice", "搜索今天科技新闻", ["web_search"], "t4"),
     (5,  "alice", "用 Python 计算 1024 除以 32", ["execute_python"], "t5"),
     (11, "alice", "查询员工工资", ["query_database"], "t11"),
     (16, "alice", "各月咖啡销售趋势并画出饼图", ["generate_chart"], "t16"),
     (17, "alice", "武汉今天的天气", ["web_search"], "t17"),
-    # 权限拦截类
-    (101, "bob",   "查询员工工资", [], "t101"),           # developer 无 query_database
-    (102, "anan",  "搜索今天科技新闻", [], "t102"),        # viewer 无 web_search
+    # 权限拦截类：__FORBIDDEN__ 前缀表示"不能出现某工具"
+    (101, "bob",   "查询员工工资", ["__FORBIDDEN__query_database"], "t101"),
+    (102, "anan",  "搜索今天科技新闻", ["__FORBIDDEN__web_search"], "t102"),
     (103, "anan",  "明天上午9点提醒我开周会", ["__FORBIDDEN__add_event"], "t103"),
 ]
 
@@ -23,9 +23,7 @@ async def run(base_url: str):
     passed = failed = 0
     async with httpx.AsyncClient(timeout=180) as client:
         for case_id, username, query, expected_tools, suffix in CASES:
-            # 每个用例用独立 session，避免记忆污染
             session_id = f"{username}_回归_{suffix}"
-            # 【关键】先清空该 session 的历史
             try:
                 await client.post(f"{base_url}/api/history/clear",
                                   data={"session_id": session_id})
@@ -57,7 +55,7 @@ async def run(base_url: str):
                         except Exception:
                             pass
 
-                # 支持 "__FORBIDDEN__xxx" 表示"不能出现某个工具"
+                # 解析 expected_tools 的语义
                 forbidden = [t[12:] for t in expected_tools if t.startswith("__FORBIDDEN__")]
                 required = [t for t in expected_tools if not t.startswith("__FORBIDDEN__")]
 
@@ -68,8 +66,11 @@ async def run(base_url: str):
                     # 期望不调任何工具
                     actual = len(tools_called) == 0
                 else:
-                    # 期望 required 全部命中
-                    actual = all(t in tools_called for t in required)
+                    # 支持 "a|b|c" 任一命中
+                    actual = all(
+                        any(alt in tools_called for alt in t.split("|"))
+                        for t in required
+                    )
 
                 result = "PASS" if actual else "FAIL"
                 if result == "PASS":

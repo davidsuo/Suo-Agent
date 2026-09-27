@@ -64,4 +64,26 @@ async def run(base_url: str):
                 except Exception as e:
                     failed += 1
                     print(f"  [ERR ] {username} {endpoint}: {e}")
+
+        # ========== 附加测试：/api/logs/export 的 CSV 内容 ==========
+        print(f"\n  --- 附加：/api/logs/export CSV 内容校验 ---")
+        try:
+            r = await client.get(f"{base_url}/api/logs/export",
+                                 params={"session_id": "alice_主对话"})
+            if r.status_code == 200 and "text/csv" in r.headers.get("content-type", ""):
+                csv_text = r.text
+                # 断言：CSV 应该包含表头
+                if "时间戳" in csv_text and "操作人" in csv_text:
+                    passed += 1
+                    print(f"  [PASS] /api/logs/export CSV 头正确（{len(csv_text)} 字符）")
+                else:
+                    failed += 1
+                    print(f"  [FAIL] /api/logs/export CSV 头缺失 → {csv_text[:100]}")
+            else:
+                failed += 1
+                print(f"  [FAIL] /api/logs/export 返回异常")
+        except Exception as e:
+            failed += 1
+            print(f"  [ERR ] /api/logs/export: {e}")
+            
     return {"passed": passed, "failed": failed}
