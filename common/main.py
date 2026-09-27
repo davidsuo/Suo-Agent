@@ -70,7 +70,7 @@ from pydantic import BaseModel
 from openai import OpenAI
 
 import sqlite3
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo #添加时区
 
 # 优先从环境变量读取 API Key，支持在 Render 环境变量中配置
 client = OpenAI(
