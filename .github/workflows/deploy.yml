@@ -10,6 +10,20 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+
+    # 【关键】env 放到 job 级别，所有 step 自动继承
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+      STABILITY_API_KEY: ${{ secrets.STABILITY_API_KEY }}
+      MAILGUN_API_KEY: ${{ secrets.MAILGUN_API_KEY }}
+      MAILGUN_DOMAIN: ${{ secrets.MAILGUN_DOMAIN }}
+      EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+      BAIDU_ASR_API_KEY: ${{ secrets.BAIDU_ASR_API_KEY }}
+      BAIDU_ASR_SECRET_KEY: ${{ secrets.BAIDU_ASR_SECRET_KEY }}
+      HF_ENDPOINT: ${{ secrets.HF_ENDPOINT }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -30,15 +44,13 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      # 【核心修复】注入 Secrets 并启动后端
+      # 【调试步骤】确认环境变量已注入（值会被 GitHub 打码）
+      - name: Debug - Check env variables
+        run: |
+          echo "OPENAI_API_KEY is set: ${{ secrets.OPENAI_API_KEY != '' }}"
+          echo "Length of OPENAI_API_KEY: ${#OPENAI_API_KEY}"
+
       - name: Start Backend Server
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
-          STABILITY_API_KEY: ${{ secrets.STABILITY_API_KEY }}
-          MAILGUN_API_KEY: ${{ secrets.MAILGUN_API_KEY }}
-          MAILGUN_DOMAIN: ${{ secrets.MAILGUN_DOMAIN }}
-          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
         run: |
           nohup python -m uvicorn common.main:app --host 127.0.0.1 --port 10000 > backend.log 2>&1 &
           echo "Waiting for backend to start..."
