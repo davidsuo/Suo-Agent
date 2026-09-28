@@ -7,6 +7,13 @@
 版本号遵循 [SemVer 2.0.0](https://semver.org/lang/zh-CN/)。
 
 
+## [release/v5.9.6] - 2026-09-28
+
+### Fixed
+- **云端前端构建产物未同步**：修复了 `frontend/dist` 构建产物未重新生成和强制提交，导致云端图片宽度优化失效的问题。本次已重新执行 `npm run build` 并强制提交（`git add -f frontend/dist/`），确保云端加载最新的静态文件。
+
+---
+
 ## [release/v5.9.5] - 2026-09-28
 
 ### Fixed
