@@ -6,6 +6,27 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer 2.0.0](https://semver.org/lang/zh-CN/)。
 
+## [release/v5.9.4] - 2026-09-28
+
+### Fixed
+- **`generate_image` 环境变量大小写读取失败**：本地 `.env` 中使用 `Stability_API_KEY`，代码中读取 `STABILITY_API_KEY`，已修复兼容性问题。
+- **生成图片 base64 撑爆云端 LLM 上下文**：修复原返回 `base64` 长字符串导致云端请求高达 1.4M-1.7M tokens 并触发 400 错误，改为保存为静态文件返回 URL。
+- **图片渲染被后端清理逻辑吞掉**：将 `generate_image` 返回的图片 URL 参照 `generate_chart` 机制转换为 `{CHART}` 占位符，由后端统一注入。
+- **LLM 幻觉掩盖真实错误**：在 `SYSTEM_PROMPT` 中新增硬性要求，工具返回错误时严禁编造“服务暂时性故障”。
+
+### Added
+- **上下文防爆裁剪机制**：在 `chat_core_stream` 调用 LLM 前增加 `_shrink_messages` 函数，防止历史超长导致的 400 BadRequest。
+- **`/images` 静态目录挂载**：配合 `generate_image` 的 URL 返回模式。
+
+### Changed
+- **前端图片展示尺寸**：将聊天窗口内 Markdown 渲染的图片宽度限制为 `66.67%`（原尺寸的 2/3），提升阅读体验。
+
+---
+
+## [on-prem/v1.3.0] - 2026-09-27
+
+### Changed
+- 同步云端 `release/v5.9.0`：开发契约 v1.0 + 回归测试体系 + AI Native 2.0。
 
 ## [rag/v2.6.7] - 2026-09-23
 
@@ -20,13 +41,6 @@
 ### Added
 - **`SYSTEM_PROMPT` 回答边界与拒答规则（绝对禁令）**：明确"只允许基于背景资料回答"、
   "背景资料为空或完全无关时必须拒答"、"症状相近文档必须参考"、"必须引用命中文档编号"。
-
----
-
-## [on-prem/v1.3.0] - 2026-09-27
-
-### Changed
-- 同步云端 `release/v5.9.0`：开发契约 v1.0 + 回归测试体系 + AI Native 2.0。
 
 ---
 
