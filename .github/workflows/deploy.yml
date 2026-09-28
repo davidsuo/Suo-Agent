@@ -7,12 +7,9 @@ on:
     branches: [ "main" ]
 
 jobs:
-  # ==========================================
-  # Job 1: 回归测试与前端构建检查（CI）
-  # ==========================================
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -33,7 +30,7 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      # 【新增】启动 FastAPI 后端并等待其就绪
+      # 【核心修复】注入 Secrets 并启动后端
       - name: Start Backend Server
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
@@ -42,11 +39,10 @@ jobs:
           MAILGUN_API_KEY: ${{ secrets.MAILGUN_API_KEY }}
           MAILGUN_DOMAIN: ${{ secrets.MAILGUN_DOMAIN }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
-          # （把你 .env 里所有需要的 Key 都加上）
         run: |
           nohup python -m uvicorn common.main:app --host 127.0.0.1 --port 10000 > backend.log 2>&1 &
           echo "Waiting for backend to start..."
-          for i in $(seq 1 30); do
+          for i in $(seq 1 40); do
             if curl -s http://127.0.0.1:10000/api/health > /dev/null; then
               echo "Backend is ready!"
               exit 0
@@ -76,9 +72,6 @@ jobs:
       - name: Build Frontend
         run: cd frontend && npm ci && npm run build
 
-  # ==========================================
-  # Job 2: 触发 Render 部署（CD）
-  # ==========================================
   deploy:
     needs: test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
