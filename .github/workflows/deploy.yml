@@ -1,12 +1,92 @@
-name: Trigger Render Deploy
+name: CI & CD Pipeline
 
 on:
   push:
-    branches:
-      - main
+    branches: [ "main", "RAG_V2_EXPERIMENTAL" ]
+  pull_request:
+    branches: [ "main" ]
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    # 【关键】env 放到 job 级别，所有 step 自动继承
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+      STABILITY_API_KEY: ${{ secrets.STABILITY_API_KEY }}
+      MAILGUN_API_KEY: ${{ secrets.MAILGUN_API_KEY }}
+      MAILGUN_DOMAIN: ${{ secrets.MAILGUN_DOMAIN }}
+      EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+      BAIDU_ASR_API_KEY: ${{ secrets.BAIDU_ASR_API_KEY }}
+      BAIDU_ASR_SECRET_KEY: ${{ secrets.BAIDU_ASR_SECRET_KEY }}
+      HF_ENDPOINT: ${{ secrets.HF_ENDPOINT }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      # 【调试步骤】确认环境变量已注入（值会被 GitHub 打码）
+      - name: Debug - Check env variables
+        run: |
+          echo "OPENAI_API_KEY is set: ${{ secrets.OPENAI_API_KEY != '' }}"
+          echo "Length of OPENAI_API_KEY: ${#OPENAI_API_KEY}"
+
+      - name: Start Backend Server
+        run: |
+          nohup python -m uvicorn common.main:app --host 127.0.0.1 --port 10000 > backend.log 2>&1 &
+          echo "Waiting for backend to start..."
+          for i in $(seq 1 40); do
+            if curl -s http://127.0.0.1:10000/api/health > /dev/null; then
+              echo "Backend is ready!"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Backend failed to start. Dumping logs:"
+          cat backend.log
+          exit 1
+
+      - name: Run Regression Tests
+        run: python rag_test/regression/run_all.py
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Build Frontend
+        run: cd frontend && npm ci && npm run build
+
   deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Render Deploy Hook
