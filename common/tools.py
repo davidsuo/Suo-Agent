@@ -696,11 +696,14 @@ def search_knowledge(query: str, department: str = "", **kwargs) -> str:
 # ==================== 图像生成 ====================
 def generate_image(prompt: str, negative_prompt: str = "") -> str:
     """
-    通过 Stability AI 生成图像（返回 base64 图片数据）。
+    通过 Stability AI 生成图像。
+    【修复】兼容大小写环境变量；保存为静态文件并返回 URL，避免 base64 撑爆 LLM 上下文。
     """
+    # 1. 兼容本地和 Render 环境变量大小写 (本地 .env 里是 Stability_API_KEY)
     api_key = os.getenv("STABILITY_API_KEY")
     if not api_key:
-        return "图像生成未配置（缺少 STABILITY_API_KEY）"
+        return "图像生成未配置（缺少 STABILITY_API_KEY 或 Stability_API_KEY）"
+        
     url = "https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image"
     headers = {"Authorization": f"Bearer {api_key}", "Accept": "application/json"}
     payload = {
@@ -711,11 +714,30 @@ def generate_image(prompt: str, negative_prompt: str = "") -> str:
         resp = _request_with_retry("POST", url, retries=1, json=payload, headers=headers, timeout=30)
         if resp and resp.status_code == 200:
             data = resp.json()
-            if "artifacts" in data:
+            if "artifacts" in data and len(data["artifacts"]) > 0:
                 img_b64 = data["artifacts"][0]["base64"]
-                return f"图片已生成（base64）：![生成图片](data:image/png;base64,{img_b64})"
-            return f"图像生成失败: {data.get('message', '未知错误')}"
-        return f"图像生成失败: 无响应"
+                
+                # 2. 核心修复：保存到静态目录，返回 URL 而不是 base64 内容
+                import uuid as _uuid
+                # 复用 UPLOAD_DIR，落盘到 /images 目录（与 generate_chart 的做法保持一致）
+                images_dir = os.path.join(UPLOAD_DIR, "images")
+                os.makedirs(images_dir, exist_ok=True)
+                img_filename = f"{_uuid.uuid4().hex[:12]}.png"
+                img_path = os.path.join(images_dir, img_filename)
+                
+                with open(img_path, "wb") as f:
+                    f.write(base64.b64decode(img_b64))
+                    
+                img_url = f"/images/{img_filename}"
+                return f"图片已生成：![生成图片]({img_url})"
+                
+            return "图像生成失败: 响应中无 artifacts"
+        
+        # 3. 核心修复：回传真实错误信息，避免 LLM 幻觉成“服务无响应”
+        error_detail = resp.text if resp else "网络无响应"
+        status_code = resp.status_code if resp else "未知状态码"
+        return f"图像生成失败(HTTP {status_code}): {error_detail[:200]}"
+        
     except Exception as e:
         return f"图像生成错误: {e}"
 
