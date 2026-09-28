@@ -158,16 +158,19 @@ docs/v1.0.0	2026-09-14	建立版本管理规范：VERSION_HISTORY.md + CHANGELOG
 | :--- | :--- | :--- |
 | `agent/v3.2.0` | 2026-09-15 | 图片清理策略：启动时自动清理 30 天前旧图表 |
 | `agent/v3.3.0` | 2026-09-21 | SYSTEM_PROMPT 新增回答边界与拒答规则（绝对禁令） |
+| `agent/v3.4.1` | 2026-09-28 | 修复 generate_image 环境变量、上下文爆炸与图片渲染 |
 
 
 ### 3.5 综合发布线
 新标签	时间	里程碑
+| :--- | :--- | :--- |
 | `release/v5.5.0` | 2026-09-18 | 云端部署里程碑：全链路持久化与 UI 体验完美收官 |
 | `release/v5.6.0` | 2026-09-18 | 云端 RAG 生产就绪：流式输出 + 2GB向量模型 + 持久化架构 |
 | `release/v5.6.1` | 2026-09-18 | 发布 V5.6.1 与 on-prem/v1.0.0 版本说明 |
 | `release/v5.7.0` | 2026-09-21 | 合并 RAG V2.6.0 + Agent V3.3.0 到 main（RAG 通过率 100%） |
 | `release/v5.8.0` | 2026-09-22 | RAG 100% + 5 个用户故事全部完成（US-01~US-05）；中文 Reranker 上线；start.sh 自动化部署 + Render 5GB Disk |
 | `release/v5.9.0` | 2026-09-27 | AI Native 开发契约 v1.0 生效 + 回归测试体系落地（23 用例全绿） + 权限校验加固（api_logs/api_logs_export） + 项目根目录重构 + AI Native 2.0 落地 |
+| `release/v5.9.4` | 2026-09-28 | generate_image 修复与系统稳定性提升 |
 
 
 ### 3.6 on-prem 线
@@ -176,6 +179,7 @@ docs/v1.0.0	2026-09-14	建立版本管理规范：VERSION_HISTORY.md + CHANGELOG
 | `on-prem/v1.0.0` | 2026-09-18 | 首次 on-prem 发布（同步云端 V5.6.1） |
 | `on-prem/v1.1.0` | 2026-09-22 | 同步云端 release/v5.8.0（RAG V2.6.5 + UI V3.5.0 + 5 个用户故事） |
 | `on-prem/v1.3.0` | 2026-09-27 | 同步云端 release/v5.9.0（含开发契约） |
+| `on-prem/v1.3.4` | 2026-09-28 | 同步云端 release/v5.9.4（generate_image 修复 + 上下文防爆） |
 
 
 ### 3.7 AI Native 2.0 里程碑
