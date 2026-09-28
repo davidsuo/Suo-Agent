@@ -35,6 +35,14 @@ jobs:
 
       # 【新增】启动 FastAPI 后端并等待其就绪
       - name: Start Backend Server
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          STABILITY_API_KEY: ${{ secrets.STABILITY_API_KEY }}
+          MAILGUN_API_KEY: ${{ secrets.MAILGUN_API_KEY }}
+          MAILGUN_DOMAIN: ${{ secrets.MAILGUN_DOMAIN }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          # （把你 .env 里所有需要的 Key 都加上）
         run: |
           nohup python -m uvicorn common.main:app --host 127.0.0.1 --port 10000 > backend.log 2>&1 &
           echo "Waiting for backend to start..."
