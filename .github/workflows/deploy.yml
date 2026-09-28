@@ -2,9 +2,9 @@ name: CI & CD Pipeline
 
 on:
   push:
-    branches: ["main", "RAG_V2_EXPERIMENTAL"]
+    branches: [ "main", "RAG_V2_EXPERIMENTAL" ]
   pull_request:
-    branches: ["main"]
+    branches: [ "main" ]
 
 jobs:
   # ==========================================
@@ -12,6 +12,7 @@ jobs:
   # ==========================================
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -19,9 +20,8 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: '3.13'
 
-      # 【优化1】缓存 Python 依赖
       - name: Cache pip packages
         uses: actions/cache@v4
         with:
@@ -33,15 +33,30 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
+      # 【新增】启动 FastAPI 后端并等待其就绪
+      - name: Start Backend Server
+        run: |
+          nohup python -m uvicorn common.main:app --host 127.0.0.1 --port 10000 > backend.log 2>&1 &
+          echo "Waiting for backend to start..."
+          for i in $(seq 1 30); do
+            if curl -s http://127.0.0.1:10000/api/health > /dev/null; then
+              echo "Backend is ready!"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Backend failed to start. Dumping logs:"
+          cat backend.log
+          exit 1
+
       - name: Run Regression Tests
         run: python rag_test/regression/run_all.py
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: '20'
 
-      # 【优化2】缓存 Node 依赖
       - name: Cache node modules
         uses: actions/cache@v4
         with:
@@ -55,7 +70,6 @@ jobs:
 
   # ==========================================
   # Job 2: 触发 Render 部署（CD）
-  # 仅当测试 Job 成功，且推送到 main 分支时执行
   # ==========================================
   deploy:
     needs: test
