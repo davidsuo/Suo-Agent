@@ -6,6 +6,10 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer 2.0.0](https://semver.org/lang/zh-CN/)。
 
+## [release/v5.9.7] - 2026-09-28
+
+### Fixed
+- **云端前端构建产物未同步（终极解决）**：查明 Git 索引缓存异常导致 `git add -f` 无效。通过重置索引、统一换行符为 LF、放行 `frontend/dist` 并强制提交，彻底解决了云端和本地系统前端静态文件未更新的历史难题。
 
 ## [release/v5.9.6] - 2026-09-28
 
