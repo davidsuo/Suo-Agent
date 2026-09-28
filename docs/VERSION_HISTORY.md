@@ -175,6 +175,7 @@ docs/v1.0.0	2026-09-14	建立版本管理规范：VERSION_HISTORY.md + CHANGELOG
 | `release/v5.9.5` | 2026-09-28 | 强制提交前端 dist 构建产物，修复云端图片宽度未缩小问题 |
 | `release/v5.9.6` | 2026-09-28 | 重新构建前端 dist 产物，修复云端图片宽度未生效 |
 | `release/v5.9.7` | 2026-09-28 | 统一换行符 LF，放行 frontend/dist，修复云端静态产物未同步 |
+| `release/v5.9.8` | 2026-09-28 | CI/CD 前端自动构建落地，移除 dist 追踪，修复自动部署失效 |
 
 
 ### 3.6 on-prem 线
@@ -187,6 +188,7 @@ docs/v1.0.0	2026-09-14	建立版本管理规范：VERSION_HISTORY.md + CHANGELOG
 | `on-prem/v1.3.5` | 2026-09-28 | 同步云端 release/v5.9.5（前端 dist 产物强制提交） |
 | `on-prem/v1.3.6` | 2026-09-28 | 同步云端 release/v5.9.6 |
 | `on-prem/v1.3.7` | 2026-09-28 | 同步云端 release/v5.9.7（含换行符及构建产物修复） |
+| `on-prem/v1.3.8` | 2026-09-28 | 同步云端 release/v5.9.8（CI/CD 改造） |
 
 
 ### 3.7 AI Native 2.0 里程碑

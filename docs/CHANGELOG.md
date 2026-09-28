@@ -6,6 +6,21 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer 2.0.0](https://semver.org/lang/zh-CN/)。
 
+
+## [release/v5.9.8] - 2026-09-28
+
+### Added
+- **CI/CD 全栈自动化落地**：引入 GitHub Actions 工作流，通过 Render Deploy Hook 实现代码合并到 `main` 分支时自动触发前后端构建与部署。
+- **前端自动化构建**：Render Build Command 成功集成 Node.js 安装与 Vite 构建，不再需要手动 `npm run build`。
+
+### Changed
+- **Git 追踪清理**：恢复 `.gitignore` 对 `frontend/dist` 的忽略，并通过 `git rm -r --cached` 彻底移除其版本追踪，消除手动强制提交带来的索引冲突隐患。
+
+### Fixed
+- **Render 部署未触发问题**：修复了 GitHub Webhook 与 Render 连接失效导致无法自动部署的问题（改用 GitHub Actions + Deploy Hook 方案）。
+
+---
+
 ## [release/v5.9.7] - 2026-09-28
 
 ### Fixed
