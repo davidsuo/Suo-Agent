@@ -977,7 +977,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                 <CloseOutlined style={{ marginLeft: 4, cursor: 'pointer' }} onClick={() => { setSelectedFile(null); setPendingFile(null); }} />
               </span>
             )}
-            <Button type="primary" icon={<SendOutlined />} onClick={handleSend} loading={loading} style={{ marginLeft: 'auto' }}>发送（CI/CD 测试）</Button>
+            <Button type="primary" icon={<SendOutlined />} onClick={handleSend} loading={loading} style={{ marginLeft: 'auto' }}>发送</Button>
           </div>
         </div>
       </div>
