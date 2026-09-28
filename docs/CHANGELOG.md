@@ -6,6 +6,14 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer 2.0.0](https://semver.org/lang/zh-CN/)。
 
+
+## [release/v5.9.5] - 2026-09-28
+
+### Fixed
+- **云端前端构建产物未更新**：修复云端 `frontend/dist` 未随源码同步导致图片宽度优化失效的问题。由于 `.gitignore` 忽略了 `dist` 目录，Git 提交时遗漏了构建产物，云端部署的仍是旧版本静态文件。本次通过 `git add -f` 强制提交更新后的 `frontend/dist/`。
+
+---
+
 ## [release/v5.9.4] - 2026-09-28
 
 ### Fixed
