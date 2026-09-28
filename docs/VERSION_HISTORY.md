@@ -171,6 +171,7 @@ docs/v1.0.0	2026-09-14	建立版本管理规范：VERSION_HISTORY.md + CHANGELOG
 | `release/v5.8.0` | 2026-09-22 | RAG 100% + 5 个用户故事全部完成（US-01~US-05）；中文 Reranker 上线；start.sh 自动化部署 + Render 5GB Disk |
 | `release/v5.9.0` | 2026-09-27 | AI Native 开发契约 v1.0 生效 + 回归测试体系落地（23 用例全绿） + 权限校验加固（api_logs/api_logs_export） + 项目根目录重构 + AI Native 2.0 落地 |
 | `release/v5.9.4` | 2026-09-28 | generate_image 修复与系统稳定性提升 |
+| `release/v5.9.5` | 2026-09-28 | 强制提交前端 dist 构建产物，修复云端图片宽度未缩小问题 |
 
 
 ### 3.6 on-prem 线
@@ -180,6 +181,7 @@ docs/v1.0.0	2026-09-14	建立版本管理规范：VERSION_HISTORY.md + CHANGELOG
 | `on-prem/v1.1.0` | 2026-09-22 | 同步云端 release/v5.8.0（RAG V2.6.5 + UI V3.5.0 + 5 个用户故事） |
 | `on-prem/v1.3.0` | 2026-09-27 | 同步云端 release/v5.9.0（含开发契约） |
 | `on-prem/v1.3.4` | 2026-09-28 | 同步云端 release/v5.9.4（generate_image 修复 + 上下文防爆） |
+| `on-prem/v1.3.5` | 2026-09-28 | 同步云端 release/v5.9.5（前端 dist 产物强制提交） |
 
 
 ### 3.7 AI Native 2.0 里程碑
