@@ -286,8 +286,9 @@ SYSTEM_PROMPT = """
 【硬性要求】
 1. 引用命中的文档编号（如 [IT-01]）。
 2. 使用 Markdown 结构化输出；禁止直接粘贴工具返回的原始 JSON。
+3. 当工具返回结果包含"未配置"、"缺少"、"错误"、"失败"、"HTTP 4xx/5xx"等字样时，必须原样引用工具的真实返回内容，严禁替换为"服务暂时性故障"、"无响应"等模糊表述。
 
-系统中 {CHART} 是图表占位符，会被后端自动替换为图片；请在合适位置原样保留。
+系统中 {CHART} 是图片/图表占位符，会被后端自动替换为真实图片；请在合适位置原样保留。
 """
 
 def _is_error_result(result) -> bool:
@@ -561,6 +562,19 @@ def _retrieve_background(query: str) -> dict:
         print(f"###背景检索### 失败: {e}")
     return {"text": "", "ids": []}
 
+# 【上下文防爆】防止历史超长或 base64 残留撑爆 LLM 1M 上下文
+def _shrink_messages(messages, max_chars=1500000):
+    total_chars = 0
+    kept = []
+    for m in reversed(messages):
+        content = str(m.get("content", ""))
+        if total_chars + len(content) > max_chars and m.get("role") != "system":
+            print(f"###上下文裁剪### 触发裁剪，丢弃旧消息，当前总字符数: {total_chars}")
+            break
+        kept.append(m)
+        total_chars += len(content)
+    return list(reversed(kept))
+
 async def chat_core_stream(session_id: str, query: str, user_text: str = None,
     query_worker=None, command_worker=None, TOOL_ROUTER=None,
     image_base64: str = None, temp_file_path: str = None):
@@ -731,6 +745,8 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
     if route != "realtime":
         messages.extend(history)
     messages.append({"role": "user", "content": query})
+    # 【调用大模型前收缩历史】防止单次请求超出 1M 上下文限制
+    messages = _shrink_messages(messages)
 
     image_output = None
     collected_sources = list(bg["ids"])
@@ -900,14 +916,14 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
                 "result_len": len(str(result)),
             })
 
-            # 【图片通道分离】generate_chart 返回的 URL 图片不经过 LLM，由后端直接拼接
-            if func_name == "generate_chart" and result:
-                img_match = re.search(r'!\[.*?\]\(/charts/[a-f0-9]+\.png\)', str(result))
+            # 【图片通道分离】generate_chart / generate_image 返回的 URL 图片不经过 LLM，由后端直接拼接
+            if func_name in ["generate_chart", "generate_image"] and result:
+                img_match = re.search(r'!\[.*?\]\((/charts/|/images/)[a-f0-9]+\.png\)', str(result))
                 if img_match:
                     full = img_match.group(0)
                     image_output = full[full.index('](') + 2 : -1]
                     result = re.sub(
-                        r'!\[.*?\]\(/charts/[a-f0-9]+\.png\)',
+                        r'!\[.*?\]\((/charts/|/images/)[a-f0-9]+\.png\)',
                         '{CHART}',
                         str(result)
                     )
@@ -1405,6 +1421,11 @@ async def api_status():
 CHARTS_DIR = os.path.join(UPLOAD_DIR, "charts")
 os.makedirs(CHARTS_DIR, exist_ok=True)
 app.mount("/charts", StaticFiles(directory=CHARTS_DIR), name="charts")
+
+# 【新增】挂载图像生成目录，供 generate_image 返回的 URL 正常渲染
+IMAGES_DIR = os.path.join(UPLOAD_DIR, "images")
+os.makedirs(IMAGES_DIR, exist_ok=True)
+app.mount("/images", StaticFiles(directory=IMAGES_DIR), name="images")
 
 if os.path.exists(DIST_DIR):
     app.mount("/assets", StaticFiles(directory=os.path.join(DIST_DIR, "assets")), name="assets")

@@ -216,7 +216,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                 components={{
                   img: ({ node, ...props }: any) => {
                     if (!props.src || props.src.trim() === '' || props.src.startsWith('![')) return null;
-                    return <img {...props} style={{ maxWidth: '100%', height: 'auto', borderRadius: 6, marginTop: 8, display: 'block', margin: '0 auto' }} />;
+                    return <img {...props} style={{ maxWidth: '66.67%', height: 'auto', borderRadius: 6, marginTop: 8 }} />;
                   },
                   h1: ({node, ...props}: any) => <p style={{ fontSize: '17px', marginTop: '12px', marginBottom: '8px', fontWeight: 'bold', color: '#333' }} {...props} />,
                   h2: ({node, ...props}: any) => <p style={{ fontSize: '16px', marginTop: '10px', marginBottom: '6px', fontWeight: 'bold', color: '#333' }} {...props} />,
