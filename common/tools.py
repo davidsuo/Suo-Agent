@@ -1241,40 +1241,115 @@ COMPENSATIONS = {
 
 # ==================== V3 工具元数据 ====================
 TOOLS_METADATA = [
-    {"type": "function", "function": {"name": "get_current_time", "description": "获取当前日期时间", "parameters": {"type": "object", "properties": {}, "required": []}}},
-    {"type": "function", "function": {"name": "calculator", "description": "数学计算", "parameters": {"type": "object", "properties": {"expression": {"type": "string"}}, "required": ["expression"]}}},
-    {"type": "function", "function": {"name": "query_database", "description": "查询 SQLite 数据库", "parameters": {"type": "object", "properties": {"sql": {"type": "string"}}, "required": ["sql"]}}},
-    {"type": "function", "function": {"name": "send_email", "description": "发送邮件", "parameters": {"type": "object", "properties": {"to_email": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}}, "required": ["to_email", "subject", "body"]}}},
-    {"type": "function", "function": {"name": "web_search", "description": "搜索互联网", "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "max_results": {"type": "integer"}}, "required": ["query"]}}},
-    {"type": "function", "function": {"name": "execute_python", "description": "执行 Python 代码进行计算或数据处理。【重要】此沙箱不支持绘图库，禁止用于画图/绘制图表场景。如需画图，请使用 generate_chart 工具。", "parameters": {"type": "object", "properties": {"code": {"type": "string"}}, "required": ["code"]}}},
-    {"type": "function", "function": {"name": "speech_to_text", "description": "音频转文本", "parameters": {"type": "object", "properties": {"audio_file_path": {"type": "string"}}, "required": ["audio_file_path"]}}},
-    {"type": "function", "function": {"name": "analyze_file", "description": "分析上传的 CSV/Excel 文件概况", "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}}, "required": ["file_path"]}}},
-    # 【V3 核心】聚合执行器：LLM 决定 file/filter/agg，后端只执行
-    {"type": "function", "function": {"name": "aggregate", "description": "对数据文件执行确定性的统计分析。当用户询问趋势、分布、排名、汇总、同比/环比，或任何涉及金额、数量、频次的统计问题时，应调用此工具。支持按年/月/季/自定义区间过滤，支持按分组列或时间维度（month/year/quarter）汇总。", "parameters": {"type": "object", "properties": {
-        "file_name": {"type": "string", "description": "数据文件名，如 coffee_sales.csv"},
-        "filter_json": {"type": "string", "description": "过滤条件的 JSON 字符串。可选键：year（年）、month（月）、quarter（季）、start_date、end_date，或直接按分类列名过滤，如 {\"coffee_name\": \"Latte\"}。无条件时传 '{}'"},
-        "agg_column": {"type": "string", "description": "要聚合的列名，如 price"},
-        "agg_func": {"type": "string", "description": "聚合函数：sum/avg/count/max/min", "enum": ["sum", "avg", "count", "max", "min"]},
-        "group_by": {"type": "string", "description": "可选分组列名，如 coffee_name。若需按时间维度分组，可传入 'month'、'year' 或 'quarter'。留空则整体聚合"}
-    }, "required": ["file_name", "filter_json", "agg_column", "agg_func"]}}},
-    {"type": "function", "function": {"name": "generate_chart", "description": "根据数据生成图表。当用户要求画图时使用。", "parameters": {"type": "object", "properties": {
-        "file_name": {"type": "string", "description": "数据文件名。必须从系统提供的【可用数据文件】列表中选择"},
-        "filter_json": {"type": "string", "description": "过滤条件 JSON；无过滤条件时传 '{}'"},
-        "agg_column": {"type": "string", "description": "要聚合的列名，如 price"},
-        "agg_func": {"type": "string", "description": "聚合函数：sum/avg/count", "enum": ["sum", "avg", "count"]},
-        "group_by": {"type": "string", "description": "分组列，画时间趋势图固定传 'month'"},
-        "chart_type": {"type": "string", "description": "图表类型", "enum": ["line", "bar", "pie"]},
-        "title": {"type": "string", "description": "图表标题，根据用户提问动态生成"}
-    }, "required": ["file_name", "filter_json", "agg_column", "agg_func", "group_by", "chart_type", "title"]}}},
-    {"type": "function", "function": {"name": "search_knowledge", "description": "从企业知识库检索相关文档。适用于询问企业内部知识、技术文档、FAQ、故障排查等。", "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "department": {"type": "string"}}, "required": ["query"]}}},
-    {"type": "function", "function": {"name": "fetch_webpage", "description": "抓取网页文本", "parameters": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]}}},
-    {"type": "function", "function": {"name": "generate_image", "description": "生成图片", "parameters": {"type": "object", "properties": {"prompt": {"type": "string"}}, "required": ["prompt"]}}},
-    {"type": "function", "function": {"name": "ocr_image", "description": "识别图片文字", "parameters": {"type": "object", "properties": {"image_path": {"type": "string"}}, "required": ["image_path"]}}},
-    {"type": "function", "function": {"name": "add_event", "description": "添加日程", "parameters": {"type": "object", "properties": {"title": {"type": "string"}, "start_time": {"type": "string"}, "end_time": {"type": "string"}, "description": {"type": "string"}}, "required": ["title", "start_time"]}}},
-    {"type": "function", "function": {"name": "list_events", "description": "列出日程", "parameters": {"type": "object", "properties": {"date": {"type": "string"}}, "required": []}}},
-    {"type": "function", "function": {"name": "delete_event", "description": "删除日程", "parameters": {"type": "object", "properties": {"event_id": {"type": "integer"}}, "required": ["event_id"]}}},
-    {"type": "function", "function": {"name": "recognize_table", "description": "识别图片表格", "parameters": {"type": "object", "properties": {"image_path": {"type": "string"}}, "required": ["image_path"]}}},
-    {"type": "function", "function": {"name": "execute_workflow", "description": "执行工作流", "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}}}
+    {"type": "function", "function": {
+        "name": "get_current_time",
+        "description": "获取当前日期时间",
+        "parameters": {"type": "object", "properties": {}, "required": []}
+    }},
+    {"type": "function", "function": {
+        "name": "calculator",
+        "description": "计算数学表达式",
+        "parameters": {"type": "object", "properties": {"expression": {"type": "string"}}, "required": ["expression"]}
+    }},
+    {"type": "function", "function": {
+        "name": "query_database",
+        "description": "执行 SQLite 查询",
+        "parameters": {"type": "object", "properties": {"sql": {"type": "string"}}, "required": ["sql"]}
+    }},
+    {"type": "function", "function": {
+        "name": "send_email",
+        "description": "发送电子邮件",
+        "parameters": {"type": "object", "properties": {"to_email": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}}, "required": ["to_email", "subject", "body"]}
+    }},
+    {"type": "function", "function": {
+        "name": "web_search",
+        "description": "搜索互联网信息",
+        "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "max_results": {"type": "integer"}}, "required": ["query"]}
+    }},
+    {"type": "function", "function": {
+        "name": "execute_python",
+        "description": "执行 Python 代码（计算、数据处理）",
+        "parameters": {"type": "object", "properties": {"code": {"type": "string"}}, "required": ["code"]}
+    }},
+    {"type": "function", "function": {
+        "name": "speech_to_text",
+        "description": "音频转文字",
+        "parameters": {"type": "object", "properties": {"audio_file_path": {"type": "string"}}, "required": ["audio_file_path"]}
+    }},
+    {"type": "function", "function": {
+        "name": "analyze_file",
+        "description": "分析数据文件（CSV/Excel）",
+        "parameters": {"type": "object", "properties": {"file_path": {"type": "string"}}, "required": ["file_path"]}
+    }},
+    {"type": "function", "function": {
+        "name": "aggregate",
+        "description": "对数据文件做分组统计",
+        "parameters": {"type": "object", "properties": {
+            "file_name": {"type": "string", "description": "数据文件名"},
+            "filter_json": {"type": "string", "description": "过滤条件 JSON，无条件传 '{}'"},
+            "agg_column": {"type": "string", "description": "要聚合的列名"},
+            "agg_func": {"type": "string", "enum": ["sum", "avg", "count", "max", "min"]},
+            "group_by": {"type": "string", "description": "分组列，可为列名或 month/year/quarter"}
+        }, "required": ["file_name", "filter_json", "agg_column", "agg_func"]}
+    }},
+    {"type": "function", "function": {
+        "name": "search_knowledge",
+        "description": "检索企业知识库",
+        "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "department": {"type": "string"}}, "required": ["query"]}
+    }},
+    {"type": "function", "function": {
+        "name": "fetch_webpage",
+        "description": "抓取网页文本",
+        "parameters": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]}
+    }},
+    {"type": "function", "function": {
+        "name": "generate_image",
+        "description": "生成图片",
+        "parameters": {"type": "object", "properties": {"prompt": {"type": "string"}}, "required": ["prompt"]}
+    }},
+    {"type": "function", "function": {
+        "name": "ocr_image",
+        "description": "识别图片文字",
+        "parameters": {"type": "object", "properties": {"image_path": {"type": "string"}}, "required": ["image_path"]}
+    }},
+    {"type": "function", "function": {
+        "name": "add_event",
+        "description": "添加日程",
+        "parameters": {"type": "object", "properties": {"title": {"type": "string"}, "start_time": {"type": "string"}, "end_time": {"type": "string"}, "description": {"type": "string"}}, "required": ["title", "start_time"]}
+    }},
+    {"type": "function", "function": {
+        "name": "list_events",
+        "description": "列出日程",
+        "parameters": {"type": "object", "properties": {"date": {"type": "string"}}, "required": []}
+    }},
+    {"type": "function", "function": {
+        "name": "delete_event",
+        "description": "删除日程",
+        "parameters": {"type": "object", "properties": {"event_id": {"type": "integer"}}, "required": ["event_id"]}
+    }},
+    {"type": "function", "function": {
+        "name": "recognize_table",
+        "description": "识别图片中的表格",
+        "parameters": {"type": "object", "properties": {"image_path": {"type": "string"}}, "required": ["image_path"]}
+    }},
+    {"type": "function", "function": {
+        "name": "execute_workflow",
+        "description": "执行预定义工作流",
+        "parameters": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}
+    }},
+    {"type": "function", "function": {
+        "name": "generate_chart",
+        "description": "根据数据生成图表",
+        "parameters": {"type": "object", "properties": {
+            "file_name": {"type": "string"},
+            "filter_json": {"type": "string", "description": "过滤条件 JSON，无条件传 '{}'"},
+            "agg_column": {"type": "string"},
+            "agg_func": {"type": "string", "enum": ["sum", "avg", "count"]},
+            "group_by": {"type": "string"},
+            "chart_type": {"type": "string", "enum": ["line", "bar", "pie"]},
+            "title": {"type": "string"}
+        }, "required": ["file_name", "filter_json", "agg_column", "agg_func", "group_by", "chart_type", "title"]}
+    }},
 ]
 
 # ==================== 工具映射 ====================
