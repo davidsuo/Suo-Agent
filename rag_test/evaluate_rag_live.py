@@ -5,6 +5,10 @@ import asyncio
 from datetime import datetime, timezone
 from typing import List, Dict, Any
 
+# 【关键】加载项目根目录的 .env 文件，否则读不到 OPENAI_API_KEY
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env'))
+
 try:
     import httpx
     HTTPX_AVAILABLE = True
@@ -17,20 +21,10 @@ except ImportError:
 METRICS_THRESHOLDS = {
     "context_recall": 0.70,
     "context_precision": 0.15,
-    "rejection_accuracy": 0.80,
+    "out_of_scope_accuracy": 0.80,
+    "clarify_accuracy": 0.80,
     "answer_relevancy": 0.05,
 }
-
-# 【负样本判定】拒答信号关键词表
-REJECT_SIGNALS = [
-    "未找到", "未能找到", "没有找到", "无法找到",
-    "无法回答", "无法提供", "无法直接回答",
-    "不包含", "未包含", "知识库中未", "知识库中暂无",
-    "抱歉", "没有收录", "未收录", "未能提供",
-    "不在知识库", "超出知识库", "没有相关信息",
-    "无相关", "未涉及", "未涵盖", "没有覆盖",
-    "建议咨询", "建议联系",
-]
 
 # 【防御】LLM/API 调用失败时的信号（这些情况下本样本不计入失败）
 API_FAILURE_SIGNALS = [
@@ -44,6 +38,12 @@ class RAGV2Evaluator:
     def __init__(self, rag_client: Any):
         self.rag_client = rag_client
         self.results = []
+        # 【语义判定】独立的 judge client
+        from openai import OpenAI
+        self._judge_client = OpenAI(
+            api_key=os.getenv("OPENAI_API_KEY") or os.getenv("DEEPSEEK_API_KEY"),
+            base_url="https://api.deepseek.com"
+        )
 
     async def load_dataset(self, dataset_path: str) -> List[Dict]:
         if not os.path.exists(dataset_path):
@@ -84,26 +84,34 @@ class RAGV2Evaluator:
 
         retrieval_metrics = self._compute_id_based_metrics(retrieved_ids, gt_ids, q_type)
 
-        if q_type == "negative":
+        # answer_relevancy 只对 positive 类计算
+        if q_type in ("out_of_scope", "clarify"):
             llm_relevancy = 0.0
         else:
             llm_relevancy = await self._compute_llm_relevancy(query, generated_answer, retrieved_ids)
 
         final_metrics = {**retrieval_metrics, "answer_relevancy": round(llm_relevancy, 4)}
 
-        if q_type == "negative":
-            # 【防御】LLM/API 调用失败时，本样本不计入失败
+        if q_type == "out_of_scope":
             is_api_failure = any(sig in (generated_answer or "") for sig in API_FAILURE_SIGNALS)
-
             if is_api_failure:
                 print(f"⚠️ 样本 {sample['id']} LLM 调用失败，本样本跳过判分")
-                final_metrics["rejection_accuracy"] = -1.0  # -1 表示无效样本
+                final_metrics["out_of_scope_accuracy"] = -1.0
                 passed = True
             else:
-                answer_lower = (generated_answer or "").lower()
-                rejected = any(sig in answer_lower for sig in REJECT_SIGNALS)
-                final_metrics["rejection_accuracy"] = 1.0 if rejected else 0.0
-                passed = rejected
+                judged_ok = await self._judge_out_of_scope_answer(query, generated_answer or "")
+                final_metrics["out_of_scope_accuracy"] = 1.0 if judged_ok else 0.0
+                passed = judged_ok
+        elif q_type == "clarify":
+            is_api_failure = any(sig in (generated_answer or "") for sig in API_FAILURE_SIGNALS)
+            if is_api_failure:
+                print(f"⚠️ 样本 {sample['id']} LLM 调用失败，本样本跳过判分")
+                final_metrics["clarify_accuracy"] = -1.0
+                passed = True
+            else:
+                judged_ok = await self._judge_clarify_answer(query, generated_answer or "")
+                final_metrics["clarify_accuracy"] = 1.0 if judged_ok else 0.0
+                passed = judged_ok
         else:
             passed = final_metrics.get("context_recall", 0) >= METRICS_THRESHOLDS["context_recall"]
 
@@ -117,17 +125,16 @@ class RAGV2Evaluator:
     def _compute_id_based_metrics(self, retrieved_ids, gt_ids, q_type):
         retrieved_set = set(retrieved_ids)
         gt_set = set(gt_ids)
-        if q_type == "negative":
-            return {"context_recall": 0.0, "context_precision": 0.0, "rejection_accuracy": 0.0}
+        if q_type in ("out_of_scope", "clarify"):
+            return {"context_recall": 0.0, "context_precision": 0.0}
         if len(gt_set) == 0:
-            return {"context_recall": 0.0, "context_precision": 0.0, "rejection_accuracy": 0.0}
+            return {"context_recall": 0.0, "context_precision": 0.0}
         overlap = len(retrieved_set & gt_set)
         context_recall = overlap / len(gt_set) if gt_set else 0.0
         context_precision = overlap / len(retrieved_set) if retrieved_set else 0.0
         return {
             "context_recall": round(context_recall, 4),
             "context_precision": round(context_precision, 4),
-            "rejection_accuracy": 0.0
         }
 
     async def _compute_llm_relevancy(self, query, answer, retrieved_ids):
@@ -140,6 +147,85 @@ class RAGV2Evaluator:
             score = common / min(len(query_tokens), len(answer_tokens))
             return min(score, 1.0)
         return 0.0
+
+    async def _judge_out_of_scope_answer(self, query: str, answer: str) -> bool:
+        """【语义判定】判断 out_of_scope 类回答是否恰当。
+
+        恰当：明确说"我做不到/知识库没收录/无法回答"，可以附加"建议咨询 XX 部门/查 OA"这类渠道建议。
+        不恰当：编造内容、假装能做、或给出具体操作步骤假装能回答。
+        """
+        if not answer or not answer.strip():
+            return False
+
+        judge_prompt = f"""你是评审员。用户问了一个**超出系统能力范围**的问题，下面是 AI 系统的回答。
+
+【系统能力范围】IT 支持（打印机/笔记本/网络故障）、数据分析、日程管理、邮件、联网搜索公开信息。
+
+【用户问题】
+{query}
+
+【AI 回答（前 500 字符）】
+{answer[:500]}
+
+【判定标准】
+- PASS：
+  - AI 明确表示"我做不到 / 知识库没有收录 / 无法查询 / 无法预订 / 无法回答"，**没有编造内容**；
+  - 或者，AI 在拒答的同时，**简短地建议用户去正确的渠道**（如"建议咨询财务部/HR/行政部门"、"建议查看 OA"、"建议联系厂商售后"）——**这类渠道建议属于 PASS**。
+- FAIL：
+  - AI **编造了具体内容**（比如凭空写出报销流程、凭空给出产品文案、凭空给出股价数字）；
+  - 或 AI **假装能回答**（比如给出具体的操作步骤、具体金额、具体流程假装自己知道）；
+  - 或 AI **完全答非所问**。
+
+只输出一个词：PASS 或 FAIL。"""
+
+        try:
+            resp = self._judge_client.chat.completions.create(
+                model="deepseek-chat",
+                messages=[{"role": "user", "content": judge_prompt}],
+                max_tokens=5,
+                temperature=0
+            )
+            result = (resp.choices[0].message.content or "").strip().upper()
+            return "PASS" in result
+        except Exception as e:
+            print(f"out_of_scope 判定失败: {e}")
+            return False
+
+    async def _judge_clarify_answer(self, query: str, answer: str) -> bool:
+        """【语义判定】判断 clarify 类回答是否恰当。
+
+        恰当：AI 追问用户缺失的信息（如"请提供产品名称/股票代码"）。
+        不恰当：AI 直接编造回答、或生硬拒答、或答非所问。
+        """
+        if not answer or not answer.strip():
+            return False
+
+        judge_prompt = f"""你是评审员。用户问了一个**信息不足、需要追问澄清**的问题，下面是 AI 系统的回答。
+
+【用户问题】
+{query}
+
+【AI 回答】
+{answer}
+
+【判定标准】
+- PASS：AI 识别出信息不足，**追问用户缺失的关键信息**（如"请提供产品名称、卖点、目标人群"、"请提供股票代码"），并且**没有编造具体内容**。
+- FAIL：AI 直接编造了回答（如凭空写文案、凭空给股价）、或生硬拒答（"我做不到"）、或答非所问。
+
+只输出一个词：PASS 或 FAIL。"""
+
+        try:
+            resp = self._judge_client.chat.completions.create(
+                model="deepseek-chat",
+                messages=[{"role": "user", "content": judge_prompt}],
+                max_tokens=5,
+                temperature=0
+            )
+            result = (resp.choices[0].message.content or "").strip().upper()
+            return "PASS" in result
+        except Exception as e:
+            print(f"clarify 判定失败: {e}")
+            return False
 
     async def run_full_evaluation(self, dataset_path: str, concurrency: int = 1) -> Dict:
         dataset = await self.load_dataset(dataset_path)
@@ -163,14 +249,20 @@ class RAGV2Evaluator:
             }
         avg_metrics = {}
         for metric in METRICS_THRESHOLDS.keys():
-            # 【口径修正】rejection_accuracy 只对 negative 样本求平均，排除无效样本(-1)
-            if metric == "rejection_accuracy":
-                neg_samples = [
-                    r for r in self.results
-                    if r["type"] == "negative" and r["metrics"].get(metric, 0) >= 0
-                ]
-                if neg_samples:
-                    values = [r["metrics"].get(metric, 0) for r in neg_samples]
+            # out_of_scope_accuracy 只对 out_of_scope 样本求平均，排除无效样本(-1)
+            if metric == "out_of_scope_accuracy":
+                samples = [r for r in self.results
+                           if r["type"] == "out_of_scope" and r["metrics"].get(metric, 0) >= 0]
+                if samples:
+                    values = [r["metrics"].get(metric, 0) for r in samples]
+                    avg_metrics[metric] = round(sum(values) / len(values), 4)
+                else:
+                    avg_metrics[metric] = 0.0
+            elif metric == "clarify_accuracy":
+                samples = [r for r in self.results
+                           if r["type"] == "clarify" and r["metrics"].get(metric, 0) >= 0]
+                if samples:
+                    values = [r["metrics"].get(metric, 0) for r in samples]
                     avg_metrics[metric] = round(sum(values) / len(values), 4)
                 else:
                     avg_metrics[metric] = 0.0
@@ -193,24 +285,24 @@ class RAGV2Evaluator:
 class RealRAGClient:
     def __init__(self, base_url: str = "http://127.0.0.1:10000"):
         self.base_url = base_url
+        self._counter = 0
 
     async def generate(self, query: str):
         if not HTTPX_AVAILABLE:
             return {"answer": "httpx未安装", "contexts": []}
 
-        # 【关键修复】必须使用真实存在的用户，防止被系统权限拦截
-        payload = {"session_id": "alice_主对话", "query": query, "user_text": query}
+        self._counter += 1
+        # 每题独立 session，避免历史累积污染
+        payload = {"session_id": f"alice_eval_{self._counter:03d}", "query": query, "user_text": query}
         answer_content = ""
         context_list = []
 
         async with httpx.AsyncClient(timeout=180) as client:
             try:
-                # 【核心修复】使用 stream 来接收 SSE 流，不再用 response.json()
                 async with client.stream("POST", f"{self.base_url}/api/chat", json=payload) as response:
                     if response.status_code != 200:
                         return {"answer": f"请求失败: {response.status_code}", "contexts": []}
 
-                    # 逐行读取 SSE 数据
                     async for line in response.aiter_lines():
                         if line.startswith("data: "):
                             data_str = line[6:].strip()
