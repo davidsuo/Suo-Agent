@@ -1,3 +1,4 @@
+const x: number = "abc";
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Layout, Menu, Input, Button, Avatar, message as antMessage, Tooltip, Card, Row, Col, Statistic, Table, Spin, Space, Modal, Tag, Select } from 'antd';
 import { UserOutlined, SendOutlined, PlusOutlined, DeleteOutlined, PaperClipOutlined, SoundOutlined, LogoutOutlined, CloseOutlined, SearchOutlined, DownloadOutlined, UploadOutlined, LikeOutlined, DislikeOutlined, EditOutlined, CopyOutlined } from '@ant-design/icons';
