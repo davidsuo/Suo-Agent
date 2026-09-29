@@ -1,36 +1,37 @@
 #!/bin/bash
-# AI Native 开发契约 · pre-commit hook
-# 作用：提交前自动语法检查 + 检查工作区状态
+# AI Native 开发契约 · pre-commit hook v2
+# 作用：提交前语法/编译/类型检查 + 耗时统计
 
 set -e
+START_TS=$(date +%s)
 
 echo "🔍 [pre-commit] 运行语法检查..."
 
-# 1. Python 语法检查（所有改动的 .py 文件）
+# 1. Python 语法 + 编译检查
 PY_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.py$' || true)
 if [ -n "$PY_FILES" ]; then
     for f in $PY_FILES; do
         python -c "import ast; ast.parse(open('$f', encoding='utf-8').read())" || {
-            echo "❌ 语法错误: $f"
-            exit 1
+            echo "❌ Python 语法错误: $f"; exit 1;
+        }
+        python -m py_compile "$f" || {
+            echo "❌ Python 编译错误: $f"; exit 1;
         }
     done
-    echo "✅ Python 语法检查通过（$PY_FILES）"
+    echo "✅ Python 语法/编译检查通过"
 else
     echo "⏭️  无 Python 文件改动，跳过"
 fi
 
-# 2. TypeScript 类型检查（如果 frontend/src 有改动）
-TS_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.tsx\?$' || true)
+# 2. TypeScript 类型检查
+TS_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.tsx?$' || true)
 if [ -n "$TS_FILES" ]; then
     echo "🔍 [pre-commit] 检测到 TS 改动，运行 tsc..."
-    cd frontend
-    npx tsc --noEmit || {
-        echo "❌ TypeScript 类型错误"
-        exit 1
+    (cd frontend && npx tsc --noEmit) || {
+        echo "❌ TypeScript 类型错误"; exit 1;
     }
-    cd ..
     echo "✅ TypeScript 类型检查通过"
 fi
 
-echo "🎉 [pre-commit] 全部检查通过"
+END_TS=$(date +%s)
+echo "🎉 [pre-commit] 全部检查通过（耗时 $((END_TS - START_TS))s）"
