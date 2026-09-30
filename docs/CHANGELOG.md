@@ -7,6 +7,21 @@
 版本号遵循 [SemVer 2.0.0](https://semver.org/lang/zh-CN/)。
 
 
+## [release/v5.9.9] - 2026-09-30
+
+### Added
+- **CI 缓存 HuggingFace 模型**：GitHub Actions 缓存 `~/.cache/huggingface` 和 `~/.cache/torch`，CI 时长从 3分44秒 降至 44 秒。
+- **CI 预置测试数据**：workflow 增加 Prepare test data step，将 `data/samples/*.csv` 拷贝到 `uploads/`，解决 CI 环境缺数据导致 LLM 误判的问题。
+
+### Changed
+- **`tool_matrix` 加重试机制**：每条用例最多尝试 2 次，任一通过即 PASS，容忍 LLM 的概率性决策。
+
+### Fixed
+- **图表默认位置**：LLM 未保留 `{CHART}` 占位符时，图片兜底插到回答顶部（顺序：图表 → 数据 → 分析）。
+- **前端图表居中**：`img` 渲染加 `display: block; margin: 0 auto;`，图表水平居中。
+
+---
+
 ## [release/v5.9.8] - 2026-09-28
 
 ### Added
