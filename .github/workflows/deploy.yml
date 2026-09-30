@@ -11,7 +11,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
-    # 【关键】env 放到 job 级别，所有 step 自动继承
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
@@ -41,14 +40,19 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
+      # 【新增】缓存 HuggingFace 模型（GTE-small + Reranker，约 1.1GB）
+      - name: Cache HuggingFace models
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/huggingface
+            ~/.cache/torch
+          key: ${{ runner.os }}-hf-models-v1
+          restore-keys: |
+            ${{ runner.os }}-hf-models-
+
       - name: Install Python dependencies
         run: pip install -r requirements.txt
-
-      # 【调试步骤】确认环境变量已注入（值会被 GitHub 打码）
-      - name: Debug - Check env variables
-        run: |
-          echo "OPENAI_API_KEY is set: ${{ secrets.OPENAI_API_KEY != '' }}"
-          echo "Length of OPENAI_API_KEY: ${#OPENAI_API_KEY}"
 
       - name: Start Backend Server
         run: |
