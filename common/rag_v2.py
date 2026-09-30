@@ -770,7 +770,7 @@ def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
 
     # 组装 Top K（先取 Top 10 供 Reranker 精排，然后再取 Top 5）
     doc_map = {d["id"]: d for d in _bm25_docs}
-    candidates = valid_filtered[:15]
+    candidates = valid_filtered[:10]
 
     if _reranker_model and candidates:
         try:
@@ -778,7 +778,7 @@ def search_knowledge_v2(query: str, extra_params: str = "") -> dict:
             for doc_id, _ in candidates:
                 doc = doc_map.get(doc_id)
                 text = doc["text"] if doc else vector_meta.get(doc_id, {}).get("text", "")
-                rerank_pairs.append((query, text))
+                rerank_pairs.append((query, text[:250]))
 
             if rerank_pairs:
                 rerank_scores = _reranker_model.predict(rerank_pairs)
