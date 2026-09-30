@@ -22,6 +22,13 @@ CASES = [
 async def run(base_url: str):
     passed = failed = 0
     async with httpx.AsyncClient(timeout=180) as client:
+        # 【前置检查】确认测试数据已就绪（避免 CI 环境缺数据导致的误判）
+        try:
+            r = await client.get(f"{base_url}/api/kb/list")
+            kb_files = (r.json().get("data") or []) if r.status_code == 200 else []
+            print(f"  [INFO] 知识库现有 {len(kb_files)} 个文件")
+        except Exception as e:
+            print(f"  [WARN] 无法查询知识库列表: {e}")
 
         async def _run_once(username, query, suffix):
             """执行一次，返回 tools_called；HTTP 错误返回 None。"""
