@@ -23,8 +23,8 @@ RAG 架构组件映射（标准 RAG Architecture）
 【3. 集成层 Integration Layer】
     职责：协调 RAG 的整体功能
     位置：
-      - common/main.py::_route_query           语义路由
-      - common/main.py::_build_schema_hint     数据文件 schema 注入
+      - common/main.py::_select_capabilities   能力筛选
+      - common/main.py::_discover_data_sources 数据源目录注入
       - common/main.py::chat_core_stream       主流程集成
 
 【4. 生成器 Generator】
@@ -42,8 +42,8 @@ RAG 架构组件映射（标准 RAG Architecture）
 1. FastAPI 路由定义（api_chat / api_login / ...）
 2. chat_core_stream：LLM 决策 + 工具执行 + 输出管线
 3. _retrieve_background：物理层无条件知识库检索
-4. _route_query：语义路由（判断问题类型）
-5. _build_schema_hint：从 rag_data.json 构建数据文件 schema
+4. _select_capabilities：能力筛选（AI Native 2.0）
+5. _discover_data_sources：数据源目录注入（AI Native 2.0）
 6. SYSTEM_PROMPT：LLM 能力边界定义
 
 架构说明：
@@ -456,85 +456,6 @@ def _discover_data_sources() -> str:
     )
     return "\n".join(lines)
 
-# 【DEPRECATED】旧的文件向量匹配注入，已被 _discover_data_sources 替代。
-# 保留是为了兼容；新代码请勿调用。等确认新方案稳定后可删除。
-# ================= V3：从 rag_data.json 构建 schema 提示 ====================
-def _build_schema_hint(query: str = "") -> str:
-    """
-    【V3 核心】基于向量语义匹配，挑选 Top 3 最相关文件的 schema 注入。
-    【核心修复】只匹配结构化数据文件（含 schema），过滤掉 Markdown、PDF 等文本文件。
-    """
-    import numpy as np
-    rag_file = os.path.join(UPLOAD_DIR, "rag_data.json")
-    store = {}
-
-    if not os.path.exists(rag_file):
-        print("###schema### rag_data.json 不存在，跳过 schema 注入")
-        return ""
-
-    try:
-        with open(rag_file, "r", encoding="utf-8") as f:
-            store = json.load(f)
-    except Exception as e:
-        print(f"###schema### 读取 rag_data.json 失败: {e}")
-        return ""
-
-    all_files = store.get("files", [])
-    # 【核心修复】只过滤出含 schema 的结构化数据文件，排除 PDF/MD 文档
-    structured_files = [f for f in all_files if f.get("schema")]
-    if not structured_files:
-        return ""
-
-    matched_files = []
-    try:
-        from common.rag_v2 import _vector_model
-        if _vector_model and query:
-            # 1. 构建每个结构化文件的文本描述（包含文件名、标签、列名）
-            file_descriptions = []
-            for item in structured_files:
-                fname = item.get("file_name", "")
-                tags = item.get("tags", "")
-                schema = item.get("schema", {})
-                col_names = [c.get("name", "") for c in schema.get("columns", [])]
-                desc = f"文件：{fname}，标签：{tags}，包含列：{','.join(col_names)}"
-                file_descriptions.append(desc)
-
-            # 2. 计算 Query 与文件描述的语义相似度
-            query_emb = _vector_model.encode([query], normalize_embeddings=True)
-            file_embs = _vector_model.encode(file_descriptions, normalize_embeddings=True)
-            similarities = np.dot(file_embs, query_emb.T).flatten()
-
-            # 3. 排序并匹配，使用 0.3 的合理阈值
-            top_indices = np.argsort(similarities)[::-1]
-            for idx in top_indices[:3]:
-                score = similarities[idx]
-                if score > 0.3:
-                    matched_files.append(structured_files[idx])
-                    print(f"###schema### 向量匹配文件: {structured_files[idx]['file_name']}，相似度: {score:.4f}")
-        else:
-            matched_files = structured_files[:3]
-    except Exception as e:
-        print(f"###schema### 向量匹配异常，降级为前 3 个结构化文件: {e}")
-        matched_files = structured_files[:3]
-
-    files_to_inject = matched_files[:3] if matched_files else structured_files[:3]
-
-    lines = ["【可用数据文件】", "⚠️ 注意：以下仅为文件概况。你必须根据用户提问，从这些文件中选择最合适的一个来调用工具。"]
-    for item in files_to_inject:
-        fname = item.get("file_name", "")
-        schema = item.get("schema")
-        if not schema:
-            continue
-        lines.append(f"\n📄 {fname}（{schema.get('row_count', '?')} 行）")
-        for col in schema.get("columns", []):
-            col_name = col.get("name")
-            col_type = col.get("type")
-            type_hint = {"date": "日期", "numeric": "数值", "category": "分类", "text": "文本"}.get(col_type, col_type)
-            lines.append(f"  - {col_name}（{type_hint}）")
-
-    print(f"###schema### 动态构建成功，最终注入文件数: {len(files_to_inject)}")
-    return "\n".join(lines)
-
 def _retrieve_background(query: str) -> dict:
     """
     【检索基础设施化】物理层无条件执行企业知识库检索。
@@ -661,21 +582,8 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
     capabilities = await _select_capabilities(query)
     system_content = SYSTEM_PROMPT
 
-    # 【AI Native 2.0 过渡层】从 capabilities 推导旧 route 变量，
-    # 供 chat_core_stream 里尚未迁移的 if route == ... 判断使用。
-    # 后续清理时，所有 route 引用都应改成 capabilities 判断。
-    if "rag_search" in capabilities:
-        route = "knowledge"
-    elif "query_database" in capabilities or "file_analysis" in capabilities:
-        route = "data"
-    elif "web_search" in capabilities:
-        route = "realtime"
-    elif "schedule" in capabilities:
-        route = "schedule"
-    else:
-        route = "chitchat"
-
     # 数据源目录：只要可能用到数据库或文件分析，就全量注入
+
     need_data_sources = any(
         c in capabilities for c in ["query_database", "file_analysis"]
     )
@@ -738,7 +646,7 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
 
     # ④ 构建 messages（实时类问题跳过历史记录，防止历史污染）
     messages = [{"role": "system", "content": system_content}]
-    if route != "realtime":
+    if "web_search" not in capabilities:
         messages.extend(history)
     messages.append({"role": "user", "content": query})
     # 【调用大模型前收缩历史】防止单次请求超出 1M 上下文限制
