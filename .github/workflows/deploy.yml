@@ -54,14 +54,15 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      # 【新增】预置测试数据文件（coffee_sales.csv 等），让 LLM 看到数据源
+      # 【新增】预置测试数据文件，让 LLM 看到 coffee_sales.csv 等数据源
       - name: Prepare test data
         run: |
           mkdir -p uploads
           if [ -d "data/samples" ]; then
             cp -v data/samples/*.csv uploads/ 2>/dev/null || true
           fi
-          ls -la uploads/ | head -20
+          echo "uploads/ 目录内容："
+          ls -la uploads/ || true
 
       - name: Start Backend Server
         run: |
