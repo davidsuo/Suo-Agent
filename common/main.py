@@ -961,21 +961,13 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
         answer = source_prefix + answer
 
     # 【图片插入】后端只做机械替换；位置由 LLM 决定
+    # 兜底策略：LLM 未保留 {CHART} 占位符时，图片插到回答顶部（顺序：图表 → 数据 → 分析）
     if image_output:
         img_md = f"![图表]({image_output})"
         if "{CHART}" in answer:
             answer = answer.replace("{CHART}", img_md)
         else:
-            # 兜底：LLM 未保留占位符时，插入到第一个 Markdown 表格后
-            table_match = re.search(
-                r'(\|[^\n]*\|\n\|[\s\-:|]+\|\n(?:\|[^\n]*\|\n?)+)',
-                answer
-            )
-            if table_match:
-                pos = table_match.end()
-                answer = answer[:pos] + "\n" + img_md + "\n\n" + answer[pos:]
-            else:
-                answer = answer.rstrip() + "\n\n" + img_md
+            answer = img_md + "\n\n" + answer.lstrip()
 
     # ⑦ 后置管道：记忆清洗与写入
     answer_for_memory = re.sub(
