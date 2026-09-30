@@ -6,20 +6,19 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer 2.0.0](https://semver.org/lang/zh-CN/)。
 
-## [release/v5.9.8] - 2026-09-28
+
+## [release/v5.9.9] - 2026-09-30
 
 ### Added
-- **CI/CD 全栈自动化落地**：引入 GitHub Actions 工作流（`.github/workflows/deploy.yml`），实现代码合并到 `main` 分支时自动执行回归测试、前端构建，并触发 Render 部署。
-- **质量门禁（Quality Gate）**：只有回归测试（18 用例）全绿，才会执行 `deploy` 任务触发 Render 部署，确保线上服务永远只接收通过测试的代码。
+- **CI 缓存 HuggingFace 模型**：GitHub Actions 缓存 `~/.cache/huggingface` 和 `~/.cache/torch`，CI 时长从 3分44秒 降至 44 秒。
+- **CI 预置测试数据**：workflow 增加 Prepare test data step，将 `data/samples/*.csv` 拷贝到 `uploads/`，解决 CI 环境缺数据导致 LLM 误判的问题。
 
 ### Changed
-- **Git 追踪清理**：恢复 `.gitignore` 对 `frontend/dist` 的忽略，并通过 `git rm -r --cached` 移除其版本追踪。
-- **前端环境隔离**：`frontend/.env.production` 统一使用相对路径 `/api`，适配 Render 云端和 on-premises 本地系统的同源部署。
-- **GitHub Secrets 规范**：将所有 `.env` 中的敏感 Key 以正确格式（Name 与 Secret 值分离）迁移至 GitHub Repository Secrets。
+- **`tool_matrix` 加重试机制**：每条用例最多尝试 2 次，任一通过即 PASS，容忍 LLM 的概率性决策。
 
 ### Fixed
-- **云端后端启动失败**：修复了 GitHub Actions 运行器因缺少环境变量（如 `OPENAI_API_KEY`）导致 `common/main.py` 初始化报错的问题。
-- **自动部署未触发**：修复了 GitHub Webhook 与 Render 连接失效的问题，改用 Render Deploy Hook + GitHub Actions 触发。
+- **图表默认位置**：LLM 未保留 `{CHART}` 占位符时，图片兜底插到回答顶部（顺序：图表 → 数据 → 分析）。
+- **前端图表居中**：`img` 渲染加 `display: block; margin: 0 auto;`，图表水平居中。
 
 ---
 

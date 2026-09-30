@@ -55,14 +55,37 @@ jobs:
         run: pip install -r requirements.txt
 
       # 【新增】预置测试数据文件，让 LLM 看到 coffee_sales.csv 等数据源
+      # 【新增】预置测试数据文件 + 生成最小化 rag_data.json（让 LLM 看到数据源）
       - name: Prepare test data
         run: |
           mkdir -p uploads
           if [ -d "data/samples" ]; then
             cp -v data/samples/*.csv uploads/ 2>/dev/null || true
           fi
+          # 生成 rag_data.json 骨架，让 _discover_data_sources 能列出文件
+          cat > uploads/rag_data.json << 'EOF'
+          {
+            "files": [
+              {
+                "file_name": "coffee_sales.csv",
+                "tags": "咖啡销售测试数据",
+                "schema": {
+                  "row_count": 3636,
+                  "columns": [
+                    {"name": "date", "type": "date"},
+                    {"name": "coffee_name", "type": "category"},
+                    {"name": "price", "type": "numeric"}
+                  ]
+                }
+              }
+            ],
+            "store": {}
+          }
+          EOF
           echo "uploads/ 目录内容："
           ls -la uploads/ || true
+          echo "rag_data.json 内容："
+          cat uploads/rag_data.json
 
       - name: Start Backend Server
         run: |
