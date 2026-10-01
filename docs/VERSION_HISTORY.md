@@ -154,6 +154,7 @@ docs/v1.0.0	2026-09-14	建立版本管理规范：VERSION_HISTORY.md + CHANGELOG
 | `rag/v2.6.6` | 2026-09-22 | 工具权限通用拦截（按 ROLE_PERMISSIONS）+ 租户隔离修复（get_tenant 从 session_id 前缀提取）+ 前端构建 |
 | `rag/v2.6.7` | 2026-09-23 | init_db 幂等化，修复云端空 sample.db 导致表缺失 |
 | `rag/v2.6.9` | 2026-10-01 | US-05 正式验收：排序指标口径修正（`precision@3` → `hit@3` / `recall@3`），`precision@1` 0.78 → 0.9756（口径修正后），`mrr` 0.8 → 0.9878，Q13 ground_truth 补充 TS-03；Q50 电源灯亮/不亮区分词未捕获，记入 Backlog |
+| `memory/v1.0.0` | 2026-10-01 | Memory Schema Version 迁移机制（US-08），清理 84 个旧 session，从根上解决旧数据复述 |
 
 ### 3.4 Agent 架构线
 | 新标签 | 时间 | 里程碑 |
@@ -196,12 +197,31 @@ docs/v1.0.0	2026-09-14	建立版本管理规范：VERSION_HISTORY.md + CHANGELOG
 > 说明：`on-prem/v1.3.9` 被跳过，原因是 `release/v5.9.9` 仅为 CI/测试层面的修补，其内容已全部包含在第二天的 `release/v5.9.10` 中，直接同步 `v1.3.10` 以保持版本号尾部对齐。
 
 
-
 ### 3.7 AI Native 2.0 里程碑
 | 新标签 | 时间 | 里程碑 |
 | :--- | :--- | :--- |
 | `ai-native/v2.0.0` | 2026-09-25 | 从"分类路由"到"能力筛选"：`_route_query` → `_select_capabilities`；`_build_schema_hint` → `_discover_data_sources`；决策位置从 Router 前置转为 LLM 在线。 |
 | `agent/v3.4.0` | 2026-09-25 | Agent 3.4.0：能力筛选器 + 动态数据源发现 |
+
+
+### 3.8 安全线
+
+| 新标签 | 时间 | 里程碑 |
+| :--- | :--- | :--- |
+| `security/v1.0.0` | 2026-10-01 | US-06 修复 /api/logs 越权访问漏洞（空 session_id 绕过） |
+
+### 3.9 权限线
+
+| 新标签 | 时间 | 里程碑 |
+| :--- | :--- | :--- |
+| `rbac/v1.0.0` | 2026-10-01 | US-07 ROLE_PERMISSIONS 前后端单一真源（`/api/users/roles` 端点） |
+
+### 3.10 工程效能线
+
+| 新标签 | 时间 | 里程碑 |
+| :--- | :--- | :--- |
+| `ci/v1.0.0` | 2026-10-01 | US-09 CI 补齐 lint（ruff + eslint），修复 F821 真 bug |
+
 
 
 说明：此章节将持续更新。每次打新标签时：
