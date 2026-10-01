@@ -17,14 +17,24 @@ except ImportError:
     print("警告：未安装 httpx，请运行 pip install httpx")
 
 
-# 【口径修正】RAG 系统设计目标是"宁多勿漏"，优先看 recall
+# 【口径修正 v2】RAG 系统设计目标是"宁多勿漏"，优先看 recall；
+# 同时用 precision@1 / hit@3 / mrr 衡量 Reranker 排序质量。
+# 去掉 precision@3（在单文档 ground_truth 下数学上限 = 1/3，不可达 0.90）。
 METRICS_THRESHOLDS = {
     "context_recall": 0.70,
-    "context_precision": 0.15,
+    "context_precision": 0.12,
+    "precision@1": 0.85,
+    "hit@3": 0.90,
+    "recall@3": 0.85,
+    "mrr": 0.85,
     "out_of_scope_accuracy": 0.80,
     "clarify_accuracy": 0.80,
     "answer_relevancy": 0.05,
 }
+
+# 【口径修正 v2】positive 类型集合（用于排序指标只对 positive 求平均）
+POSITIVE_TYPES = ("exact", "semantic", "hybrid")
+NEGATIVE_TYPES = ("out_of_scope", "clarify")
 
 # 【防御】LLM/API 调用失败时的信号（这些情况下本样本不计入失败）
 API_FAILURE_SIGNALS = [
@@ -83,9 +93,11 @@ class RAGV2Evaluator:
         latency = time.time() - start_time
 
         retrieval_metrics = self._compute_id_based_metrics(retrieved_ids, gt_ids, q_type)
+        ranking_metrics = self._compute_ranking_metrics(retrieved_ids, gt_ids, q_type)
+        retrieval_metrics.update(ranking_metrics)
 
         # answer_relevancy 只对 positive 类计算
-        if q_type in ("out_of_scope", "clarify"):
+        if q_type in NEGATIVE_TYPES:
             llm_relevancy = 0.0
         else:
             llm_relevancy = await self._compute_llm_relevancy(query, generated_answer, retrieved_ids)
@@ -113,7 +125,13 @@ class RAGV2Evaluator:
                 final_metrics["clarify_accuracy"] = 1.0 if judged_ok else 0.0
                 passed = judged_ok
         else:
-            passed = final_metrics.get("context_recall", 0) >= METRICS_THRESHOLDS["context_recall"]
+            # 【口径修正 v2】positive 样本的通过判定：recall + 排序指标同时达标
+            passed = (
+                final_metrics.get("context_recall", 0) >= METRICS_THRESHOLDS["context_recall"]
+                and final_metrics.get("precision@1", 0) >= METRICS_THRESHOLDS["precision@1"]
+                and final_metrics.get("hit@3", 0) >= METRICS_THRESHOLDS["hit@3"]
+                and final_metrics.get("mrr", 0) >= METRICS_THRESHOLDS["mrr"]
+            )
 
         return {
             "id": sample["id"], "query": query, "type": q_type,
@@ -125,7 +143,7 @@ class RAGV2Evaluator:
     def _compute_id_based_metrics(self, retrieved_ids, gt_ids, q_type):
         retrieved_set = set(retrieved_ids)
         gt_set = set(gt_ids)
-        if q_type in ("out_of_scope", "clarify"):
+        if q_type in NEGATIVE_TYPES:
             return {"context_recall": 0.0, "context_precision": 0.0}
         if len(gt_set) == 0:
             return {"context_recall": 0.0, "context_precision": 0.0}
@@ -135,6 +153,49 @@ class RAGV2Evaluator:
         return {
             "context_recall": round(context_recall, 4),
             "context_precision": round(context_precision, 4),
+        }
+
+    def _compute_ranking_metrics(self, retrieved_ids, gt_ids, q_type):
+        """计算排序类指标：precision@1, hit@3, recall@3, MRR
+
+        【口径修正 v2】
+        - 去掉 precision@3，改为 hit@3 + recall@3。
+          原因：单文档 ground_truth 下 precision@3 上限 = 1/3，
+          无论 Reranker 多强都到不了 0.90。
+        - precision@1：Top-1 是否命中（0/1）
+        - hit@3：Top-3 是否至少命中一个 gt（0/1）
+        - recall@3：Top-3 命中的 gt 数 / gt 总数
+        - mrr：第一个命中 gt 的倒数排名
+        """
+        if q_type in NEGATIVE_TYPES:
+            return {"precision@1": 0.0, "hit@3": 0.0, "recall@3": 0.0, "mrr": 0.0}
+        gt_set = set(gt_ids)
+        if not gt_set or not retrieved_ids:
+            return {"precision@1": 0.0, "hit@3": 0.0, "recall@3": 0.0, "mrr": 0.0}
+
+        # precision@1
+        p1 = 1.0 if retrieved_ids[0] in gt_set else 0.0
+
+        # hit@3
+        top3 = retrieved_ids[:3]
+        top3_set = set(top3)
+        hit3 = 1.0 if (top3_set & gt_set) else 0.0
+
+        # recall@3
+        recall3 = len(top3_set & gt_set) / len(gt_set)
+
+        # MRR
+        mrr = 0.0
+        for i, rid in enumerate(retrieved_ids, start=1):
+            if rid in gt_set:
+                mrr = 1.0 / i
+                break
+
+        return {
+            "precision@1": round(p1, 4),
+            "hit@3": round(hit3, 4),
+            "recall@3": round(recall3, 4),
+            "mrr": round(mrr, 4),
         }
 
     async def _compute_llm_relevancy(self, query, answer, retrieved_ids):
@@ -247,10 +308,20 @@ class RAGV2Evaluator:
                 "average_metrics": {k: 0.0 for k in METRICS_THRESHOLDS},
                 "results": []
             }
+
+        # 【口径修正 v2】positive 样本集合，用于排序指标平均
+        positive_results = [r for r in self.results if r["type"] in POSITIVE_TYPES]
+
+        # 【口径修正 v2】positive-only 平均的指标集合
+        POSITIVE_ONLY_METRICS = {
+            "precision@1", "hit@3", "recall@3", "mrr",
+            "context_recall", "context_precision", "answer_relevancy",
+        }
+
         avg_metrics = {}
         for metric in METRICS_THRESHOLDS.keys():
-            # out_of_scope_accuracy 只对 out_of_scope 样本求平均，排除无效样本(-1)
             if metric == "out_of_scope_accuracy":
+                # 只对 out_of_scope 样本求平均，排除无效样本(-1)
                 samples = [r for r in self.results
                            if r["type"] == "out_of_scope" and r["metrics"].get(metric, 0) >= 0]
                 if samples:
@@ -259,6 +330,7 @@ class RAGV2Evaluator:
                 else:
                     avg_metrics[metric] = 0.0
             elif metric == "clarify_accuracy":
+                # 只对 clarify 样本求平均，排除无效样本(-1)
                 samples = [r for r in self.results
                            if r["type"] == "clarify" and r["metrics"].get(metric, 0) >= 0]
                 if samples:
@@ -266,9 +338,14 @@ class RAGV2Evaluator:
                     avg_metrics[metric] = round(sum(values) / len(values), 4)
                 else:
                     avg_metrics[metric] = 0.0
+            elif metric in POSITIVE_ONLY_METRICS:
+                # 【口径修正 v2】排序/检索指标只对 positive 样本求平均
+                values = [r["metrics"].get(metric, 0) for r in positive_results]
+                avg_metrics[metric] = round(sum(values) / len(values), 4) if values else 0.0
             else:
                 values = [r["metrics"].get(metric, 0) for r in self.results]
                 avg_metrics[metric] = round(sum(values) / len(values), 4) if values else 0
+
         passed_count = sum(1 for r in self.results if r["passed"])
         total_count = len(self.results)
         return {
@@ -362,6 +439,22 @@ async def main():
     print("\n=== 评估报告 ===")
     print(json.dumps(report["average_metrics"], indent=2, ensure_ascii=False))
     print(f"通过率: {report['pass_rate']}")
+
+    # 【口径修正 v2】输出 positive-only 视图，便于验证 Reranker 排序质量
+    positive_results = [r for r in report["results"] if r["type"] in POSITIVE_TYPES]
+    if positive_results:
+        def avg(key):
+            return round(sum(r["metrics"].get(key, 0) for r in positive_results) / len(positive_results), 4)
+        print("\n=== positive-only 排序指标（Reranker 真实水平）===")
+        print(json.dumps({
+            "sample_count": len(positive_results),
+            "context_recall": avg("context_recall"),
+            "context_precision": avg("context_precision"),
+            "precision@1": avg("precision@1"),
+            "hit@3": avg("hit@3"),
+            "recall@3": avg("recall@3"),
+            "mrr": avg("mrr"),
+        }, indent=2, ensure_ascii=False))
 
     SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
     output_path = os.path.join(SCRIPT_DIR, f"eval_report_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.json")

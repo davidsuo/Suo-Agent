@@ -153,6 +153,7 @@ docs/v1.0.0	2026-09-14	建立版本管理规范：VERSION_HISTORY.md + CHANGELOG
 | `rag/v2.6.5` | 2026-09-22 | 评估器常量重构（REJECT_SIGNALS / API_FAILURE_SIGNALS），context_list 去重累积 |
 | `rag/v2.6.6` | 2026-09-22 | 工具权限通用拦截（按 ROLE_PERMISSIONS）+ 租户隔离修复（get_tenant 从 session_id 前缀提取）+ 前端构建 |
 | `rag/v2.6.7` | 2026-09-23 | init_db 幂等化，修复云端空 sample.db 导致表缺失 |
+| `rag/v2.6.9` | 2026-10-01 | US-05 正式验收：排序指标口径修正（`precision@3` → `hit@3` / `recall@3`），`precision@1` 0.78 → 0.9756（口径修正后），`mrr` 0.8 → 0.9878，Q13 ground_truth 补充 TS-03；Q50 电源灯亮/不亮区分词未捕获，记入 Backlog |
 
 ### 3.4 Agent 架构线
 | 新标签 | 时间 | 里程碑 |
@@ -177,6 +178,7 @@ docs/v1.0.0	2026-09-14	建立版本管理规范：VERSION_HISTORY.md + CHANGELOG
 | `release/v5.9.7` | 2026-09-28 | 统一换行符 LF，放行 frontend/dist，修复云端静态产物未同步 |
 | `release/v5.9.8` | 2026-09-28 | CI/CD 前端自动构建落地，移除 dist 追踪，修复自动部署失效 |
 | `release/v5.9.9` | 2026-09-30 | CI 缓存 HF 模型（44秒）+ 预置测试数据 + tool_matrix 重试 |
+| `release/v5.9.10` | 2026-10-01 | CI 缓存 HF 模型 + 数据预置；Reranker 精排优化（延迟 -53%）；AI Native 2.0 收尾 |
 
 
 ### 3.6 on-prem 线
@@ -190,6 +192,9 @@ docs/v1.0.0	2026-09-14	建立版本管理规范：VERSION_HISTORY.md + CHANGELOG
 | `on-prem/v1.3.6` | 2026-09-28 | 同步云端 release/v5.9.6 |
 | `on-prem/v1.3.7` | 2026-09-28 | 同步云端 release/v5.9.7（含换行符及构建产物修复） |
 | `on-prem/v1.3.8` | 2026-09-28 | 同步云端 release/v5.9.8（CI/CD 改造） |
+| `on-prem/v1.3.10` | 2026-10-01 | 同步云端 release/v5.9.10 |
+> 说明：`on-prem/v1.3.9` 被跳过，原因是 `release/v5.9.9` 仅为 CI/测试层面的修补，其内容已全部包含在第二天的 `release/v5.9.10` 中，直接同步 `v1.3.10` 以保持版本号尾部对齐。
+
 
 
 ### 3.7 AI Native 2.0 里程碑
