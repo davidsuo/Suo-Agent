@@ -1095,6 +1095,20 @@ async def api_users_list():
     conn.close()
     return {"status": "success", "data": users}
 
+@app.get("/api/users/roles")
+async def api_users_roles():
+    """返回系统中所有可用角色及其中文名，供前端动态渲染（US-07）
+
+    数据源：common/auth.py 的 ROLE_PERMISSIONS（权限真源）
+    中文名：common/auth.py 的 ROLE_DISPLAY_NAMES（显示真源）
+    """
+    from common.auth import ROLE_PERMISSIONS, ROLE_DISPLAY_NAMES
+    roles = [
+        {"value": role, "label": ROLE_DISPLAY_NAMES.get(role, role)}
+        for role in ROLE_PERMISSIONS.keys()
+    ]
+    return {"status": "success", "data": roles}
+
 
 @app.post("/api/users/add")
 async def api_users_add(username: str = Form(...), pin: str = Form(...), real_name: str = Form(""), role: str = Form("viewer"), department: str = Form(""), contact: str = Form(""), status: str = Form("正常")):

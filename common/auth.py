@@ -195,3 +195,14 @@ def is_tool_allowed(role: str, tool_name: str) -> bool:
     if allowed is None:
         return True
     return tool_name in allowed
+
+
+# ==================== 【US-07】角色中文名映射 ====================
+# 与 ROLE_PERMISSIONS 同源，作为角色元数据的唯一真源
+# 前端通过 /api/users/roles 拉取，避免前后端定义漂移
+ROLE_DISPLAY_NAMES: Dict[str, str] = {
+    "admin": "管理员",
+    "manager": "经理",
+    "developer": "研发人员",
+    "viewer": "用户",
+}

@@ -126,6 +126,28 @@ async def run(base_url: str):
             print(f"  [ERR ] /api/logs 不存在用户: {e}")
 
 
+        # ========== US-07：/api/users/roles 端点可用性 ==========
+        print(f"\n  --- US-07: 角色列表端点 ---")
+        try:
+            r = await client.get(f"{base_url}/api/users/roles")
+            body = r.json()
+            roles = body.get("data", [])
+            if body.get("status") == "success" and len(roles) >= 4:
+                values = [x.get("value") for x in roles]
+                if all(k in values for k in ["admin", "manager", "developer", "viewer"]):
+                    passed += 1
+                    print(f"  [PASS] /api/users/roles 返回 {len(roles)} 个角色: {values}")
+                else:
+                    failed += 1
+                    print(f"  [FAIL] /api/users/roles 缺少标准角色 → {values}")
+            else:
+                failed += 1
+                print(f"  [FAIL] /api/users/roles 响应异常 → {body}")
+        except Exception as e:
+            failed += 1
+            print(f"  [ERR ] /api/users/roles: {e}")
+
+
         # ========== 附加测试：/api/logs/export 的 CSV 内容 ==========
         print(f"\n  --- 附加：/api/logs/export CSV 内容校验 ---")
         try:
