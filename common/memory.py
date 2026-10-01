@@ -9,6 +9,14 @@ UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(os.path.dirname(os.path.dirnam
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 MEMORY_FILE = os.path.join(UPLOAD_DIR, "memory.json")
 
+# ==================== 【US-08】Memory Schema 版本控制 ====================
+# 版本升级日志：
+#   v1（隐式）：无 schema_v 字段，初始版本
+#   v2：引入 schema_v 字段，加载时自动清旧 history
+# 未来升级：改 CURRENT_SCHEMA_V，并在 _migrate 里补对应的迁移分支
+CURRENT_SCHEMA_V = 2
+
+
 class ConversationMemory:
     def __init__(self):
         self.memory_store = {}  # 存储会话记忆
@@ -21,10 +29,38 @@ class ConversationMemory:
             try:
                 with open(MEMORY_FILE, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                    self.memory_store = data.get("store", {})
+                    raw_store = data.get("store", {})
+                    self.memory_store = self._migrate(raw_store)
                     self.all_tenants = set(data.get("tenants", []))
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"###memory### 加载失败，将使用空 memory: {e}")
+                self.memory_store = {}
+        else:
+            self.memory_store = {}
+
+    def _migrate(self, raw_store: dict) -> dict:
+        """按 schema_v 迁移旧 memory 数据（US-08）。
+
+        规则：
+        - 无 schema_v 或 schema_v < CURRENT_SCHEMA_V → 清空 history，保留 files/tenant
+        - schema_v == CURRENT_SCHEMA_V → 原样保留
+        """
+        migrated = {}
+        cleaned_count = 0
+        for sid, data in raw_store.items():
+            if not isinstance(data, dict):
+                continue
+            ver = data.get("schema_v", 1)   # 无字段视为 v1
+            if ver < CURRENT_SCHEMA_V:
+                data["history"] = []
+                data["schema_v"] = CURRENT_SCHEMA_V
+                cleaned_count += 1
+            else:
+                data["schema_v"] = ver
+            migrated[sid] = data
+        if cleaned_count > 0:
+            print(f"###memory迁移### 清理 {cleaned_count} 个旧 session 的 history（schema < v{CURRENT_SCHEMA_V}）")
+        return migrated
 
     def _save(self):
         data = {"store": self.memory_store, "tenants": list(self.all_tenants)}
@@ -53,11 +89,7 @@ class ConversationMemory:
         self._save()
 
     def get_tenant(self, session_id: str) -> str:
-        """从 session_id 提取租户（用户名），实现用户间日程隔离。
-
-        session_id 格式: "alice_主对话" → tenant = "alice"
-        这样每个用户的日程天然隔离，不依赖 memory_store 的写入时机。
-        """
+        """从 session_id 提取租户（用户名），实现用户间日程隔离。"""
         if "_" in session_id:
             return session_id.split("_", 1)[0]
         return session_id
@@ -67,7 +99,13 @@ class ConversationMemory:
 
     def append(self, session_id: str, user_msg: str, assistant_msg: str):
         if session_id not in self.memory_store:
-            self.memory_store[session_id] = {"history": [], "tenant": "default", "files": {}, "file_context": ""}
+            self.memory_store[session_id] = {
+                "history": [], "tenant": "default",
+                "files": {}, "file_context": "",
+                "schema_v": CURRENT_SCHEMA_V,
+            }
+        # 【US-08 防御】补齐 schema_v（防止外部写入绕过 __init__ 迁移）
+        self.memory_store[session_id].setdefault("schema_v", CURRENT_SCHEMA_V)
         self.memory_store[session_id]["history"].append({"role": "user", "content": user_msg})
         self.memory_store[session_id]["history"].append({"role": "assistant", "content": assistant_msg})
         self._save()
@@ -82,7 +120,12 @@ class ConversationMemory:
 
     def set_file_context(self, session_id: str, context: str):
         if session_id not in self.memory_store:
-            self.memory_store[session_id] = {"history": [], "tenant": "default", "files": {}, "file_context": ""}
+            self.memory_store[session_id] = {
+                "history": [], "tenant": "default",
+                "files": {}, "file_context": "",
+                "schema_v": CURRENT_SCHEMA_V,
+            }
+        self.memory_store[session_id].setdefault("schema_v", CURRENT_SCHEMA_V)
         self.memory_store[session_id]["file_context"] = context
         self._save()
 
@@ -93,7 +136,12 @@ class ConversationMemory:
 
     def add_uploaded_file(self, session_id: str, filename: str, content: str):
         if session_id not in self.memory_store:
-            self.memory_store[session_id] = {"history": [], "tenant": "default", "files": {}, "file_context": ""}
+            self.memory_store[session_id] = {
+                "history": [], "tenant": "default",
+                "files": {}, "file_context": "",
+                "schema_v": CURRENT_SCHEMA_V,
+            }
+        self.memory_store[session_id].setdefault("schema_v", CURRENT_SCHEMA_V)
         self.memory_store[session_id]["files"][filename] = content
         self._save()
 
@@ -107,7 +155,6 @@ class ConversationMemory:
             return self.memory_store[session_id].get("files", {}).get(filename, "")
         return ""
 
-    # 【核心方法】这里就是 memory.get_all_projects() 的定义处！
     def get_all_projects(self, username: str) -> List[str]:
         """安全获取某用户的所有项目名"""
         projects = ["主对话"]
@@ -116,7 +163,6 @@ class ConversationMemory:
                 proj = key.split("_", 1)[1]
                 if proj != "主对话":
                     projects.append(proj)
-        # 去重并保持顺序
         seen = set()
         unique_projects = []
         for p in projects:
@@ -124,5 +170,6 @@ class ConversationMemory:
                 unique_projects.append(p)
                 seen.add(p)
         return unique_projects
+
 
 memory = ConversationMemory()
