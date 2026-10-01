@@ -572,9 +572,10 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     finally { setStatusLoading(false); }
   };
 
-  const handleExportLogs = async () => {
+const handleExportLogs = async () => {
     try {
-      const response = await api.get('/logs/export', { responseType: 'blob' });
+      // 【US-06】携带 session_id，供后端进行权限校验
+      const response = await api.get(`/logs/export?session_id=${sessionId}`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
