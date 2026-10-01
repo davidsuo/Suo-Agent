@@ -7,6 +7,13 @@
 版本号遵循 [SemVer 2.0.0](https://semver.org/lang/zh-CN/)。
 
 
+## [docs/v1.0.1] - 2026-10-01
+
+### Fixed
+- **`VERSION_HISTORY.md` 3.6 节 on-prem 标签记录修正**：`on-prem/v1.3.9` 与 `on-prem/v1.3.10` 实际均未创建（此前文档误记为已创建 `v1.3.10`），补丁已并入 `release/v5.9.11` → `on-prem/v1.3.11`。
+
+---
+
 ## [memory/v1.0.0] - 2026-10-01
 
 ### Added

@@ -194,7 +194,7 @@ docs/v1.0.0	2026-09-14	建立版本管理规范：VERSION_HISTORY.md + CHANGELOG
 | `on-prem/v1.3.7` | 2026-09-28 | 同步云端 release/v5.9.7（含换行符及构建产物修复） |
 | `on-prem/v1.3.8` | 2026-09-28 | 同步云端 release/v5.9.8（CI/CD 改造） |
 | `on-prem/v1.3.10` | 2026-10-01 | 同步云端 release/v5.9.10 |
-> 说明：`on-prem/v1.3.9` 被跳过，原因是 `release/v5.9.9` 仅为 CI/测试层面的修补，其内容已全部包含在第二天的 `release/v5.9.10` 中，直接同步 `v1.3.10` 以保持版本号尾部对齐。
+> 说明：`on-prem/v1.3.9` 与 `on-prem/v1.3.10` 均未创建，原因是 `release/v5.9.9` / `release/v5.9.10` 的部署补丁已包含在本次 `release/v5.9.11` 的合并中，直接同步到 `on-prem/v1.3.11`。
 
 
 ### 3.7 AI Native 2.0 里程碑
