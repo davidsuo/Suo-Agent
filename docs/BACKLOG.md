@@ -23,3 +23,23 @@
 - **优先级**：P2（1/41 positive 失败，错误率 2.4%，不影响 US-05 验收）
 - **负责**：待定
 
+---
+
+
+## P2 - 前端 lint 技术债
+
+### B-002：Chat.tsx / App.tsx 共 52 条 ESLint 错误待清理
+
+- **发现版本**：`ci/v1.0.0`（US-09 CI 补齐 lint 检查）
+- **现状**：`npm run lint` 报告 52 errors，主要分类：
+  - `@typescript-eslint/no-explicit-any` ~30 条（类型化重构）
+  - `@typescript-eslint/no-unused-vars` ~10 条（清理未使用变量）
+  - `react-hooks/immutability` ~5 条（React Compiler 新规则）
+  - `prefer-const` / `no-useless-escape` 等 ~7 条（风格）
+- **处理策略**：本轮 CI 前端 lint 步骤以 `continue-on-error: true` 上线，规则在 `eslint.config.js` 中放宽，不阻塞部署。
+- **下一轮目标**：清理 52 条 → 0，然后：
+  1. `eslint.config.js` 恢复严格规则
+  2. `deploy.yml` 前端 lint 步骤改为 `continue-on-error: false`
+- **优先级**：P2
+- **负责**：待定
+

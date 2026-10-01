@@ -944,8 +944,10 @@ async def api_chat(request: ChatRequest):
     except Exception as e:
         import traceback
         print(f"###严重Bug### {traceback.format_exc()}")
+        # 【US-09 修复】提前捕获 e 为普通变量，避免异步生成器执行时 e 已被 Python 清除
+        error_msg = str(e)
         async def error_stream():
-            yield f"data: {json.dumps({'type': 'answer', 'content': f'系统处理异常: {e}'}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'answer', 'content': f'系统处理异常: {error_msg}'}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
         return StreamingResponse(error_stream(), media_type="text/event-stream")
 
