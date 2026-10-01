@@ -11,7 +11,7 @@
   {"id": "Q10", "question": "打印机端口 9100 连不上，防火墙怎么放行", "type": "exact", "ground_truth": ["IT-03"]},
   {"id": "Q11", "question": "ThinkPad X1 Carbon 2024 开机没反应，电源灯不亮", "type": "exact", "ground_truth": ["TS-01"]},
   {"id": "Q12", "question": "开机后一直没画面，能听到机器运转的声音，屏幕就是没图像", "type": "semantic", "ground_truth": ["TS-02"]},
-  {"id": "Q13", "question": "我的 X1 2024 开机后屏幕一片漆黑，机器在转但啥都不显示", "type": "hybrid", "ground_truth": ["TS-01", "TS-02"]},
+  {"id": "Q13", "question": "我的 X1 2024 开机后屏幕一片漆黑，机器在转但啥都不显示", "type": "hybrid", "ground_truth": ["TS-01", "TS-02", "TS-03"]},
   {"id": "Q14", "question": "开机蓝屏 0x0000007B 是什么问题", "type": "exact", "ground_truth": ["TS-05"]},
   {"id": "Q15", "question": "电源插着也一直掉电，拿掉适配器更撑不了几分钟", "type": "semantic", "ground_truth": ["TS-04"]},
   {"id": "Q16", "question": "X1 用着用着就突然重启，散热口附近特别热，风扇跟拖拉机一样响", "type": "exact", "ground_truth": ["TS-06"]},
@@ -48,5 +48,5 @@
   {"id": "Q47", "question": "请告诉我明天的彩票中奖号码", "type": "out_of_scope", "ground_truth": []},
   {"id": "Q48", "question": "打印机卡纸后怎么彻底清理内部碎纸", "type": "semantic", "ground_truth": ["IT-10"]},
   {"id": "Q49", "question": "ThinkPad 键盘失灵了怎么修", "type": "out_of_scope", "ground_truth": []},
-  {"id": "Q50", "question": "X1 2024 开机黑屏怎么办，电源灯是亮的", "type": "hybrid", "ground_truth": ["TS-03", "TS-02"]}
+  {"id": "Q50", "question": "X1 2024 开机黑屏怎么办，电源灯是亮的", "type": "hybrid", "ground_truth": ["TS-02", "TS-03"]}
 ]

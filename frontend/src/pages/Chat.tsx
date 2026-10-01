@@ -45,6 +45,8 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
 
   const [usersList, setUsersList] = useState<any[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
+  // 【US-07】角色列表（从后端动态拉取，避免前后端定义漂移）
+  const [rolesList, setRolesList] = useState<Array<{ value: string; label: string }>>([]);
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [newUser, setNewUser] = useState({ username: '', pin: '', real_name: '', role: 'viewer', department: '', contact: '', status: '正常' });
   const [userSearch, setUserSearch] = useState('');
@@ -53,12 +55,9 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
   const [statusLoading, setStatusLoading] = useState(false);
 
   // 【US-05】角色中文映射字典
-  const roleMap: Record<string, string> = {
-    admin: '管理员',
-    manager: '经理',
-    developer: '研发人员',
-    viewer: '用户',
-  };
+  // 【US-07】角色中文名查表函数（从后端拉取，不再硬编码）
+  const getRoleLabel = (role: string) =>
+    rolesList.find(r => r.value === role)?.label || role;
 
   const sessionId = `${user.username}_${currentProject}`;
 
@@ -69,6 +68,21 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
       loadKbFiles();
     }
   }, [currentProject, activeView]);
+
+  // 【US-07】从后端拉取角色列表
+  useEffect(() => {
+    const loadRoles = async () => {
+      try {
+        const res = await api.get('/users/roles');
+        if (res.data.status === 'success') {
+          setRolesList(res.data.data);
+        }
+      } catch (err) {
+        console.error('角色列表拉取失败', err);
+      }
+    };
+    loadRoles();
+  }, []);
 
   useEffect(() => {
     if (activeView === 'chat') {
@@ -572,9 +586,10 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
     finally { setStatusLoading(false); }
   };
 
-  const handleExportLogs = async () => {
+const handleExportLogs = async () => {
     try {
-      const response = await api.get('/logs/export', { responseType: 'blob' });
+      // 【US-06】携带 session_id，供后端进行权限校验
+      const response = await api.get(`/logs/export?session_id=${sessionId}`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -670,7 +685,7 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
           <span>
             {user.display_name} 
             <span style={{ fontSize: '12px', color: '#888', marginLeft: '4px' }}>
-              ({user.department || '未知部门'}：{roleMap[user.role] || user.role})
+              ({user.department || '未知部门'}：{getRoleLabel(user.role)})
             </span>
           </span>
         </div>
@@ -798,7 +813,9 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                           const fd = new FormData(); fd.append('username', record.username); fd.append('role', val); fd.append('status', record.status);
                           await api.post('/users/update', fd); antMessage.success('角色更新成功'); loadUsers();
                         }}>
-                        <Select.Option value="admin">管理员</Select.Option><Select.Option value="manager">经理</Select.Option><Select.Option value="developer">研发人员</Select.Option><Select.Option value="viewer">用户</Select.Option>
+                        {rolesList.map(r => (
+                          <Select.Option key={r.value} value={r.value}>{r.label}</Select.Option>
+                        ))}
                       </Select>
                     ) },
                   { title: '部门', dataIndex: 'department' },
@@ -830,7 +847,9 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                   <Input.Password placeholder="密码" value={newUser.pin} onChange={(e) => setNewUser({...newUser, pin: e.target.value})} />
                   <Input placeholder="姓名" value={newUser.real_name} onChange={(e) => setNewUser({...newUser, real_name: e.target.value})} />
                   <Select placeholder="角色" value={newUser.role} onChange={(val) => setNewUser({...newUser, role: val})} style={{ width: '100%' }}>
-                    <Select.Option value="admin">管理员</Select.Option><Select.Option value="manager">经理</Select.Option><Select.Option value="developer">研发人员</Select.Option><Select.Option value="viewer">用户</Select.Option>
+                    {rolesList.map(r => (
+                      <Select.Option key={r.value} value={r.value}>{r.label}</Select.Option>
+                    ))}
                   </Select>
                   <Input placeholder="部门" value={newUser.department} onChange={(e) => setNewUser({...newUser, department: e.target.value})} />
                   <Input placeholder="联系方式" value={newUser.contact} onChange={(e) => setNewUser({...newUser, contact: e.target.value})} />

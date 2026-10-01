@@ -54,6 +54,15 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
+      - name: Lint Python code
+        run: |
+          pip install ruff
+          ruff check common/ bus_memory/ rag_test/ scripts/ \
+            --select=E9,F63,F7,F82 \
+            --ignore=F401 \
+            --no-cache
+        continue-on-error: false
+
       # 【新增】预置测试数据文件，让 LLM 看到 coffee_sales.csv 等数据源
       # 【新增】预置测试数据文件 + 生成最小化 rag_data.json（让 LLM 看到数据源）
       - name: Prepare test data
@@ -117,6 +126,13 @@ jobs:
           key: ${{ runner.os }}-node-${{ hashFiles('frontend/package-lock.json') }}
           restore-keys: |
             ${{ runner.os }}-node-
+
+      - name: Lint Frontend code
+        run: |
+          cd frontend
+          npm run lint --if-present
+        continue-on-error: true
+
 
       - name: Build Frontend
         run: cd frontend && npm ci && npm run build

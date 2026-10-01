@@ -944,8 +944,10 @@ async def api_chat(request: ChatRequest):
     except Exception as e:
         import traceback
         print(f"###严重Bug### {traceback.format_exc()}")
+        # 【US-09 修复】提前捕获 e 为普通变量，避免异步生成器执行时 e 已被 Python 清除
+        error_msg = str(e)
         async def error_stream():
-            yield f"data: {json.dumps({'type': 'answer', 'content': f'系统处理异常: {e}'}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'answer', 'content': f'系统处理异常: {error_msg}'}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
         return StreamingResponse(error_stream(), media_type="text/event-stream")
 
@@ -1093,6 +1095,20 @@ async def api_users_list():
     conn.close()
     return {"status": "success", "data": users}
 
+@app.get("/api/users/roles")
+async def api_users_roles():
+    """返回系统中所有可用角色及其中文名，供前端动态渲染（US-07）
+
+    数据源：common/auth.py 的 ROLE_PERMISSIONS（权限真源）
+    中文名：common/auth.py 的 ROLE_DISPLAY_NAMES（显示真源）
+    """
+    from common.auth import ROLE_PERMISSIONS, ROLE_DISPLAY_NAMES
+    roles = [
+        {"value": role, "label": ROLE_DISPLAY_NAMES.get(role, role)}
+        for role in ROLE_PERMISSIONS.keys()
+    ]
+    return {"status": "success", "data": roles}
+
 
 @app.post("/api/users/add")
 async def api_users_add(username: str = Form(...), pin: str = Form(...), real_name: str = Form(""), role: str = Form("viewer"), department: str = Form(""), contact: str = Form(""), status: str = Form("正常")):
@@ -1174,19 +1190,24 @@ async def api_health():
 @app.get("/api/logs")
 async def api_logs(session_id: str = ""):
     """获取操作日志列表（带观察者权限校验，直接查库）"""
-    # 【物理层安全拦截】viewer 不允许查看系统日志
-    if session_id:
-        real_username = session_id.split('_')[0] if '_' in session_id else session_id
-        try:
-            _conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "users.db"))
-            _cur = _conn.cursor()
-            _cur.execute("SELECT role FROM users WHERE username = ?", (real_username,))
-            _row = _cur.fetchone()
-            _conn.close()
-            if _row and _row[0] == "viewer":
-                return {"status": "error", "message": "无权限查看系统日志，请联系管理员"}
-        except Exception as e:
-            print(f"###api_logs### 权限校验异常: {e}")
+    # 【US-06 安全修复】必须携带 session_id，否则直接拒绝
+    if not session_id or not session_id.strip():
+        return {"status": "error", "message": "缺少 session_id 参数，无权访问"}
+
+    real_username = session_id.split('_')[0] if '_' in session_id else session_id
+    try:
+        _conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "users.db"))
+        _cur = _conn.cursor()
+        _cur.execute("SELECT role FROM users WHERE username = ?", (real_username,))
+        _row = _cur.fetchone()
+        _conn.close()
+        if not _row:
+            return {"status": "error", "message": "用户不存在，无权访问"}
+        if _row[0] == "viewer":
+            return {"status": "error", "message": "无权限查看系统日志，请联系管理员"}
+    except Exception as e:
+        print(f"###api_logs### 权限校验异常: {e}")
+        return {"status": "error", "message": "权限校验失败"}
 
     plan_log_path = os.path.join(UPLOAD_DIR, "plan_log.json")
     logs = []
@@ -1214,19 +1235,24 @@ async def api_logs(session_id: str = ""):
 @app.get("/api/logs/export")
 async def api_logs_export(session_id: str = ""):
     """导出操作日志为 CSV 文件（带观察者权限校验）"""
-    # 【物理层安全拦截】viewer 不允许导出系统日志
-    if session_id:
-        real_username = session_id.split('_')[0] if '_' in session_id else session_id
-        try:
-            _conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "users.db"))
-            _cur = _conn.cursor()
-            _cur.execute("SELECT role FROM users WHERE username = ?", (real_username,))
-            _row = _cur.fetchone()
-            _conn.close()
-            if _row and _row[0] == "viewer":
-                return {"status": "error", "message": "无权限导出系统日志"}
-        except Exception as e:
-            print(f"###api_logs_export### 权限校验异常: {e}")
+    # 【US-06 安全修复】必须携带 session_id，否则直接拒绝
+    if not session_id or not session_id.strip():
+        return {"status": "error", "message": "缺少 session_id 参数，无权访问"}
+
+    real_username = session_id.split('_')[0] if '_' in session_id else session_id
+    try:
+        _conn = sqlite3.connect(os.path.join(UPLOAD_DIR, "users.db"))
+        _cur = _conn.cursor()
+        _cur.execute("SELECT role FROM users WHERE username = ?", (real_username,))
+        _row = _cur.fetchone()
+        _conn.close()
+        if not _row:
+            return {"status": "error", "message": "用户不存在，无权访问"}
+        if _row[0] == "viewer":
+            return {"status": "error", "message": "无权限导出系统日志"}
+    except Exception as e:
+        print(f"###api_logs_export### 权限校验异常: {e}")
+        return {"status": "error", "message": "权限校验失败"}
 
     import csv
     from io import StringIO
@@ -1240,8 +1266,8 @@ async def api_logs_export(session_id: str = ""):
             for line in f.read().decode("utf-8", errors="ignore").splitlines():
                 try:
                     entry = json.loads(line)
-                    session_id = entry.get('session_id', '')
-                    window_name = session_id.split('_', 1)[1] if '_' in session_id else '主对话'
+                    session_id_entry = entry.get('session_id', '')
+                    window_name = session_id_entry.split('_', 1)[1] if '_' in session_id_entry else '主对话'
                     ts = entry.get('timestamp', '')[:16]
                     detail = (entry.get('user_query') or '')[:60]
                     writer.writerow([ts, f"{entry.get('username')}/{window_name}", entry.get('role', ''), detail, entry.get('tool', ''), entry.get('status', '')])

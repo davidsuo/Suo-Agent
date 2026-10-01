@@ -15,6 +15,10 @@ import traceback
 from functools import partial
 from typing import Any, Callable, Dict, Optional
 
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from bus_memory.event_bus import EventBus
+
 class Agent:
     """基础智能体，维护任务队列与统计信息"""
 
