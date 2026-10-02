@@ -7,6 +7,32 @@
 版本号遵循 [SemVer 2.0.0](https://semver.org/lang/zh-CN/)。
 
 
+## [agent/v3.5.0] - 2026-10-02
+
+### Added
+- **图表资源化交付**（US-11）：`generate_chart` / `generate_image` 返回"资源清单"格式，含类型、标题、URL、使用说明、统计摘要，不再返回现成 markdown。
+
+### Changed
+- **主循环模型切换**：`deepseek-chat` → `deepseek-flash`（V4.1，默认 thinking mode），提升 LLM 的"先想后写"能力。
+- **SYSTEM_PROMPT 精简**：删除 `{CHART}` 占位符描述，减少规则堆积。
+- **图片通道改造**：放弃 `{CHART}` 占位符，改用真实 markdown（LLM 训练数据常见格式）。
+
+### Fixed
+- **`{CHART}` 在 thinking mode 下丢失**：V4.1 Flash 对陌生占位符处理不一致，导致图片位置随机。改用真实 markdown 后，LLM 稳定保留。
+- **图片清理正则误删真实图片**：`re.sub(r'!\[.*?\]\(.*?\)', '', answer)` 会删掉 LLM 保留的真实图片，改用负向零宽断言排除 `/charts/` 和 `/images/`。
+- **`image_output` 变量名拼错**：`if image_output:` 改为 `if image_outputs:`（列表）。
+- **v2 旧代码残留**：tool 循环里删除把图片替换成 `{CHART}` 的旧逻辑。
+
+### Notes
+- **设计理念**：提升 LLM 输入语义质量（资源清单 + 使用说明），而不是在 SYSTEM_PROMPT 堆积规则。
+- **LLM 自主行为**：用户输入"分析各月咖啡销售趋势并画出饼图"，LLM 可生成"饼图 + 折线图"两张图——因为饼图无趋势语义，折线图加强理解。这是 LLM 的主动判断，符合预期。
+
+### Performance
+- **报告结构稳定性**：连续 5 次"各月咖啡销售趋势并画出饼图"，LLM 输出的报告结构一致（数据 → 图表 → 分析）。
+- **用户指定格式**：100% 遵循用户要求的顺序。
+
+---
+
 ## [docs/v1.0.1] - 2026-10-01
 
 ### Fixed
