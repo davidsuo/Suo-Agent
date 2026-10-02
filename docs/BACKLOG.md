@@ -43,3 +43,13 @@
 - **优先级**：P2
 - **负责**：待定
 
+---
+
+### B-003：前端部署后缓存问题
+
+- **发现版本**：US-10（部署后 index.html 缓存）
+- **现象**：每次部署后，用户访问站点看到旧版本，需 Ctrl+Shift+R 强制刷新
+- **根因**：`index.html` 无 Cache-Control 响应头，浏览器按默认策略缓存
+- **修复**：`common/main.py` 给 index.html 加 no-cache，给 /assets/* 加 immutable
+- **状态**：已修复（US-10）
+
