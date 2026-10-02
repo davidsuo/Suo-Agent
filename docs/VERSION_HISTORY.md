@@ -162,6 +162,7 @@ docs/v1.0.0	2026-09-14	建立版本管理规范：VERSION_HISTORY.md + CHANGELOG
 | `agent/v3.2.0` | 2026-09-15 | 图片清理策略：启动时自动清理 30 天前旧图表 |
 | `agent/v3.3.0` | 2026-09-21 | SYSTEM_PROMPT 新增回答边界与拒答规则（绝对禁令） |
 | `agent/v3.4.1` | 2026-09-28 | 修复 generate_image 环境变量、上下文爆炸与图片渲染 |
+| `agent/v3.5.0` | 2026-10-02 | US-11 图表资源化交付：放弃 `{CHART}` 占位符，改用真实 markdown；主循环切换 `deepseek-flash`；SYSTEM_PROMPT 精简 |
 
 
 ### 3.5 综合发布线
