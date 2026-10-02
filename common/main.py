@@ -1349,12 +1349,36 @@ IMAGES_DIR = os.path.join(UPLOAD_DIR, "images")
 os.makedirs(IMAGES_DIR, exist_ok=True)
 app.mount("/images", StaticFiles(directory=IMAGES_DIR), name="images")
 
+# 【US-10】带 hash 的静态资源永久缓存（内容变则 hash 变，URL 变，不会加载到旧版本）
+from starlette.staticfiles import StaticFiles as _BaseStaticFiles
+
+class _CacheControlledStaticFiles(_BaseStaticFiles):
+    """给带 hash 的静态资源加 Cache-Control: immutable"""
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
+
 if os.path.exists(DIST_DIR):
-    app.mount("/assets", StaticFiles(directory=os.path.join(DIST_DIR, "assets")), name="assets")
+    app.mount(
+        "/assets",
+        _CacheControlledStaticFiles(directory=os.path.join(DIST_DIR, "assets")),
+        name="assets",
+    )
+
+    # 【US-10】index.html 禁用缓存，保证用户总是拿到最新版本
+    _HTML_NO_CACHE_HEADERS = {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+    }
 
     @app.get("/")
     async def serve_react():
-        return FileResponse(os.path.join(DIST_DIR, "index.html"))
+        return FileResponse(
+            os.path.join(DIST_DIR, "index.html"),
+            headers=_HTML_NO_CACHE_HEADERS,
+        )
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
@@ -1363,4 +1387,7 @@ if os.path.exists(DIST_DIR):
         file_path = os.path.join(DIST_DIR, full_path)
         if os.path.isfile(file_path):
             return FileResponse(file_path)
-        return FileResponse(os.path.join(DIST_DIR, "index.html"))
+        return FileResponse(
+            os.path.join(DIST_DIR, "index.html"),
+            headers=_HTML_NO_CACHE_HEADERS,
+        )
