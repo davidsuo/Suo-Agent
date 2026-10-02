@@ -283,7 +283,6 @@ async def startup_event():
 SYSTEM_PROMPT = """
 你是企业级 AI 智能助手。基于工具返回的真实数据回答用户。
 
-{CHART} 是图片占位符，后端会自动替换，请原样保留。
 回答简洁直接；工具没数据就说没数据；不编造数据与文档编号。
 """
 
@@ -333,29 +332,40 @@ def _extract_ids_from_text(text: str) -> list:
                 break
     return ids
 
-async def _select_capabilities(query: str) -> list[str]:
-    """能力筛选器（AI Native 2.0）。
+async def _analyze_query(query: str) -> dict:
+    """语义分析器（US-11）：能力筛选 + 格式判断 + 任务性质。
 
-    与旧 _route_query 的本质区别：
-    - 旧：返回 1 个类别（5 选 1），决策在此结束
-    - 新：返回 0~N 个能力候选，供 LLM 进一步决策
+    一次 LLM 调用返回三个字段：
+    - capabilities: list[str]     完成任务可能需要的工具
+    - specified_format: bool      用户是否明确指定了输出格式/顺序
+    - task_nature: str            一句话描述任务性质（不规定具体结构）
 
-    返回的能力标识：
-    - rag_search：企业知识库检索
-    - query_database：内置 SQLite 库查询
-    - file_analysis：上传的 CSV/Excel 文件分析
-    - web_search：实时互联网信息
-    - schedule：日程管理
-    - send_email：发送邮件
+    fallback: LLM 调用失败时保守返回
     """
     import json as _json
+    fallback = {
+        "capabilities": ["rag_search"],
+        "specified_format": False,
+        "task_nature": "",
+    }
     try:
         resp = client.chat.completions.create(
             model="deepseek-chat",
             messages=[
                 {"role": "system", "content": (
-                    "你是能力筛选器。根据用户问题，列出完成任务【可能】需要的工具，"
-                    "0 个、1 个或多个都可以。只返回 JSON 数组，不要任何解释。\n\n"
+                    "分析用户问题，返回一个 JSON 对象，包含三个字段：\n"
+                    "1. capabilities：完成任务【可能】需要的工具列表（0 个、1 个或多个）\n"
+                    "2. specified_format：用户是否明确指定了输出格式或顺序（true / false）\n"
+                    "3. task_nature：一句话描述这个任务的本质（字符串）\n\n"
+                    "关于 specified_format 的判断：\n"
+                    "- true：用户明确说了报告/回答的结构、顺序、章节列表\n"
+                    "  例：'格式：1.饼图 2.数据 3.分析'、'先给结论再解释'、'按 A/B/C 三部分输出'\n"
+                    "- false：用户只描述了任务内容，没有提到输出的结构或顺序\n\n"
+                    "关于 task_nature：\n"
+                    "- 用一句话说清：用户想得到什么？这是什么性质的任务？\n"
+                    "- 不要规定具体的章节或顺序——那是生成阶段的 LLM 自己该决定的。\n"
+                    "- 你只需描述任务的性质，让下游知道该用什么方式对待。\n\n"
+                    "只返回 JSON 对象，不要任何解释。\n\n"
                     "可用工具：\n"
                     "- rag_search：查企业知识库（故障排查、IT 支持、流程规定、FAQ）\n"
                     "- query_database：查内置 SQLite 库（员工、薪资、日程）\n"
@@ -364,16 +374,25 @@ async def _select_capabilities(query: str) -> list[str]:
                     "- schedule：日程增删查\n"
                     "- send_email：发送邮件\n\n"
                     "示例：\n"
-                    "Q: '查询员工工资' → [\"query_database\"]\n"
-                    "Q: '分析咖啡销售数据' → [\"file_analysis\"]\n"
-                    "Q: '打印机报错 0x80004005' → [\"rag_search\"]\n"
+                    "Q: '查询员工工资' → "
+                    '{"capabilities": ["query_database"], "specified_format": false, '
+                    '"task_nature": "简单的数据查询"}\n'
+                    "Q: '各月咖啡销售趋势并画出饼图' → "
+                    '{"capabilities": ["file_analysis"], "specified_format": false, '
+                    '"task_nature": "一份多维度的数据分析报告，含可视化"}\n'
+                    "Q: '各月咖啡销售趋势并画出饼图，格式：1.饼图 2.数据 3.分析' → "
+                    '{"capabilities": ["file_analysis"], "specified_format": true, '
+                    '"task_nature": "用户已指定三段式结构的数据分析报告"}\n'
                     "Q: '查工资最高的人，然后搜他职位新闻，发邮件给 x@y.com' → "
-                    "[\"query_database\", \"web_search\", \"send_email\"]\n"
-                    "Q: '你好' → []"
+                    '{"capabilities": ["query_database", "web_search", "send_email"], '
+                    '"specified_format": false, "task_nature": "跨工具的多步骤任务"}\n'
+                    "Q: '你好' → "
+                    '{"capabilities": [], "specified_format": false, '
+                    '"task_nature": "闲聊，无需工具"}'
                 )},
                 {"role": "user", "content": query}
             ],
-            max_tokens=80,
+            max_tokens=180,
             temperature=0
         )
         raw = resp.choices[0].message.content.strip()
@@ -382,15 +401,29 @@ async def _select_capabilities(query: str) -> list[str]:
             raw = raw.strip("`").strip()
             if raw.startswith("json"):
                 raw = raw[4:].strip()
-        caps = _json.loads(raw)
+        data = _json.loads(raw)
+        if not isinstance(data, dict):
+            print("###语义分析### 返回非 dict，降级 fallback")
+            return fallback
+        caps = data.get("capabilities", [])
         if not isinstance(caps, list):
             caps = []
         caps = [c for c in caps if isinstance(c, str)]
-        print(f"###能力筛选### '{query[:30]}...' -> {caps}")
-        return caps
+        specified = bool(data.get("specified_format", False))
+        nature = data.get("task_nature", "")
+        if not isinstance(nature, str):
+            nature = ""
+        nature = nature.strip()[:200]
+        print(f"###语义分析### '{query[:30]}...' -> caps={caps}, "
+              f"specified_format={specified}, task_nature='{nature}'")
+        return {
+            "capabilities": caps,
+            "specified_format": specified,
+            "task_nature": nature,
+        }
     except Exception as e:
-        print(f"###能力筛选### 失败: {e}，保守返回 ['rag_search']")
-        return ["rag_search"]
+        print(f"###语义分析### 失败: {e}，降级 fallback")
+        return fallback
 
 
 def _discover_data_sources() -> str:
@@ -578,12 +611,20 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
 
     # ② 语义路由层：判断问题类型
     # ② 能力筛选层（AI Native 2.0）
-    yield json.dumps({"type": "status", "content": "正在分析任务能力..."}, ensure_ascii=False)
-    capabilities = await _select_capabilities(query)
+    yield json.dumps({"type": "status", "content": "正在分析任务..."}, ensure_ascii=False)
+    analysis = await _analyze_query(query)
+    capabilities = analysis["capabilities"]
+    specified_format = analysis["specified_format"]
+    task_nature = analysis.get("task_nature", "")
     system_content = SYSTEM_PROMPT
 
-    # 数据源目录：只要可能用到数据库或文件分析，就全量注入
+    # 【US-11 增强】注入任务性质，让生成阶段的 LLM 自主决定回答结构
+    # SYSTEM_PROMPT 常量不动——这是"传递 LLM 的判断"，不是"下达人工规则"
+    if task_nature:
+        system_content += f"\n\n【任务性质】{task_nature}"
+        print(f"###任务性质### 注入 '{task_nature}'")
 
+    # 数据源目录：只要可能用到数据库或文件分析，就全量注入
     need_data_sources = any(
         c in capabilities for c in ["query_database", "file_analysis"]
     )
@@ -652,7 +693,8 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
     # 【调用大模型前收缩历史】防止单次请求超出 1M 上下文限制
     messages = _shrink_messages(messages)
 
-    image_output = None
+    # 【US-11 v3】记录本次请求生成的所有图片（可能多张）
+    image_outputs = []
     collected_sources = list(bg["ids"])
 
     MAX_ITERATIONS = 8
@@ -668,7 +710,7 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
         for llm_retry in range(3):
             try:
                 response = client.chat.completions.create(
-                    model="deepseek-chat",
+                    model="deepseek-flash",
                     messages=messages,
                     tools=allowed_tools,
                     tool_choice="auto"
@@ -820,17 +862,18 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
                 "result_len": len(str(result)),
             })
 
-            # 【图片通道分离】generate_chart / generate_image 返回的 URL 图片不经过 LLM，由后端直接拼接
+            # 【US-11 v4】工具返回的是"资源清单"（含 URL），不是现成 markdown
+            # 从结果中提取所有图片 URL，用于兜底
             if func_name in ["generate_chart", "generate_image"] and result:
-                img_match = re.search(r'!\[.*?\]\((/charts/|/images/)[a-f0-9]+\.png\)', str(result))
-                if img_match:
-                    full = img_match.group(0)
-                    image_output = full[full.index('](') + 2 : -1]
-                    result = re.sub(
-                        r'!\[.*?\]\((/charts/|/images/)[a-f0-9]+\.png\)',
-                        '{CHART}',
-                        str(result)
-                    )
+                for m in re.finditer(
+                    r'(/charts/|/images/)[a-f0-9]+\.png',
+                    str(result)
+                ):
+                    url = m.group(0)
+                    if url not in image_outputs:
+                        image_outputs.append(url)
+                if image_outputs:
+                    print(f"###图片记录### 已记录 {len(image_outputs)} 张图片作为兜底素材")
 
             # 【检索ID提取】提取结构化标记 [RETRIEVED_IDS] 中的真实 ID
             if func_name == "search_knowledge" and result:
@@ -853,9 +896,8 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
     # ⑥ 输出与后处理
     answer = output_guard(answer)
 
-    # 清理 LLM 写的无效图片标签
-    answer = re.sub(r'!\[.*?\]\(.*?\)', '', answer)
-    answer = re.sub(r'!\[.*?\]', '', answer)
+    # 清理 LLM 写的无效图片标签（保留 /charts/ 和 /images/ 开头的真实图片）
+    answer = re.sub(r'!\[[^\]]*\]\((?!\/charts\/|\/images\/)[^)]*\)', '', answer)
 
     # 去除 LLM 可能误带的前缀
     answer = re.sub(r'^(根据|基于).*?数据，|根据数据文件[^\n]*?，', '', answer).strip()
@@ -868,14 +910,20 @@ async def chat_core_stream(session_id: str, query: str, user_text: str = None,
     else:
         answer = source_prefix + answer
 
-    # 【图片插入】后端只做机械替换；位置由 LLM 决定
-    # 兜底策略：LLM 未保留 {CHART} 占位符时，图片插到回答顶部（顺序：图表 → 数据 → 分析）
-    if image_output:
-        img_md = f"![图表]({image_output})"
-        if "{CHART}" in answer:
-            answer = answer.replace("{CHART}", img_md)
+    # 【图片处理 - US-11 v3】
+    # LLM 应该保留真实 markdown（如 ![标题](/charts/xxx.png)）
+    # 后端检测：如果回答里有真实图片 → 直接通过；否则用记录的 image_output 兜底
+    if image_outputs:
+        # 【US-11 v4】宽松匹配 LLM 引用的图片（可能带标题、可能相对路径、可能 .png 大小写）
+        real_img_pattern = r'!\[[^\]]*\]\(\.?(/charts/|/images/)[a-fA-F0-9]+\.png\)'
+        kept_urls = re.findall(real_img_pattern, answer)
+        if kept_urls:
+            print(f"###图片处理### LLM 引用 {len(kept_urls)} 张图片，位置由 LLM 决定")
         else:
+            # LLM 完全没引用任何图片，用记录的 URL 兜底
+            img_md = "\n\n".join(f"![图表]({url})" for url in image_outputs)
             answer = img_md + "\n\n" + answer.lstrip()
+            print(f"###图片处理### LLM 未引用任何图片，兜底插入 {len(image_outputs)} 张到顶部")
 
     # ⑦ 后置管道：记忆清洗与写入
     answer_for_memory = re.sub(
