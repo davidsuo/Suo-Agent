@@ -729,7 +729,12 @@ def generate_image(prompt: str, negative_prompt: str = "") -> str:
                     f.write(base64.b64decode(img_b64))
                     
                 img_url = f"/images/{img_filename}"
-                return f"图片已生成：![生成图片]({img_url})"
+                return (
+                    f"[图像资源已生成]\n"
+                    f"- 图片 URL：{img_url}\n"
+                    f"- 使用说明：如需在回答中展示这张图，请使用 markdown 图片语法"
+                    f"引用 ![描述]({img_url})。"
+                )
                 
             return "图像生成失败: 响应中无 artifacts"
         
@@ -1229,7 +1234,15 @@ def generate_chart(
         f"平均{agg_column}: {avg_val}"
     )
 
-    return f"图片已生成：![{title}]({chart_url}){summary}"
+    return (
+        f"[图表资源已生成]\n"
+        f"- 类型：{chart_type}\n"
+        f"- 标题：{title}\n"
+        f"- 图片 URL：{chart_url}\n"
+        f"- 使用说明：如需在回答中展示这张图，请使用 markdown 图片语法"
+        f"引用 ![{title}]({chart_url})。\n"
+        f"{summary}"
+    )
 
 COMPENSATIONS = {
     "send_email": compensate_send_email,
