@@ -156,6 +156,7 @@ v3.1.1	Bugfix：memory 存储含图片 markdown	agent/v3.1.1
 | `rag/v2.6.7` | 2026-09-23 | init_db 幂等化，修复云端空 sample.db 导致表缺失 |
 | `rag/v2.6.9` | 2026-10-01 | US-05 正式验收：排序指标口径修正（`precision@3` → `hit@3` / `recall@3`），`precision@1` 0.78 → 0.9756（口径修正后），`mrr` 0.8 → 0.9878，Q13 ground_truth 补充 TS-03；Q50 电源灯亮/不亮区分词未捕获，记入 Backlog |
 | `memory/v1.0.0` | 2026-10-01 | Memory Schema Version 迁移机制（US-08），清理 84 个旧 session，从根上解决旧数据复述 |
+| `rag/v2.7.0` | 2026-10-05 | US-12 引入 RAGAS 第三方评估框架，4 指标独立评估；Faithfulness 基线 0.5823 |
 
 ### 3.4 Agent 架构线
 | 新标签 | 时间 | 里程碑 |

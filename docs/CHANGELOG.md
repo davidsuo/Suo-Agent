@@ -7,6 +7,29 @@
 版本号遵循 [SemVer 2.0.0](https://semver.org/lang/zh-CN/)。
 
 
+## [rag/v2.7.0] - 2026-10-05
+
+### Added
+- **RAGAS 第三方评估框架**（US-12）：新增 `rag_test/evaluate_ragas.py`，从 4 个语义指标独立评估 RAG 质量。
+  - Faithfulness / Answer Relevancy / Context Precision / Context Recall
+  - 支持 41 条 positive 样本批量评估，产出 CSV 报告
+- **最小化验证脚本** `rag_test/minimal_ragas_test.py`（3 条模拟数据，用于快速验证 RAGAS 环境）
+
+### Changed
+- **评估 session 隔离**：每次评估用 `alice_ragas_<时间戳>_<序号>`，避免历史污染导致的"元对话"
+
+### Fixed
+- **Faithfulness 输出被截断**：judge LLM 加 `max_tokens=8000`，从 19/41 失败 → 41/41 成功
+- **langchain-community 兼容性**：降级至 `<0.4.2`，修复 `ChatVertexAI` 导入错误
+
+### Performance
+- **Faithfulness**：0.4238（有历史污染）→ **0.5823**（session 隔离后）
+- **两把尺子交叉验证**：自评估 `context_recall=1.0` 与 RAGAS `Context Recall=1.0` 独立吻合
+- **RAGAS 补上自评估盲区**：`Faithfulness=0.58`（自评估无法测）
+
+### Notes
+- 阶段三（DeepEval 集成 CI）暂缓
+- Faithfulness 剩余 0.42 损失的处理进入观察期，见 B-004
 
 ---
 

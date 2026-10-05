@@ -436,6 +436,91 @@ Cache-Control: public, max-age=31536000, immutable
 
 ---
 
+## US-12 引入 RAGAS 第三方评估框架
+
+| 字段 | 内容 |
+|---|---|
+| 编号 | US-12 |
+| 标题 | 引入 RAGAS 第三方评估框架，摆脱"自评估"困境 |
+| 角色 | 开发工程师 / RAG 系统维护者 |
+| 优先级 | P1 |
+| 状态 | 阶段一、二完成；阶段三（DeepEval 集成 CI）暂缓 |
+| 完成时间 | 2026-10-05 |
+| 关联 tag | `rag/v2.7.0` |
+| 关联 commit | 待补 |
+
+### 背景
+
+- 当前 RAG 质量评估依赖自研脚本 `evaluate_rag_live.py`
+- 自研脚本擅长"命中没命中"——`precision@1`、`mrr`、`context_recall` 等 ID-based 指标
+- **看不到"回答是否忠实于检索上下文"**——即无法量化 LLM 幻觉
+- 这种自评估体系等于"既是运动员又是裁判员"——看不到自己的生成质量问题
+- 业内已有成熟的开源 RAG 评估框架：RAGAS、TruLens、DeepEval
+
+### 描述
+
+作为开发工程师，我希望引入业内广泛认可的第三方 RAG 评估框架 RAGAS，从语义层面独立衡量 RAG 质量，以便弥补自评估脚本的盲区，并给 LLM 的生成质量一个客观的外部基准。
+
+**4 个核心指标**：
+
+| 指标 | 衡量维度 | 核心问题 |
+|---|---|---|
+| Faithfulness | 生成质量 | 回答是否完全基于检索上下文？（量化幻觉） |
+| Answer Relevancy | 生成质量 | 回答是否直接回应了用户问题？ |
+| Context Precision | 检索质量 | 检索上下文中有多少是真正相关的？ |
+| Context Recall | 检索质量 | 检索器是否找回了所有必要信息？ |
+
+### 验收标准
+
+| # | 标准 | 状态 |
+|---|---|---|
+| AC-1 | `rag_test/evaluate_ragas.py` 独立脚本，可离线评估 RAG 后端，不修改主流程 | ✅ |
+| AC-2 | 4 个指标全部跑通，41 条 positive 样本无失败 | ✅ |
+| AC-3 | 与自评估脚本进行交叉对比，给出两把尺子的差异分析 | ✅ |
+| AC-4 | 给出 Faithfulness 提升方向及优先级判断 | ⚠️ 进入观察期 |
+| AC-5 | 阶段三（DeepEval 集成 CI）作为未来方向记录 | ⏸ 暂缓 |
+
+### 技术规格
+
+- **依赖**：`ragas>=0.4.3` + `datasets` + `langchain-openai` + `langchain-community<0.4.2`
+- **裁判 LLM**：`deepseek-chat`，`max_tokens=8000`（避免 Faithfulness 输出被截断）
+- **Embeddings**：本地 `thenlper/gte-small-zh`（`uploads/models/` 缓存）
+- **样本隔离**：每次评估 session_id 用 `alice_ragas_<时间戳>_<序号>`
+- **文件**：
+  - `rag_test/evaluate_ragas.py`（主评估脚本）
+  - `rag_test/minimal_ragas_test.py`（3 条模拟数据的最小化验证）
+  - `rag_test/ragas_report_*.csv`（3 份评估报告归档）
+
+### 关键发现
+
+| # | 发现 | 说明 |
+|---|---|---|
+| 1 | 两把尺子互补 | 自评估测"检索层"（`precision@1=0.9756`）；RAGAS 测"生成层"（`Faithfulness=0.58`） |
+| 2 | Context Recall 双 1.0 | 两套体系独立验证了检索无遗漏 |
+| 3 | Faithfulness 是盲区 | 自评估无法看到"LLM 编内容"，RAGAS 一测就暴露 |
+| 4 | `max_tokens` 是真问题 | 默认值导致 19/41 条 Faithfulness 输出被截断 |
+| 5 | session 隔离有效 | 去除历史污染后 Faithfulness 从 0.42 → 0.58（+0.16） |
+
+### 最终基线数据
+
+| 指标 | 值 |
+|---|---:|
+| Faithfulness | **0.5823** |
+| Answer Relevancy | **0.9330** |
+| Context Precision | **0.9305** |
+| Context Recall | **1.0000** |
+
+### 依赖
+
+无。独立脚本，不修改 RAG 主流程。
+
+### 遗留项
+
+**B-004（观察期）**：Faithfulness 剩余 0.42 损失的处理。详见 `docs/BACKLOG.md`。
+
+---
+
+
 ## 待补充：US-01 ~ US-04
 
 以下 4 个历史故事（2026-09 期间完成）在 `CHANGELOG.md` 的 `release/v5.8.0` 段落中有标题记录，但**完整描述待产品负责人补充**。
