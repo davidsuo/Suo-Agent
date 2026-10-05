@@ -71,7 +71,67 @@ async def load_test_set(dataset_path: str) -> list:
 
 
 async def collect_rag_responses(dataset: list, base_url: str) -> list:
+    # 【US-12 修复】会话加时间戳前缀，彻底隔离每次评估的历史
+    # 避免 memory.json 里旧 session 被复用，导致 LLM 产生"你已问过N次"的元对话
+    import time as _time
+    ts = int(_time.time())
+    # 【关键】必须用已存在的用户作为前缀（如 alice），否则后端会因"用户不存在"拒绝
+    # 后缀带上时间戳，保证每次评估的 session 都唯一，不与历史混淆
+    prefix = f"alice_ragas_{ts}"
+
     client = RealRAGClient(base_url=base_url)
+    # 覆盖 RealRAGClient 的 session_id 生成逻辑
+    original_generate = client.generate
+
+    async def generate_with_isolated_session(query: str):
+        client._counter += 1
+        session_id = f"{prefix}_{client._counter:03d}"
+        # 直接复用 RealRAGClient 的内部逻辑，只改 session_id
+        import httpx, json as _json
+        payload = {"session_id": session_id, "query": query, "user_text": query}
+        answer_content = ""
+        context_list = []
+        async with httpx.AsyncClient(timeout=180) as http_client:
+            try:
+                async with http_client.stream("POST", f"{client.base_url}/api/chat", json=payload) as response:
+                    if response.status_code != 200:
+                        return {"answer": f"请求失败: {response.status_code}", "contexts": []}
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            data_str = line[6:].strip()
+                            if data_str == "[DONE]":
+                                continue
+                            try:
+                                data = _json.loads(data_str)
+                                if data.get("type") == "answer":
+                                    answer_content += data.get("content", "")
+                                    new_contexts = data.get("contexts") or []
+                                    for cid in new_contexts:
+                                        if cid not in context_list:
+                                            context_list.append(cid)
+                            except Exception:
+                                pass
+                print(f"【诊断-评估器】问题: {query[:30]}...")
+                print(f"【诊断-评估器】session={session_id} contexts: {context_list}")
+                return {"answer": answer_content, "contexts": context_list}
+            except Exception as e:
+                print(f"【诊断-评估器】连接失败: {type(e).__name__}: {e}")
+                return {"answer": f"网络错误: {e}", "contexts": []}
+
+    # 用新的 generate 替换
+    client.generate = generate_with_isolated_session
+    samples = []
+    for i, item in enumerate(dataset, 1):
+        question = item["question"]
+        print(f"[{i}/{len(dataset)}] 采集：{question[:40]}...")
+        result = await client.generate(question)
+        samples.append({
+            "question": question,
+            "answer": result.get("answer", ""),
+            "contexts_ids": result.get("contexts", []),
+            "ground_truth_ids": item.get("ground_truth", []),
+        })
+    return samples
     samples = []
     for i, item in enumerate(dataset, 1):
         question = item["question"]
