@@ -128,7 +128,8 @@ v3.1.1	Bugfix：memory 存储含图片 markdown	agent/v3.1.1
 
 ### 3.1 文档/规范线
 新标签	时间	里程碑
-docs/v1.0.0	2026-09-14	建立版本管理规范：VERSION_HISTORY.md + CHANGELOG.md
+| `docs/v1.0.0` | 2026-09-14 | 建立版本管理规范：VERSION_HISTORY.md + CHANGELOG.md
+| `docs/v2.0.0` | 2026-10-05 | AI Native 开发契约 v2.0：新增 AI 原生设计原则（8 条）+ 反模式清单（7 条）；回归覆盖更新至 31 条 |
 
 ### 3.2 UI 架构线
 
