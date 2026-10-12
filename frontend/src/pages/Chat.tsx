@@ -229,8 +229,15 @@ export default function Chat({ user, onLogout }: { user: any, onLogout: () => vo
                 remarkPlugins={[remarkGfm]}
                 components={{
                   img: ({ node, ...props }: any) => {
-                    if (!props.src || props.src.trim() === '' || props.src.startsWith('![')) return null;
-                    return <img {...props} style={{ maxWidth: '66.67%', height: 'auto', borderRadius: 6, marginTop: 8, display: 'block', marginLeft: 'auto', marginRight: 'auto' }} />;
+                    // 【修复 404】只渲染真实图片 URL，过滤 LLM 产生的无效 markdown
+                    // 合法来源：/charts/xxx.png、/images/xxx.png、http(s)://xxx
+                    const src = String(props.src || '');
+                    const isValidImage =
+                      src.startsWith('/charts/') ||
+                      src.startsWith('/images/') ||
+                      /^https?:\/\//.test(src);
+                    if (!isValidImage) return null;
+                    return <img {...props} src={src} style={{ maxWidth: '66.67%', height: 'auto', borderRadius: 6, marginTop: 8, display: 'block', marginLeft: 'auto', marginRight: 'auto' }} />;
                   },
                   h1: ({node, ...props}: any) => <p style={{ fontSize: '17px', marginTop: '12px', marginBottom: '8px', fontWeight: 'bold', color: '#333' }} {...props} />,
                   h2: ({node, ...props}: any) => <p style={{ fontSize: '16px', marginTop: '10px', marginBottom: '6px', fontWeight: 'bold', color: '#333' }} {...props} />,
