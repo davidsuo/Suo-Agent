@@ -6,6 +6,21 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer 2.0.0](https://semver.org/lang/zh-CN/)。
 
+## [agent/v3.6.0] - 2026-10-12
+
+### Changed
+- **编排层模块化拆分**（US-13）：`common/main.py::chat_core_stream`（约 400 行）抽离为独立模块 `common/orchestrator.py::run_orchestration`。
+  - `main.py` 瘦身，`chat_core_stream` 只做薄转发
+  - `orchestrator.py` 承接：语义分析 / 数据源发现 / 背景检索 / LLM 决策循环 / 工具执行 / 输出后处理
+  - 相关辅助函数（`_analyze_query` / `_discover_data_sources` / `_retrieve_background` / `_shrink_messages` / `simple_log_tool` / `write_log_to_db` / `_extract_ids_from_text` / `SYSTEM_PROMPT`）全部迁入 orchestrator
+
+### Notes
+- **本次是纯重构**：行为与拆分前 100% 等价，无任何业务逻辑改动
+- **回归测试 31/31 全绿**
+- **手动测试 4 类全通过**：时间查询 / RAG 知识库 / SQLite 数据查询 / 联网搜索
+- **为后续 Sprint 铺路**：US-14（双向 Guardrails）/ US-15（多模型路由）/ US-16（Agentic RAG）现在有了清晰的集成点
+
+---
 
 ## [rag/v2.7.0] - 2026-10-05
 
