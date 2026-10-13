@@ -651,6 +651,9 @@ Cache-Control: public, max-age=31536000, immutable
 | 角色 | 开发工程师 |
 | 优先级 | P1 |
 | 状态 | 待开发 |
+| 完成时间 | 待定 |
+| 关联 tag | `agent/v3.7.0`（预留） |
+| 关联 commit | 待定 |
 
 ### 背景
 
@@ -667,22 +670,33 @@ Cache-Control: public, max-age=31536000, immutable
 
 ### 验收标准
 
-- AC-1：新增 `common/model_router.py`
-- AC-2：`route(task_type, complexity)` → 返回模型名
-- AC-3：失败回退链：flash → chat → reasoner
-- AC-4：每次调用记录模型 + 耗时 + 结果
-- AC-5：多模型配置在 `.env` 或 JSON 中可调
-- AC-6：回归测试全绿
+- **AC-1**：新增 `common/model_router.py`
+- **AC-2**：`route(task_type, complexity)` → 返回模型名
+- **AC-3**：失败回退链：`flash → chat → reasoner`
+- **AC-4**：每次调用记录模型 + 耗时 + 结果
+- **AC-5**：多模型配置在 `.env` 或 JSON 中可调
+- **AC-6**：回归测试全绿
+- **AC-7**：流式场景下，若已输出 token，不触发跨模型回退，只返回错误
+- **AC-8**：回退次数、模型名、耗时写入日志，便于排查
 
 ### 技术规格
 
 - 新文件：`common/model_router.py`
-- 配置：`config/models.json`
-- 集成：`orchestrator.py` LLM 调用处
+- 新配置：`config/models.json`
+- 集成：`common/orchestrator.py` LLM 调用处
+- 模型别名：
+  - `flash` → `deepseek-flash`
+  - `chat` → `deepseek-chat`
+  - `reasoner` → `deepseek-reasoner`
+  - `local` → Ollama / vLLM（P3 预留）
 
 ### 依赖
 
 - US-13（模块化）
+
+### 遗留项
+
+- 本地托管 LLM（vLLM / LLaMA）记入 `BACKLOG.md` B-005，P3。
 
 ---
 

@@ -166,6 +166,7 @@ v3.1.1	Bugfix：memory 存储含图片 markdown	agent/v3.1.1
 | `agent/v3.4.1` | 2026-09-28 | 修复 generate_image 环境变量、上下文爆炸与图片渲染 |
 | `agent/v3.5.0` | 2026-10-02 | US-11 图表资源化交付：放弃 `{CHART}` 占位符，改用真实 markdown；主循环切换 `deepseek-flash`；SYSTEM_PROMPT 精简 |
 | `agent/v3.6.0` | 2026-10-12 | US-13 编排层模块化拆分：`chat_core_stream` 抽离为 `common/orchestrator.py::run_orchestration`；行为 100% 等价 |
+| `agent/v3.7.0` | 2026-10-13 | US-15 多模型智能路由 + 跨模型失败回退：新增 `common/model_router.py` + `config/models.json`；回退链 flash → chat → reasoner |
 
 
 ### 3.5 综合发布线

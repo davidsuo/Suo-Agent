@@ -7,6 +7,28 @@
 版本号遵循 [SemVer 2.0.0](https://semver.org/lang/zh-CN/)。
 
 
+## [agent/v3.7.0] - 2026-10-13
+
+### Added
+- **US-15 多模型智能路由 + 跨模型失败回退**：
+  - 新增 `common/model_router.py`
+  - 新增 `config/models.json`
+  - 支持按 `task_type` / `complexity` 选择模型
+  - 失败回退链：`flash → chat → reasoner`
+  - 每次调用记录模型、耗时、成功/失败到 `uploads/model_calls.jsonl`
+
+### Changed
+- `common/orchestrator.py` 主 LLM 调用改为走 `call_with_fallback`
+- `common/orchestrator.py::_analyze_query` 改为走 `call_with_fallback`
+
+### Notes
+- **模型别名**：`flash` = `deepseek-flash`，`chat` = `deepseek-chat`，`reasoner` = `deepseek-reasoner`。
+- **本地模型**：`local` 别名预留 Ollama / vLLM 接口，P3 不启用。
+- **流式回退**：第一版仅支持“流未输出任何 token”时回退；已输出 token 后失败只返回错误。
+- **回归测试**：31/31 全绿。
+
+---
+
 ## [security/v1.1.0] - 2026-10-13
 
 ### Added
