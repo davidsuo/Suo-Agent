@@ -184,6 +184,7 @@ v3.1.1	Bugfix：memory 存储含图片 markdown	agent/v3.1.1
 | `release/v5.9.8` | 2026-09-28 | CI/CD 前端自动构建落地，移除 dist 追踪，修复自动部署失效 |
 | `release/v5.9.9` | 2026-09-30 | CI 缓存 HF 模型（44秒）+ 预置测试数据 + tool_matrix 重试 |
 | `release/v5.9.10` | 2026-10-01 | CI 缓存 HF 模型 + 数据预置；Reranker 精排优化（延迟 -53%）；AI Native 2.0 收尾 |
+| `release/v5.10.0` | 2026-10-13 | 合并 US-14 双向语义 Guardrails + US-15 多模型路由（或先只合 US-14） |
 
 
 ### 3.6 on-prem 线
@@ -199,6 +200,7 @@ v3.1.1	Bugfix：memory 存储含图片 markdown	agent/v3.1.1
 | `on-prem/v1.3.8` | 2026-09-28 | 同步云端 release/v5.9.8（CI/CD 改造） |
 | `on-prem/v1.3.10` | 2026-10-01 | 同步云端 release/v5.9.10 |
 > 说明：`on-prem/v1.3.9` 与 `on-prem/v1.3.10` 均未创建，原因是 `release/v5.9.9` / `release/v5.9.10` 的部署补丁已包含在本次 `release/v5.9.11` 的合并中，直接同步到 `on-prem/v1.3.11`。
+| `on-prem/v1.3.12` | 2026-10-13 | 同步云端 `security/v1.1.0`（US-14 双向语义 Guardrails） |
 
 
 ### 3.7 AI Native 2.0 里程碑
@@ -213,6 +215,7 @@ v3.1.1	Bugfix：memory 存储含图片 markdown	agent/v3.1.1
 | 新标签 | 时间 | 里程碑 |
 | :--- | :--- | :--- |
 | `security/v1.0.0` | 2026-10-01 | US-06 修复 /api/logs 越权访问漏洞（空 session_id 绕过） |
+| `security/v1.1.0` | 2026-10-13 | US-14 双向语义 Guardrails：输入/输出 LLM 审核；fail-open 降级；P95 < 3500ms |
 
 ### 3.9 权限线
 

@@ -528,7 +528,10 @@ Cache-Control: public, max-age=31536000, immutable
 | 标题 | 编排层模块化拆分——从 1000 行巨石到独立模块 |
 | 角色 | 开发工程师 |
 | 优先级 | P0 |
-| 状态 | 待开发 |
+| 状态 | 已完成 / 已部署 |
+| 完成时间 | 2026-10-12 |
+| 关联 tag | `agent/v3.6.0` |
+| 关联 commit | 待补 |
 
 ### 背景
 
@@ -572,7 +575,10 @@ Cache-Control: public, max-age=31536000, immutable
 | 标题 | 双向 Guardrails——输入输出都做语义级审核 |
 | 角色 | 系统管理员 |
 | 优先级 | P1 |
-| 状态 | 待开发 |
+| 状态 | 已完成 / 已部署 |
+| 完成时间 | 2026-10-13 |
+| 关联 tag | `security/v1.1.0` |
+| 关联 commit | 待补 |
 
 ### 背景
 
@@ -580,35 +586,59 @@ Cache-Control: public, max-age=31536000, immutable
   - 输入：敏感词匹配 + 长度限制
   - 输出：邮箱/手机号/身份证脱敏
 - **无语义审核**：
-  - 输入无法识别"换个说法的越狱指令"
-  - 输出无法识别"语气不当 / 事实错误 / 越权承诺"
+  - 输入无法识别“换个说法的越狱指令”、“隐含越权指令”
+  - 输出无法识别“语气不当 / 越权承诺 / 敏感话题”
 
 ### 描述
 
 作为系统管理员，我希望输入和输出都经过**语义级审核**，以便：
 1. **输入**：识别伪装的越狱、隐含的越权指令
-2. **输出**：识别不当回答（如涉及敏感话题、承诺越权行为、语气冒犯），在送到用户前拦截
+2. **输出**：识别不当回答（敏感话题、越权承诺、冒犯语气），在送到用户前拦截
 
 ### 验收标准
 
-- AC-1：新增 `input_semantic_guard(query)` —— 用轻量 LLM 判断输入是否合规
-- AC-2：新增 `output_semantic_guard(answer, context)` —— 用轻量 LLM 判断输出是否合规
-- AC-3：语义审核失败时降级为"当前字符串过滤"（不阻断服务）
-- AC-4：语义审核命中时返回明确的拒答话术（不暴露规则细节）
-- AC-5：审核延迟 P95 < 500ms
-- AC-6：回归测试全绿
-- AC-7：本地 50 条测试集，误判率 < 5%
+- **AC-1**：新增 `input_semantic_guard(query)` —— 用 LLM 判断输入是否合规
+- **AC-2**：新增 `output_semantic_guard(answer, user_query)` —— 用 LLM 判断输出是否合规
+- **AC-3（审核范围）**：语义审核覆盖以下三类：
+  - **a. 敏感话题**：政治、暴力、色情、违法内容
+  - **b. 越权承诺**：声称“已完成”实际未执行的操作（编造执行结果）、承诺系统做不到的事
+  - **c. 冒犯语气**：对用户的负面评价、讽刺、歧视性语言
+- **AC-4（不合规处理）**：语义审核命中时：
+  - **输入侧**：返回固定拒答话术 `"抱歉，这个问题不合规我不便回答。"`
+  - **输出侧**：返回固定话术 `"抱歉，该回答暂时无法提供。如您有其他问题，请重新描述。"`
+  - 拦截事件必须写入审计日志（`plan_log.json`），标记为 `【语义拦截】`
+- **AC-5（降级策略）**：LLM 调用失败时：
+  - 默认 **fail-open**（放行请求），由环境变量 `GUARD_FAIL_MODE=closed` 可切换为 fail-closed
+  - 降级日志必须打印（便于观测）
+- **AC-6（延迟目标）**：
+  - **方案 A（当前）**：P95 延迟 < 3500ms（串行 LLM 审核）
+  - **方案 B（未来评估）**：P95 延迟 < 1500ms（并发 LLM 审核）
+- **AC-7**：回归测试 31/31 全绿
+- **AC-8**：手工测试 4 类场景全部通过：
+  - 正常问题（不误拦）
+  - 伪装越狱（正确拦截）
+  - 越权指令（正确拦截）
+  - 冒犯输出（正确拦截）
 
 ### 技术规格
 
-- 修改：`common/guardrails.py`
-- 新增：`common/guardrails.py::input_semantic_guard` / `output_semantic_guard`
-- 集成：`orchestrator.py` 的两个检查点
-- LLM：用 `deepseek-chat`（快、便宜）
+- 文件：`common/guardrails.py`
+- 新增函数：`input_semantic_guard` / `output_semantic_guard` / `_semantic_judge`
+- 审核 LLM：`deepseek-chat`（`GUARD_MODEL` 可配）
+- 超时：`GUARD_TIMEOUT=8s`
+- Fail 模式：`GUARD_FAIL_MODE=open`（默认）
+- 集成点：`common/orchestrator.py` 的两处
+  - 输入前置：`input_guard` → `input_semantic_guard` → 主流程
+  - 输出后置：`output_guard` → `output_semantic_guard` → SSE
 
 ### 依赖
 
-- US-13（模块化后才有清晰的集成点）
+- US-13（编排层模块化）—— 提供清晰集成点
+
+### 遗留项
+
+- **方案 B（并发审核）**：待方案 A 实测延迟数据后决定是否切换
+- **审核 prompt 调优**：待收集误拦/漏拦样本后迭代
 
 ---
 

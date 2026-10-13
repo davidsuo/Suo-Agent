@@ -51,7 +51,10 @@ from common.tools import (
     execute_workflow_tool,
     COMPENSATIONS,
 )
-from common.guardrails import input_guard, tool_call_guard, output_guard
+from common.guardrails import (
+    input_guard, tool_call_guard, output_guard,
+    input_semantic_guard, output_semantic_guard,
+)
 from common.pending_tools import pending, save_pending
 from common.auth import get_user_info, ROLE_PERMISSIONS
 from common.memory import memory
@@ -349,9 +352,18 @@ async def run_orchestration(session_id: str, query: str, user_text: str = None,
     tool_trace = []
     source_prefix = ""
 
+    # 第一层：字符串过滤
     is_safe, err_msg = input_guard(query)
     if not is_safe:
         yield json.dumps({"type": "status", "content": err_msg}, ensure_ascii=False)
+        return
+
+    # 第二层：语义审核（US-14 方案 A：串行）
+    yield json.dumps({"type": "status", "content": "正在审核输入..."}, ensure_ascii=False)
+    is_safe_sem, err_msg_sem = await input_semantic_guard(query)
+    if not is_safe_sem:
+        simple_log_tool(session_id, query, "input_guard", {}, "【语义拦截】")
+        yield json.dumps({"type": "answer", "content": err_msg_sem, "contexts": []}, ensure_ascii=False)
         return
 
     if not query_worker.is_running:
@@ -660,6 +672,13 @@ async def run_orchestration(session_id: str, query: str, user_text: str = None,
         answer = "抱歉，处理超时，请简化您的问题。"
 
     answer = output_guard(answer)
+
+    # 语义审核（US-14 方案 A：串行）
+    yield json.dumps({"type": "status", "content": "正在审核输出..."}, ensure_ascii=False)
+    is_safe_out, err_msg_out = await output_semantic_guard(answer, original_query)
+    if not is_safe_out:
+        simple_log_tool(session_id, original_query, "output_guard", {}, "【语义拦截】")
+        answer = err_msg_out
 
     answer = re.sub(r'!\[[^\]]*\]\((?!\/charts\/|\/images\/)[^)]*\)', '', answer)
 

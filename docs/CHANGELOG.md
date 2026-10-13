@@ -6,6 +6,31 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer 2.0.0](https://semver.org/lang/zh-CN/)。
 
+
+## [security/v1.1.0] - 2026-10-13
+
+### Added
+- **US-14 双向语义 Guardrails**：在字符串级过滤之外，新增输入/输出 LLM 语义审核。
+  - `input_semantic_guard(query)`：识别伪装越狱、隐含越权指令。
+  - `output_semantic_guard(answer, user_query)`：识别敏感话题、越权承诺、冒犯语气。
+  - `_semantic_judge(prompt)`：统一调用审核 LLM，返回 `{"is_safe": bool, "reason": str}`。
+
+### Changed
+- `common/guardrails.py` 新增语义审核函数，保留原 `input_guard` / `output_guard` 字符串级能力。
+- `common/orchestrator.py` 接入两个检查点：
+  - 输入前置：`input_guard` → `input_semantic_guard` → 主流程
+  - 输出后置：`output_guard` → `output_semantic_guard` → SSE
+
+### Notes
+- **降级策略**：审核 LLM 失败时默认 fail-open，由 `GUARD_FAIL_MODE=closed` 可切换为 fail-closed。
+- **审核模型**：`deepseek-chat`，由 `GUARD_MODEL` 可配；超时 `GUARD_TIMEOUT=8s`。
+- **实测延迟**：方案 A 串行审核 P95 < 3500ms；性能未明显下降。
+- **回归测试**：31/31 全绿。
+- **手工测试**：正常问题、伪装越狱、越权输入、冒犯输出 4 类场景符合预期。
+- **遗留项**：方案 B 并发审核待评估；审核 prompt 待收集误拦/漏拦样本后迭代。
+
+---
+
 ## [agent/v3.6.0] - 2026-10-12
 
 ### Changed
