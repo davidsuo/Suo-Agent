@@ -55,6 +55,7 @@ from common.guardrails import (
     input_guard, tool_call_guard, output_guard,
     input_semantic_guard, output_semantic_guard,
 )
+from common.model_router import call_with_fallback
 from common.pending_tools import pending, save_pending
 from common.auth import get_user_info, ROLE_PERMISSIONS
 from common.memory import memory
@@ -157,8 +158,7 @@ async def _analyze_query(query: str) -> dict:
         "task_nature": "",
     }
     try:
-        resp = _client.chat.completions.create(
-            model="deepseek-chat",
+        resp = call_with_fallback(
             messages=[
                 {"role": "system", "content": (
                     "分析用户问题，返回一个 JSON 对象，包含三个字段：\n"
@@ -200,6 +200,8 @@ async def _analyze_query(query: str) -> dict:
                 )},
                 {"role": "user", "content": query}
             ],
+            task_type="analysis",
+            complexity="normal",
             max_tokens=180,
             temperature=0
         )
@@ -506,11 +508,12 @@ async def run_orchestration(session_id: str, query: str, user_text: str = None,
         response = None
         last_error = None
 
-        for llm_retry in range(3):
+        for llm_retry in range(1):
             try:
-                response = _client.chat.completions.create(
-                    model="deepseek-flash",
+                response = call_with_fallback(
                     messages=messages,
+                    task_type="tool_use",
+                    complexity="normal",
                     tools=allowed_tools,
                     tool_choice="auto"
                 )

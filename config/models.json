@@ -1,0 +1,32 @@
+{
+  "models": {
+    "flash": {
+      "model": "deepseek-flash",
+      "timeout": 30,
+      "max_retries": 0
+    },
+    "chat": {
+      "model": "deepseek-chat",
+      "timeout": 60,
+      "max_retries": 0
+    },
+    "reasoner": {
+      "model": "deepseek-reasoner",
+      "timeout": 120,
+      "max_retries": 0
+    },
+    "local": {
+      "model": "qwen2.5:7b",
+      "base_url": "http://127.0.0.1:11434/v1",
+      "timeout": 120,
+      "max_retries": 0
+    }
+  },
+  "routes": {
+    "simple_chat": ["flash", "chat"],
+    "analysis": ["chat", "flash"],
+    "reasoning": ["reasoner", "chat"],
+    "tool_use": ["flash", "chat", "reasoner"],
+    "default": ["flash", "chat", "reasoner"]
+  }
+}
