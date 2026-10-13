@@ -67,6 +67,23 @@ git status                                       # 工作区必须干净
 
 打 tag violation/YYYY-MM-DD-<reason>
 
+### 第八条 · 数据文件操作约定
+
+修改以下文件前，必须先停后端：
+
+- `uploads/memory.json`
+- `uploads/rag_data.json`
+- `uploads/*.db`
+
+原因：`common/memory.py` 等模块采用“内存缓存 + 定期回写磁盘”模型，运行期间的手工改动会被下一次写入覆盖。
+
+正确流程：
+1. `Ctrl+C` 停掉 uvicorn
+2. 修改文件 / 跑清理脚本
+3. 重启后端
+
+---
+
 复盘并更新本文档
 
 ## 第二部分 · AI 原生设计原则（v2.0 新增）

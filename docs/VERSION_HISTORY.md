@@ -217,6 +217,8 @@ v3.1.1	Bugfix：memory 存储含图片 markdown	agent/v3.1.1
 | :--- | :--- | :--- |
 | `security/v1.0.0` | 2026-10-01 | US-06 修复 /api/logs 越权访问漏洞（空 session_id 绕过） |
 | `security/v1.1.0` | 2026-10-13 | US-14 双向语义 Guardrails：输入/输出 LLM 审核；fail-open 降级；P95 < 3500ms |
+| `security/v1.1.2` | 2026-10-13 | US-14.2 历史 memory 脏 URL 修复（清理脚本 + `/api/history` 出口过滤） |
+| `security/v1.1.3` | 2026-10-13 | US-14.1 `output_guard` 图片 URL 保护加固（裸路径占位符保护）；与 v1.1.2 配套 |
 
 ### 3.9 权限线
 

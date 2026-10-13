@@ -29,6 +29,32 @@
 
 ---
 
+## [security/v1.1.3] - 2026-10-13
+
+### Fixed
+- **`output_guard` 图片 URL 脱敏污染加固**：在 v1.1.0 已保护 markdown 图片语法的基础上，进一步保护裸 `/charts/<hash>.png` 与 `/images/<hash>.png` 路径。
+  - 起因：LLM 有时在正文中直接写路径（非 markdown 图片语法），仍可能被手机号正则误命中。
+  - 修复：`output_guard` 新增 `_url_pattern` 占位符保护，脱敏后还原。
+
+### Notes
+- 本补丁与 US-14.2（`security/v1.1.2`）配套：v1.1.2 治历史数据，v1.1.3 治未来生成。
+- `security/v1.1.1` 未单独发版，已合并到 v1.1.3。
+
+---
+
+## [security/v1.1.2] - 2026-10-13
+
+### Fixed
+- **历史 memory 脏 URL 导致前端 404 刷屏**：v1.1.0 之前生成的回答中，部分图片 URL 被旧版 `output_guard` 脱敏污染，已写入 `memory.json`，每次拉取历史都会触发 `/charts/[手机号已隐藏]b.png` 404。
+  - 修复方式 1：`scripts/clean_memory_direct.py` 直接对 `memory.json` 全文替换 `[手机号已隐藏]` / `[邮箱已隐藏]` / `[身份证号已隐藏]` 为 `REDACTED`。
+  - 修复方式 2：`common/main.py::get_history` 在返回前端前对 history 每条消息做正则过滤，删掉所有 `/charts/` `/images/` 后跟非 hex 字符的坏 URL 和坏 markdown 图片。
+
+### Notes
+- **维护约定**：清理 `uploads/*.json`（`memory.json` / `rag_data.json` 等）前，必须先停后端。`memory.py` 是内存缓存 + 回写磁盘的模型，运行期间读写会覆盖磁盘改动。
+- 相关 tag：`security/v1.1.2`
+
+---
+
 ## [security/v1.1.0] - 2026-10-13
 
 ### Added

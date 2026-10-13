@@ -107,14 +107,26 @@ def output_guard(text: str) -> str:
 
     text = _img_pattern.sub(_protect, text)
 
+    # 【US-14.1 加固】保护裸静态资源路径（防止 LLM 复述或工具返回值中的 URL 被脱敏）
+    _url_pattern = _re.compile(r'(?:/charts/|/images/)[a-fA-F0-9]+\.png')
+    _protected_urls = []
+
+    def _protect_url(m):
+        _protected_urls.append(m.group(0))
+        return f"__URL_PROTECT_{len(_protected_urls)-1}__"
+
+    text = _url_pattern.sub(_protect_url, text)
+
     # 第二步：脱敏（不含图片 URL）
     text = SENSITIVE_PATTERNS["email"].sub('[邮箱已隐藏]', text)
     text = SENSITIVE_PATTERNS["phone"].sub('[手机号已隐藏]', text)
     text = SENSITIVE_PATTERNS["id_card"].sub('[身份证号已隐藏]', text)
 
-    # 第三步：还原图片
+    # 第三步：还原图片与裸 URL
     for i, img in enumerate(_protected_imgs):
         text = text.replace(f"__IMG_PROTECT_{i}__", img)
+    for i, url in enumerate(_protected_urls):
+        text = text.replace(f"__URL_PROTECT_{i}__", url)
 
     return text
 
