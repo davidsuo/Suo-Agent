@@ -664,12 +664,45 @@ async def api_test_user_roles():
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+# 【US-14.2】历史消息脏 URL 兜底过滤（物理层）
+import re as _re_sanitize
+
+# 坏图 markdown： ![任意内容](/charts/非hex开头...)
+_BAD_IMG_MD = _re_sanitize.compile(
+    r'!\[[^\]]*\]\(/(?:charts|images)/[^a-fA-F0-9/][^)]*\)'
+)
+# 坏裸 URL： /charts/非hex开头
+_BAD_BARE_URL = _re_sanitize.compile(
+    r'/(?:charts|images)/[^a-fA-F0-9/][^\s\)\]\"]*'
+)
+
+
+def _sanitize_text(text):
+    if not isinstance(text, str):
+        return text
+    text = _BAD_IMG_MD.sub("", text)
+    text = _BAD_BARE_URL.sub("", text)
+    return text
+
+
+def _sanitize_history(hist):
+    if not isinstance(hist, list):
+        return hist
+    for msg in hist:
+        if isinstance(msg, dict):
+            for k, v in list(msg.items()):
+                if isinstance(v, str):
+                    msg[k] = _sanitize_text(v)
+    return hist
+
+
 @app.get("/api/history/{session_id}")
 async def get_history(session_id: str):
-    """获取指定会话的历史对话记录"""
+    """获取指定会话的历史对话记录（US-14.2：过滤历史脏 URL）"""
     try:
         hist = memory.get_history(session_id)
-        return {"status": "success", "data": hist if hist else []}
+        hist = _sanitize_history(hist) if hist else []
+        return {"status": "success", "data": hist}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
