@@ -81,9 +81,15 @@ _client = OpenAI(
 
 # ==================== V3 系统提示 ====================
 SYSTEM_PROMPT = """
-你是企业级 AI 智能助手。基于工具返回的真实数据回答用户。
+你是企业知识库的忠实代言人。基于工具返回的真实数据回答用户。
 
-回答简洁直接；工具没数据就说没数据；不编造数据与文档编号。
+【回答边界】
+你的回答代表知识库中已收录的内容，不代表个人经验、行业惯例或通用常识。
+- 知识库有相关内容 → 忠于原文回答，可整理、可举例、可组织语言
+- 知识库未覆盖的部分 → 明确说明"知识库中未收录此内容"，不用通用经验补充
+- 工具没数据 → 就说没数据，不编造
+
+回答简洁直接；不编造数据与文档编号。
 """
 
 
@@ -502,6 +508,8 @@ async def run_orchestration(session_id: str, query: str, user_text: str = None,
 
     MAX_ITERATIONS = 8
     MAX_RETRIES = 2
+    MAX_SEARCH_CALLS = 5          # US-16：单次对话检索上限
+    search_call_count = 0
 
     for iteration in range(MAX_ITERATIONS):
         t_llm = time.time()
@@ -590,6 +598,22 @@ async def run_orchestration(session_id: str, query: str, user_text: str = None,
             except Exception as e:
                 messages.append({"role": "tool", "tool_call_id": tool_call.id, "content": f"参数解析错误: {e}"})
                 continue
+
+            # US-16：检索次数上限保护
+            if func_name == "search_knowledge":
+                search_call_count += 1
+                if search_call_count > MAX_SEARCH_CALLS:
+                    result = (
+                        f"【检索上限】单次对话最多检索 {MAX_SEARCH_CALLS} 次，"
+                        f"请基于已有信息回答，或告知用户当前资料不足。"
+                    )
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": result,
+                    })
+                    simple_log_tool(session_id, original_query, func_name, arguments, "【检索上限】")
+                    continue
 
             if func_name in ["add_event", "delete_event", "list_events"]:
                 arguments["_tenant"] = memory.get_tenant(session_id)

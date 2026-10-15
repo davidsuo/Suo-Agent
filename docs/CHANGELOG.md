@@ -7,6 +7,38 @@
 版本号遵循 [SemVer 2.0.0](https://semver.org/lang/zh-CN/)。
 
 
+## [rag/v2.8.0] - 2026-10-15
+
+### Added
+- **US-16 Agentic RAG**：
+  - `SYSTEM_PROMPT` 新增【回答边界】段落——只基于知识库内容回答，未覆盖部分明确说明"未收录"。
+  - `MAX_SEARCH_CALLS = 5`：单次对话检索上限保护。
+  - `search_knowledge` description 优化：说明"首轮已自动执行，仅当不够时才再检索"。
+
+### Changed
+- `common/orchestrator.py::SYSTEM_PROMPT`：新增【回答边界】
+- `common/orchestrator.py` 主循环：新增 `MAX_SEARCH_CALLS` 保护
+- `common/tools.py::TOOLS_METADATA`：`search_knowledge` description 增强
+
+### Performance（RAGAS 41 条 positive 样本对比）
+
+| 指标 | 基线（改前） | US-16（改后） | 变化 | 目标 |
+|---|---|---|---|---|
+| **Faithfulness** | 0.5351 | **0.7244** | ⬆ **+0.189** | ≥ 0.60 ✅ |
+| Answer Relevancy | 0.9379 | 0.9281 | ⬇ -0.010 | — |
+| Context Precision | 0.9258 | **0.9348** | ⬆ +0.009 | ≥ 0.94 ⚠️ 差 0.0052 |
+| Context Recall | 1.0000 | 1.0000 | 持平 | ≥ 0.9 ✅ |
+| 回归测试 | 31/31 | 31/31 | — | ✅ |
+
+### Notes
+- **核心成果**：Faithfulness 从 0.5351 涨到 0.7244，**超额完成**目标（0.60）。
+- **约束代价**：Answer Relevancy 略降 0.01，仍在优秀区间（> 0.92）。
+- **A/B 实验**：`final_top_k = 8 → 6` 实测 **CP 反而降** 到 0.9216（位置加权指标特性），已回滚为 8。
+- **不做项**：原 AC-2（`expand_query`）/ AC-3（`count_hits`）不做——LLM 已具备多轮能力，无需新增工具。
+- **遗留项**：CP 距目标 0.94 差 0.0052，记入 BACKLOG B-006。
+
+---
+
 ## [agent/v3.7.0] - 2026-10-13
 
 ### Added

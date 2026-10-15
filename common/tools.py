@@ -1307,7 +1307,11 @@ TOOLS_METADATA = [
     }},
     {"type": "function", "function": {
         "name": "search_knowledge",
-        "description": "检索企业知识库",
+        "description": (
+            "检索企业知识库。"
+            "首轮检索已由系统自动执行，若结果不足以回答，可换关键词再次调用。"
+            "若首轮结果已能回答，不要重复检索。"
+        ),
         "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "department": {"type": "string"}}, "required": ["query"]}
     }},
     {"type": "function", "function": {
