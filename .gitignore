@@ -85,3 +85,6 @@ chroma_db/
 # ============ 鏀捐鍓嶇鐜鍙橀噺 ============
 !frontend/.env.development
 !frontend/.env.production
+
+# US-16 备份文件
+*.bak_us*
