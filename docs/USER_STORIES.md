@@ -708,9 +708,9 @@ Cache-Control: public, max-age=31536000, immutable
 | 标题 | Agentic RAG——从固定检索到 LLM 自主决策 |
 | 角色 | 企业知识库管理员 |
 | 优先级 | P1 |
-| 状态 | 已完成 |
-| 完成时间 | 2026-10-12 |
-| 关联 tag | `agent/v3.6.0` |
+| 状态 | 待开发 |
+| 完成时间 | 待补 |
+| 关联 tag | 待补 |
 | 关联 commit | 待补 |
 
 ### 背景

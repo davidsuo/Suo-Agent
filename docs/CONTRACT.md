@@ -27,8 +27,6 @@
 - **磁盘绿 ≠ 云端绿**
 
 ### 第三条 · 提交前必跑清单
-
-```bash
 python rag_test/regression/run_all.py           # 本地回归
 python rag_test/regression/run_all.py --cloud   # 云端回归
 git status                                       # 工作区必须干净
@@ -41,7 +39,7 @@ git status                                       # 工作区必须干净
 改后：再跑一次，对比结果
 
 全绿：才允许 commit
-```
+
 ---
 
 ### 第五条 · 例外处理
