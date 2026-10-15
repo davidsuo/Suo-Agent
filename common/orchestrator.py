@@ -59,6 +59,7 @@ from common.model_router import call_with_fallback
 from common.pending_tools import pending, save_pending
 from common.auth import get_user_info, ROLE_PERMISSIONS
 from common.memory import memory
+from common.long_term_memory import long_term_memory
 
 
 # ==================== 基础路径与全局变量 ====================
@@ -354,6 +355,14 @@ async def run_orchestration(session_id: str, query: str, user_text: str = None,
         yield json.dumps({"type": "answer", "content": "【系统安全提示】您的账号已被管理员禁用。"}, ensure_ascii=False)
         return
 
+    # US-17：会话开始同步用户元数据到 graph 节点
+    try:
+        _dept = user_info.get("department", "") or ""
+        _rname = user_info.get("real_name", "") or ""
+        long_term_memory.sync_user_node(real_username, _dept, _rname)
+    except Exception as _e:
+        print(f"###long_term_memory### sync_user_node 失败: {_e}")
+
     original_query = query
     history_text = user_text if user_text else original_query
 
@@ -488,6 +497,15 @@ async def run_orchestration(session_id: str, query: str, user_text: str = None,
 
     system_content += "\n\n【回答要求】请不要在回答开头写任何关于数据来源的说明。直接以'以下是...'开头。系统会自动为你添加前缀。"
 
+    # US-17：物理层自动注入长期记忆摘要
+    try:
+        _ltm_ctx = long_term_memory.build_context(real_username, user_info.get("department", "") or "")
+        if _ltm_ctx:
+            system_content += "\n\n" + _ltm_ctx
+            print(f"###长期记忆### 注入 {len(_ltm_ctx)} 字符")
+    except Exception as _e:
+        print(f"###long_term_memory### build_context 失败: {_e}")
+
     current_date_str = datetime.datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y年%m月%d日 %H:%M:%S")
     system_content += f"\n\n【系统时间信息】当前系统时间是 {current_date_str}。请以此时间为准，不要依赖你的内部知识库或历史记忆。"
 
@@ -617,6 +635,17 @@ async def run_orchestration(session_id: str, query: str, user_text: str = None,
 
             if func_name in ["add_event", "delete_event", "list_events"]:
                 arguments["_tenant"] = memory.get_tenant(session_id)
+
+            # US-17：长期记忆工具注入身份参数
+            if func_name in [
+                "remember_preference", "recall_preference",
+                "remember_decision", "recall_decision",
+                "remember_relation", "recall_relations",
+            ]:
+                arguments["_username"] = real_username
+                # 仅偏好类工具需要部门信息（decisions/relations 不涉及 team scope）
+                if func_name in ["remember_preference", "recall_preference"]:
+                    arguments["_department"] = user_info.get("department", "") or ""
 
             user_allowed_tools = ROLE_PERMISSIONS.get(role, [])
             has_permission = ("*" in user_allowed_tools) or (func_name in user_allowed_tools)

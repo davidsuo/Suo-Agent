@@ -35,19 +35,31 @@ ROLE_PERMISSIONS: Dict[str, List[str]] = {
         "add_event", "delete_event", "web_search", "fetch_webpage",
         "analyze_file", "aggregate", "generate_chart", "recognize_table",
         "speech_to_text", "send_email", "execute_python", "ocr_image",
-        "generate_image", "search_knowledge"
+        "generate_image", "search_knowledge",
+        # US-17 长期记忆
+        "remember_preference", "recall_preference",
+        "remember_decision", "recall_decision",
+        "remember_relation", "recall_relations"
     ],
     "developer": [
         "get_current_time", "calculator", "list_events",
         "add_event", "delete_event", "web_search", "fetch_webpage",
         "analyze_file", "aggregate", "generate_chart", "recognize_table",
         "speech_to_text", "send_email", "execute_python", "ocr_image",
-        "generate_image", "search_knowledge"
+        "generate_image", "search_knowledge",
+        # US-17 长期记忆
+        "remember_preference", "recall_preference",
+        "remember_decision", "recall_decision",
+        "remember_relation", "recall_relations"
     ],
     "viewer": [
         "get_current_time", "calculator", "analyze_file", "aggregate",
         "generate_chart", "recognize_table", "speech_to_text", "send_email",
-        "execute_python", "ocr_image", "generate_image", "search_knowledge"
+        "execute_python", "ocr_image", "generate_image", "search_knowledge",
+        # US-17 长期记忆（用户管理自己的偏好，不涉及权限隔离）
+        "remember_preference", "recall_preference",
+        "remember_decision", "recall_decision",
+        "remember_relation", "recall_relations"
     ],
 }
 

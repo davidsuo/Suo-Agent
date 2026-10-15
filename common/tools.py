@@ -35,6 +35,7 @@ from zoneinfo import ZoneInfo
 from typing import Any, Dict, Optional
 import matplotlib.font_manager as fm
 import concurrent.futures
+from common.long_term_memory import long_term_memory
 
 # 诊断开关：RAG_DEBUG=true 时输出详细诊断，默认关闭
 _RAG_DEBUG = os.getenv("RAG_DEBUG", "false").lower() == "true"
@@ -1244,6 +1245,64 @@ def generate_chart(
         f"{summary}"
     )
 
+# ==================== US-17 长期记忆工具 ====================
+def remember_preference(key: str, value: str, scope: str = "user",
+                        _username: str = "default", _department: str = "") -> str:
+    """记住用户偏好（user / team / global）"""
+    r = long_term_memory.remember_preference(_username, key, value, scope, _department)
+    if r.get("ok"):
+        return f"已记住偏好：{key} = {value}（{r['action']}，scope={scope}）"
+    return f"记忆失败：{r.get('msg')}"
+
+
+def recall_preference(key: str = "", scope: str = "",
+                      _username: str = "default", _department: str = "") -> str:
+    """查询偏好"""
+    items = long_term_memory.recall_preference(_username, _department, scope, key)
+    if not items:
+        return "未找到相关偏好。"
+    return "\n".join(f"- [{p['_scope']}] {p['key']}: {p['value']}" for p in items)
+
+
+def remember_decision(topic: str, choice: str, reason: str = "",
+                      _username: str = "default") -> str:
+    """记住历史决策"""
+    r = long_term_memory.remember_decision(_username, topic, choice, reason)
+    if r.get("ok"):
+        return f"已记住决策：{topic} → {choice}"
+    return f"记忆失败：{r.get('msg')}"
+
+
+def recall_decision(topic: str = "", _username: str = "default") -> str:
+    """查询决策"""
+    items = long_term_memory.recall_decision(_username, topic)
+    if not items:
+        return "未找到相关决策。"
+    return "\n".join(
+        f"- {d['topic']} → {d['choice']}" + (f"（原因：{d['reason']}）" if d.get("reason") else "")
+        for d in items
+    )
+
+
+def remember_relation(target_user: str, relation_type: str = "collaborates_with",
+                      _username: str = "default") -> str:
+    """记录关系边"""
+    r = long_term_memory.remember_relation(_username, target_user, relation_type)
+    if r.get("ok"):
+        return f"已记录关系：{_username} → {target_user}（{relation_type}，权重 {r['weight']}）"
+    return f"记录失败：{r.get('msg')}"
+
+
+def recall_relations(target_user: str = "", _username: str = "default") -> str:
+    """查询关系图谱"""
+    user = target_user or _username
+    items = long_term_memory.recall_relations(user)
+    if not items:
+        return f"未找到 {user} 的相关关系。"
+    return "\n".join(
+        f"- {e['from']} → {e['to']}（{e['type']}，{e['weight']} 次）" for e in items
+    )
+
 COMPENSATIONS = {
     "send_email": compensate_send_email,
     "add_event": compensate_add_event,
@@ -1367,6 +1426,54 @@ TOOLS_METADATA = [
             "title": {"type": "string"}
         }, "required": ["file_name", "filter_json", "agg_column", "agg_func", "group_by", "chart_type", "title"]}
     }},
+    {"type": "function", "function": {
+        "name": "remember_preference",
+        "description": "记住用户/团队/全局的偏好。当用户明确表达偏好时调用，如'我喜欢饼图不用柱状图'、'报告先给结论再给细节'。",
+        "parameters": {"type": "object", "properties": {
+            "key": {"type": "string", "description": "偏好名，如'图表类型'"},
+            "value": {"type": "string", "description": "偏好值，如'饼图'"},
+            "scope": {"type": "string", "enum": ["user", "team", "global"], "description": "默认 user"}
+        }, "required": ["key", "value"]}
+    }},
+    {"type": "function", "function": {
+        "name": "recall_preference",
+        "description": "查询用户/团队/全局的偏好记录。",
+        "parameters": {"type": "object", "properties": {
+            "key": {"type": "string", "description": "可选，按 key 过滤"},
+            "scope": {"type": "string", "enum": ["user", "team", "global"], "description": "可选"}
+        }, "required": []}
+    }},
+    {"type": "function", "function": {
+        "name": "remember_decision",
+        "description": "记住用户做过的决策。当用户明确表态选定了某个方案时调用。",
+        "parameters": {"type": "object", "properties": {
+            "topic": {"type": "string"},
+            "choice": {"type": "string"},
+            "reason": {"type": "string"}
+        }, "required": ["topic", "choice"]}
+    }},
+    {"type": "function", "function": {
+        "name": "recall_decision",
+        "description": "查询历史决策记录。",
+        "parameters": {"type": "object", "properties": {
+            "topic": {"type": "string", "description": "可选，按 topic 过滤"}
+        }, "required": []}
+    }},
+    {"type": "function", "function": {
+        "name": "remember_relation",
+        "description": "记录两个人之间的关系，如'我和 bob 经常一起做项目'。",
+        "parameters": {"type": "object", "properties": {
+            "target_user": {"type": "string"},
+            "relation_type": {"type": "string", "enum": ["collaborates_with", "reports_to"]}
+        }, "required": ["target_user"]}
+    }},
+    {"type": "function", "function": {
+        "name": "recall_relations",
+        "description": "查询用户的关系图谱。",
+        "parameters": {"type": "object", "properties": {
+            "target_user": {"type": "string", "description": "可选，不传则查自己"}
+        }, "required": []}
+    }},
 ]
 
 # ==================== 工具映射 ====================
@@ -1390,4 +1497,10 @@ AVAILABLE_TOOLS = {
     "recognize_table": recognize_table,
     "execute_workflow": execute_workflow_tool,
     "generate_chart": generate_chart,
+    "remember_preference": remember_preference,
+    "recall_preference": recall_preference,
+    "remember_decision": remember_decision,
+    "recall_decision": recall_decision,
+    "remember_relation": remember_relation,
+    "recall_relations": recall_relations,
 }

@@ -775,14 +775,17 @@ Cache-Control: public, max-age=31536000, immutable
 | 标题 | 结构化长期记忆——用户偏好 / 历史决策 / 上下文图谱 |
 | 角色 | 企业用户 |
 | 优先级 | P2 |
-| 状态 | 待开发 |
+| 状态 | 已完成 |
+| 完成时间 | 2026-10-15 |
+| 关联 tag | `memory/v1.1.0` |
+| 关联 commit | 待补 |
 
 ### 背景
 
 - 现有 `memory.json` 只有**短期对话 history**（20 轮）
-- 无"用户偏好"（如"喜欢饼图不用柱状图"）
-- 无"历史决策"（如"上次选了方案 A"）
-- 无"上下文图谱"（如"用户 A 常与用户 B 协作"）
+- 无"用户偏好"
+- 无"历史决策"
+- 无"上下文图谱"
 
 ### 描述
 
@@ -793,22 +796,45 @@ Cache-Control: public, max-age=31536000, immutable
 
 ### 验收标准
 
-- AC-1：新增 `common/long_term_memory.py`
-- AC-2：支持三类数据：`preferences` / `decisions` / `graph`
-- AC-3：与短期 memory 分离存储（`memory_long_term.json`）
-- AC-4：LLM 可主动读取/写入（工具化）
-- AC-5：隐私级别可配置（用户/团队/全局）
-- AC-6：回归测试全绿
+- **AC-1**：✅ 新增 `common/long_term_memory.py`
+- **AC-2**：✅ 支持三类数据：`preferences` / `decisions` / `graph`
+- **AC-3**：✅ 与短期 memory 分离存储（`memory_long_term.json`）
+- **AC-4**：✅ LLM 可主动读写（6 个工具化接口）
+- **AC-5**：✅ 三级隐私：user / team / global
+- **AC-6**：✅ 回归测试 31/31
+- **AC-7（新增）**：✅ 物理层自动注入偏好摘要（`build_context`）
 
-### 技术规格
+### 实施结果（2026-10-15）
 
-- 新文件：`common/long_term_memory.py`
-- 新增工具：`remember_preference` / `recall_preference`
-- 数据格式：JSON（初期）+ 未来可切向量库
+**新增文件**：
+- `common/long_term_memory.py`：核心模块
+- `uploads/memory_long_term.json`：持久化文件
+
+**新增 6 个工具**：
+- `remember_preference` / `recall_preference`（支持 user / team / global）
+- `remember_decision` / `recall_decision`
+- `remember_relation` / `recall_relations`
+
+**集成点**：
+- `common/tools.py`：注册 6 工具到 `TOOLS_METADATA` / `AVAILABLE_TOOLS`
+- `common/orchestrator.py`：会话同步 graph 节点 + 物理层注入偏好摘要 + 工具身份注入
+- `common/auth.py`：`ROLE_PERMISSIONS` 为 manager / developer / viewer 补齐 6 工具权限
+
+**手工测试 5 条全通过**：
+1. ✅ 记住我喜欢用饼图 → `remember_preference` 写入
+2. ✅ 我的图表偏好是什么？→ 物理层注入 + 回答正确
+3. ✅ 我们产品部周报都用飞书文档 → `remember_preference` scope=team 写入
+4. ✅ 上次 Q3 方案我们选了方案 A → `remember_decision` 写入
+5. ✅ 我和 bob 经常一起做项目 → `remember_relation` 写入
 
 ### 依赖
 
 - US-13
+
+### 遗留项
+
+- **B-007**（新增）：长期记忆的语义检索（当前是字符串匹配，超过 100 条需向量化）
+- **B-008**（新增）：本地开发时多进程写 `memory_long_term.json` 会覆盖，生产单进程无影响
 
 ---
 

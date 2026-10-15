@@ -7,6 +7,33 @@
 版本号遵循 [SemVer 2.0.0](https://semver.org/lang/zh-CN/)。
 
 
+## [memory/v1.1.0] - 2026-10-15
+
+### Added
+- **US-17 结构化长期记忆**：
+  - 新增 `common/long_term_memory.py`
+  - 新增存储 `uploads/memory_long_term.json`
+  - 三类数据：preferences / decisions / graph
+  - 三级隐私：user / team / global
+  - 6 个工具化接口：`remember_preference` / `recall_preference` / `remember_decision` / `recall_decision` / `remember_relation` / `recall_relations`
+
+### Changed
+- `common/tools.py`：新增 6 个工具
+- `common/orchestrator.py`：
+  - 会话开始同步用户元数据到 graph 节点
+  - 物理层自动注入长期记忆摘要（`build_context`）
+  - 工具调用注入 `_username`（偏好类额外注入 `_department`）
+- `common/auth.py`：`ROLE_PERMISSIONS` 为 manager / developer / viewer 补齐 6 个长期记忆工具权限
+
+### Notes
+- **物理层只读不写**：自动注入偏好摘要，写入必须 LLM 显式调用工具。
+- **隐私隔离**：`scope=team` 依赖 `user_info.department`，缺失时不写入。
+- **上限保护**：prefs 50 / decisions 100 / edges 1000。
+- **回归测试**：31/31 全绿。
+- **手工测试**：5 条场景全部通过。
+
+---
+
 ## [rag/v2.8.0] - 2026-10-15
 
 ### Added

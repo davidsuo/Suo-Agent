@@ -128,11 +128,11 @@ v3.1.1	Bugfix：memory 存储含图片 markdown	agent/v3.1.1
 
 ### 3.1 文档/规范线
 新标签	时间	里程碑
+| :--- | :--- | :--- |
 | `docs/v1.0.0` | 2026-09-14 | 建立版本管理规范：VERSION_HISTORY.md + CHANGELOG.md
 | `docs/v2.0.0` | 2026-10-05 | AI Native 开发契约 v2.0：新增 AI 原生设计原则（8 条）+ 反模式清单（7 条）；回归覆盖更新至 31 条 |
 
 ### 3.2 UI 架构线
-
 | 新标签 | 时间 | 里程碑 |
 | :--- | :--- | :--- |
 | `ui/v3.2.0` | 2026-09-14 | Logo 资产快照化（base64 → 静态文件） |
@@ -155,22 +155,28 @@ v3.1.1	Bugfix：memory 存储含图片 markdown	agent/v3.1.1
 | `rag/v2.6.6` | 2026-09-22 | 工具权限通用拦截（按 ROLE_PERMISSIONS）+ 租户隔离修复（get_tenant 从 session_id 前缀提取）+ 前端构建 |
 | `rag/v2.6.7` | 2026-09-23 | init_db 幂等化，修复云端空 sample.db 导致表缺失 |
 | `rag/v2.6.9` | 2026-10-01 | US-05 正式验收：排序指标口径修正（`precision@3` → `hit@3` / `recall@3`），`precision@1` 0.78 → 0.9756（口径修正后），`mrr` 0.8 → 0.9878，Q13 ground_truth 补充 TS-03；Q50 电源灯亮/不亮区分词未捕获，记入 Backlog |
-| `memory/v1.0.0` | 2026-10-01 | Memory Schema Version 迁移机制（US-08），清理 84 个旧 session，从根上解决旧数据复述 |
 | `rag/v2.7.0` | 2026-10-05 | US-12 引入 RAGAS 第三方评估框架，4 指标独立评估；Faithfulness 基线 0.5823 |
 | `rag/v2.8.0` | 2026-10-15 | US-16 Agentic RAG：SYSTEM_PROMPT 回答边界 + 检索上限保护；Faithfulness 0.5351 → 0.7244 |
 
-### 3.4 Agent 架构线
+### 3.4 Memory 架构线
+| 新标签 | 时间 | 里程碑 |
+| :--- | :--- | :--- |
+| `memory/v1.0.0` | 2026-10-01 | Memory Schema Version 迁移机制（US-08），清理 84 个旧 session，从根上解决旧数据复述 |
+| `memory/v1.1.0` | 2026-10-15 | US-17 结构化长期记忆：preferences / decisions / graph + 三级隐私 + 6 工具 |
+
+### 3.5 Agent 架构线
 | 新标签 | 时间 | 里程碑 |
 | :--- | :--- | :--- |
 | `agent/v3.2.0` | 2026-09-15 | 图片清理策略：启动时自动清理 30 天前旧图表 |
 | `agent/v3.3.0` | 2026-09-21 | SYSTEM_PROMPT 新增回答边界与拒答规则（绝对禁令） |
+| `agent/v3.4.0` | 2026-09-25 | Agent 3.4.0：能力筛选器 + 动态数据源发现 |
 | `agent/v3.4.1` | 2026-09-28 | 修复 generate_image 环境变量、上下文爆炸与图片渲染 |
 | `agent/v3.5.0` | 2026-10-02 | US-11 图表资源化交付：放弃 `{CHART}` 占位符，改用真实 markdown；主循环切换 `deepseek-flash`；SYSTEM_PROMPT 精简 |
 | `agent/v3.6.0` | 2026-10-12 | US-13 编排层模块化拆分：`chat_core_stream` 抽离为 `common/orchestrator.py::run_orchestration`；行为 100% 等价 |
 | `agent/v3.7.0` | 2026-10-13 | US-15 多模型智能路由 + 跨模型失败回退：新增 `common/model_router.py` + `config/models.json`；回退链 flash → chat → reasoner |
 
 
-### 3.5 综合发布线
+### 3.6 综合发布线
 新标签	时间	里程碑
 | :--- | :--- | :--- |
 | `release/v5.5.0` | 2026-09-18 | 云端部署里程碑：全链路持久化与 UI 体验完美收官 |
@@ -189,7 +195,7 @@ v3.1.1	Bugfix：memory 存储含图片 markdown	agent/v3.1.1
 | `release/v5.10.0` | 2026-10-13 | 合并 US-14 双向语义 Guardrails + US-15 多模型路由（或先只合 US-14） |
 
 
-### 3.6 on-prem 线
+### 3.7 on-prem 线
 | 新标签 | 时间 | 里程碑 |
 | :--- | :--- | :--- |
 | `on-prem/v1.0.0` | 2026-09-18 | 首次 on-prem 发布（同步云端 V5.6.1） |
@@ -204,15 +210,12 @@ v3.1.1	Bugfix：memory 存储含图片 markdown	agent/v3.1.1
 > 说明：`on-prem/v1.3.9` 与 `on-prem/v1.3.10` 均未创建，原因是 `release/v5.9.9` / `release/v5.9.10` 的部署补丁已包含在本次 `release/v5.9.11` 的合并中，直接同步到 `on-prem/v1.3.11`。
 | `on-prem/v1.3.12` | 2026-10-13 | 同步云端 `security/v1.1.0`（US-14 双向语义 Guardrails） |
 
-
-### 3.7 AI Native 2.0 里程碑
+### 3.8 AI Native 2.0 里程碑
 | 新标签 | 时间 | 里程碑 |
 | :--- | :--- | :--- |
 | `ai-native/v2.0.0` | 2026-09-25 | 从"分类路由"到"能力筛选"：`_route_query` → `_select_capabilities`；`_build_schema_hint` → `_discover_data_sources`；决策位置从 Router 前置转为 LLM 在线。 |
-| `agent/v3.4.0` | 2026-09-25 | Agent 3.4.0：能力筛选器 + 动态数据源发现 |
 
-
-### 3.8 安全线
+### 3.9 安全线
 
 | 新标签 | 时间 | 里程碑 |
 | :--- | :--- | :--- |
@@ -221,13 +224,13 @@ v3.1.1	Bugfix：memory 存储含图片 markdown	agent/v3.1.1
 | `security/v1.1.2` | 2026-10-13 | US-14.2 历史 memory 脏 URL 修复（清理脚本 + `/api/history` 出口过滤） |
 | `security/v1.1.3` | 2026-10-13 | US-14.1 `output_guard` 图片 URL 保护加固（裸路径占位符保护）；与 v1.1.2 配套 |
 
-### 3.9 权限线
+### 3.10 权限线
 
 | 新标签 | 时间 | 里程碑 |
 | :--- | :--- | :--- |
 | `rbac/v1.0.0` | 2026-10-01 | US-07 ROLE_PERMISSIONS 前后端单一真源（`/api/users/roles` 端点） |
 
-### 3.10 工程效能线
+### 3.11 工程效能线
 
 | 新标签 | 时间 | 里程碑 |
 | :--- | :--- | :--- |
